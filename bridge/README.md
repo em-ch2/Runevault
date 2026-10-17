@@ -44,7 +44,7 @@ From the repository root in PowerShell, start the configured backend and create 
 
 ```powershell
 docker compose up -d --build postgres backend
-$body = @{ device = "slab-01"; amount = 50000; dest = "acct-999"; glyphs = "0-2-1-2-1" } | ConvertTo-Json
+$body = @{ device = "slab-01"; amount = 50000; dest = "<allowed-Nessie-account-UUID>" } | ConvertTo-Json
 $pending = Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/transactions" -Headers @{ Authorization = "Bearer $env:AUTH0_ACCESS_TOKEN" } -ContentType "application/json" -Body $body
 $pending.tx_id
 ```

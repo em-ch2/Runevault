@@ -23,6 +23,7 @@ export interface TransactionRecord {
   destination: string;
   status: 'PENDING' | 'SIMULATED' | 'VERIFIED' | 'EXECUTING' | 'BANK_PENDING' | 'EXECUTED' | 'FAILED' | 'OUTCOME_UNKNOWN';
   createdAt: string;
+  expiresAt?: string | null;
   verifiedAt: string | null;
   requesterSubject: string | null;
   bankReceiptId?: string | null;

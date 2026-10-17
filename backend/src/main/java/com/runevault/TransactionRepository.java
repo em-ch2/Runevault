@@ -6,12 +6,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.persistence.LockModeType;
 
 public interface TransactionRepository extends JpaRepository<Transaction, String> {
+
+ Page<Transaction> findByRequesterSubject(String requesterSubject, Pageable pageable);
 
  @Query("select t.deviceId from Transaction t where t.transactionId = :id")
  Optional<String> findAssignedDeviceId(@Param("id") String id);

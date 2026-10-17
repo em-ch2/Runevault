@@ -36,14 +36,14 @@ class PostgresMigrationTest {
   migrate("fresh_app");
   try (var connection = DriverManager.getConnection(url("fresh_app"), postgres.getUsername(), postgres.getPassword());
        var statement = connection.createStatement()) {
-   for (String table : new String[] {"transactions", "device_states", "audit_events", "flyway_schema_history"}) {
+   for (String table : new String[] {"transactions", "device_states", "audit_events", "pipeline_events", "pipeline_event_keys", "flyway_schema_history"}) {
     try (var rows = statement.executeQuery("SELECT count(*) FROM " + table)) {
      assertTrue(rows.next());
     }
    }
    try (var rows = statement.executeQuery("SELECT count(*) FROM flyway_schema_history WHERE success")) {
     rows.next();
-    assertEquals(3, rows.getInt(1));
+    assertEquals(5, rows.getInt(1));
    }
   }
  }

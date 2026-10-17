@@ -1,10 +1,16 @@
 package com.runevault.banking;
 
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Flow;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -25,6 +31,44 @@ class NessieBankGatewayOutcomeTest {
 
  private NessieBankGateway gateway(HttpClient http) {
   return new NessieBankGateway("http://127.0.0.1:9999", "test-key", SOURCE, http, true);
+ }
+
+ private String body(HttpRequest request) throws Exception {
+  var result = new CompletableFuture<String>();
+  var bytes = new ByteArrayOutputStream();
+  request.bodyPublisher().orElseThrow().subscribe(new Flow.Subscriber<ByteBuffer>() {
+   public void onSubscribe(Flow.Subscription subscription) { subscription.request(Long.MAX_VALUE); }
+   public void onNext(ByteBuffer item) { byte[] chunk = new byte[item.remaining()]; item.get(chunk); bytes.writeBytes(chunk); }
+   public void onError(Throwable error) { result.completeExceptionally(error); }
+   public void onComplete() { result.complete(bytes.toString(StandardCharsets.UTF_8)); }
+  });
+  return result.get();
+ }
+
+ @Test void providerTransferCarriesSelectedPayeeAndExactCents() throws Exception {
+  HttpClient http = mock(HttpClient.class);
+  var before = response(200, "{\"balance\":1000}");
+  var created = response(201, "{\"objectCreated\":{\"_id\":\"receipt-1\",\"payee_id\":\"" + DEST + "\",\"status\":\"pending\"}}");
+  var after = response(200, "{\"balance\":1000}");
+  when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenReturn(before).thenReturn(created).thenReturn(after);
+  assertEquals(BankReceipt.Outcome.ACCEPTED_PENDING,
+   gateway(http).transfer("tx-1", 50001, "USD", DEST).outcome());
+  ArgumentCaptor<HttpRequest> requests = ArgumentCaptor.forClass(HttpRequest.class);
+  verify(http, times(3)).send(requests.capture(), any(HttpResponse.BodyHandler.class));
+  var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(body(requests.getAllValues().get(1)));
+  assertEquals(DEST, json.path("payee_id").asText());
+  assertEquals("balance", json.path("medium").asText());
+  assertEquals("500.01", json.path("amount").decimalValue().toPlainString());
+ }
+
+ @Test void mismatchedProviderPayeeCannotBeMarkedSuccessful() throws Exception {
+  HttpClient http = mock(HttpClient.class);
+  var before = response(200, "{\"balance\":1000}");
+  var created = response(201, "{\"objectCreated\":{\"_id\":\"receipt-1\",\"payee_id\":\"other\",\"status\":\"completed\"}}");
+  when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenReturn(before).thenReturn(created);
+  assertEquals(BankReceipt.Outcome.UNKNOWN, gateway(http).transfer("tx-1", 50000, "USD", DEST).outcome());
  }
 
  @Test void missingNormalBankConfigurationFailsClearly() {
@@ -123,5 +167,26 @@ class NessieBankGatewayOutcomeTest {
   assertEquals(BankReceipt.Outcome.COMPLETED, receipt.outcome());
   assertEquals("receipt-4", receipt.receiptId());
   assertNull(receipt.newBalanceMinor());
+ }
+
+ @Test void lookupReadsExistingReceiptAndRequiresMatchingAccountsAndAmount() throws Exception {
+  var prior = new BankReceipt("receipt-1", "tx-lookup", "nessie", "pending", 50000, "USD", DEST,
+   BankReceipt.Outcome.ACCEPTED_PENDING, BankReceipt.Reason.ACCEPTED_PENDING, java.time.Instant.now(), null);
+  HttpClient matching = mock(HttpClient.class);
+  var matchingResponse = response(200,
+   "{\"_id\":\"receipt-1\",\"payer_id\":\"" + SOURCE + "\",\"payee_id\":\"" + DEST
+    + "\",\"amount\":500,\"status\":\"completed\"}");
+  when(matching.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(matchingResponse);
+  assertEquals(BankReceipt.Outcome.COMPLETED, gateway(matching).lookup(prior).orElseThrow().outcome());
+  ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
+  verify(matching).send(request.capture(), any(HttpResponse.BodyHandler.class));
+  assertEquals("GET", request.getValue().method());
+  assertTrue(request.getValue().uri().getPath().endsWith("/transfers/receipt-1"));
+
+  HttpClient mismatched = mock(HttpClient.class);
+  var mismatchedResponse = response(200,
+   "{\"_id\":\"receipt-1\",\"payer_id\":\"" + SOURCE + "\",\"payee_id\":\"other\",\"amount\":500,\"status\":\"completed\"}");
+  when(mismatched.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(mismatchedResponse);
+  assertTrue(gateway(mismatched).lookup(prior).isEmpty());
  }
 }

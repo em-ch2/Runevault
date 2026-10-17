@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.regex.Pattern;
+import java.util.Optional;
 
 @Component
 @Profile("!test & !simulator")
@@ -70,6 +71,11 @@ public class NessieBankGateway implements BankGateway {
                     "INVALID_DESTINATION", BankReceipt.Outcome.FAILED,
                     BankReceipt.Reason.PRE_SUBMISSION_FAILURE, null);
         }
+        if (sourceAccountId.equals(payeeId)) {
+            return result(transactionId, amountMinor, currency, destination, null,
+                    "SAME_ACCOUNT", BankReceipt.Outcome.FAILED,
+                    BankReceipt.Reason.PRE_SUBMISSION_FAILURE, null);
+        }
 
         BigDecimal amount = BigDecimal.valueOf(amountMinor, 2); // cents -> dollars
 
@@ -88,14 +94,15 @@ public class NessieBankGateway implements BankGateway {
 
             body = mapper.createObjectNode();
             body.put("status", "pending");
+            body.put("medium", "balance");
+            body.put("payee_id", payeeId);
             if (amount.stripTrailingZeros().scale() <= 0) {
                 body.put("amount", amount.longValueExact()); // whole dollars as an integer
             } else {
                 body.put("amount", amount);
             }
             body.put("transaction_date", LocalDate.now().toString());
-            // Nessie's create call has no payee field, so keep the trace in the description
-            body.put("description", "runevault:" + transactionId + " to " + payeeId);
+            body.put("description", "runevault:" + transactionId);
 
         } catch (NessieException e) {
             log.warn("Nessie preflight rejected transaction {} with HTTP {}", transactionId, e.status);
@@ -122,6 +129,9 @@ public class NessieBankGateway implements BankGateway {
             JsonNode created = unwrap(post("/accounts/" + sourceAccountId + "/transfers", body));
             if (created == null || !created.isObject()) return unknown(transactionId, amountMinor, currency,
                     destination, "MALFORMED_RESPONSE", BankReceipt.Reason.MALFORMED_RESPONSE, submittedAt);
+            if (created.hasNonNull("payee_id") && !payeeId.equals(created.path("payee_id").asText()))
+                return unknown(transactionId, amountMinor, currency, destination,
+                        "PAYEE_MISMATCH", BankReceipt.Reason.MALFORMED_RESPONSE, submittedAt);
             String receiptId = created.path("_id").isTextual() ? created.path("_id").asText() : null;
             if (receiptId != null && receiptId.isBlank()) receiptId = null;
             if (receiptId != null && (receiptId.length() > 64 || !receiptId.matches("[A-Za-z0-9_-]+")))
@@ -164,6 +174,53 @@ public class NessieBankGateway implements BankGateway {
             Thread.currentThread().interrupt();
             return unknown(transactionId, amountMinor, currency, destination, "INTERRUPTED",
                     BankReceipt.Reason.SUBMISSION_UNCERTAIN, submittedAt);
+        }
+    }
+
+    @Override
+    public Optional<BankReceipt> lookup(BankReceipt previous) {
+        if (previous == null || !"nessie".equals(previous.provider())
+                || previous.receiptId() == null || !previous.receiptId().matches("[A-Za-z0-9_-]{1,64}"))
+            return Optional.empty();
+        try {
+            JsonNode detail = get("/transfers/" + previous.receiptId());
+            if (!detail.isObject() || !previous.receiptId().equals(detail.path("_id").asText())
+                    || !sourceAccountId.equals(detail.path("payer_id").asText())
+                    || !previous.destination().equals(detail.path("payee_id").asText())
+                    || !detail.path("amount").isNumber()
+                    || detail.path("amount").decimalValue().compareTo(BigDecimal.valueOf(previous.amountMinor(), 2)) != 0)
+                return Optional.empty();
+            String status = detail.path("status").asText("");
+            if (!status.matches("[A-Za-z0-9_-]{1,64}")) return Optional.empty();
+            BankReceipt.Outcome outcome;
+            BankReceipt.Reason reason;
+            switch (status.toLowerCase(java.util.Locale.ROOT)) {
+                case "pending", "processing", "accepted" -> {
+                    outcome = BankReceipt.Outcome.ACCEPTED_PENDING;
+                    reason = BankReceipt.Reason.ACCEPTED_PENDING;
+                }
+                case "completed", "complete" -> {
+                    outcome = BankReceipt.Outcome.COMPLETED;
+                    reason = BankReceipt.Reason.CONFIRMED_COMPLETED;
+                }
+                case "rejected", "failed", "declined" -> {
+                    outcome = BankReceipt.Outcome.FAILED;
+                    reason = BankReceipt.Reason.DEFINITE_REJECTION;
+                }
+                default -> {
+                    outcome = BankReceipt.Outcome.UNKNOWN;
+                    reason = BankReceipt.Reason.PROVIDER_STATUS_UNKNOWN;
+                }
+            }
+            return Optional.of(new BankReceipt(previous.receiptId(), previous.transactionId(), "nessie",
+                    status, previous.amountMinor(), previous.currency(), previous.destination(), outcome,
+                    reason, previous.submittedAt(), null));
+        } catch (IOException | RuntimeException e) {
+            log.warn("Nessie receipt lookup unavailable for {} ({})", previous.transactionId(), e.getClass().getSimpleName());
+            return Optional.empty();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
         }
     }
 
