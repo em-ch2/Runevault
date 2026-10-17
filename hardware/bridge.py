@@ -42,6 +42,9 @@ def restart_firmware(pico):
     """Soft-reset the Pico so it drops any half-entered transfer and waits for a new TX line."""
     pico.write(b"\x03\x03")
     time.sleep(0.2)
+    # Ctrl-B leaves the raw REPL Thonny can leave behind; there Ctrl-D runs pasted code instead of rebooting.
+    pico.write(b"\x02")
+    time.sleep(0.2)
     pico.write(b"\x04")
     wait_start = time.time()
     while time.time() - wait_start < 6:
@@ -90,8 +93,8 @@ headers = {"Content-Type": "application/json", "X-Bridge-Token": token}
 while True:
     try:
         pico = serial.Serial(PORT, 115200, timeout=1)
-    except serial.SerialException:
-        print("waiting for Pico on " + PORT + " (unplugged, or Thonny still open?)")
+    except serial.SerialException as error:
+        print("waiting for Pico on " + PORT + " (unplugged, or Thonny still open?): " + str(error))
         time.sleep(2)
         continue
     print("connected to Pico on " + PORT + ", restarting firmware...")
@@ -185,8 +188,8 @@ while True:
                 continue
             report(response)
 
-    except serial.SerialException:
-        print("lost connection to Pico, reconnecting...")
+    except serial.SerialException as error:
+        print("lost connection to Pico, reconnecting: " + str(error))
         try:
             pico.close()
         except Exception:

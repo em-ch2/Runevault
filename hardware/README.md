@@ -24,6 +24,6 @@ $env:RUNEVAULT_API_URL = "http://localhost:8080" # optional default
 python hardware/bridge.py
 ```
 
-Pins in `pico_main.py`: glyph 0 = GP8, glyph 1 = GP4, glyph 2 = GP3, Enter = GP2, waiting LED = GP10, sealed LED = GP11. Keep `counter.txt` on the Pico; the backend rejects counters it has already seen.
+Pins in `pico_main.py`: glyph 0 (Will) = GP8, glyph 1 (Crew) = GP4, glyph 2 (Sea) = GP3, Enter = GP2, waiting LED = GP10, sealed LED = GP11. Keep `counter.txt` on the Pico; the backend rejects counters it has already seen.
 
 `docs/server.py` was the standalone Flask prototype of this flow; the Spring backend and Angular dashboard replace it.

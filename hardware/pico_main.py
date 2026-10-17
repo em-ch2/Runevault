@@ -3,6 +3,8 @@ import hashlib, sys, time, binascii
 
 KEY = b"poneglyph-dev-key-change-me-0001"
 DEVICE_ID = "slab-01"
+# Index order matches the dashboard: 0 = Will, 1 = Crew, 2 = Sea.
+GLYPH_NAMES = ["Will", "Crew", "Sea"]
 glyph_buttons = [Pin(8, Pin.IN, Pin.PULL_UP), Pin(4, Pin.IN, Pin.PULL_UP),
                  Pin(3, Pin.IN, Pin.PULL_UP)]
 enter_button = Pin(2, Pin.IN, Pin.PULL_UP)
@@ -38,7 +40,7 @@ while True:
         for i in range(len(glyph_buttons)):
             if glyph_buttons[i].value() == 0:
                 glyphs.append(str(i))
-                print("# glyph " + str(i))
+                print("# glyph " + str(i) + " " + GLYPH_NAMES[i])
                 waiting_led.value(0)
                 time.sleep_ms(80)
                 waiting_led.value(1)

@@ -34,7 +34,7 @@ When prompted, ensure the firmware is running and waiting for a transaction, the
 
 The bridge waits for the Pico firmware's `# enter glyphs for tx <id>` acknowledgment before asking you to press buttons. If no acknowledgment arrives within eight seconds, it exits with a diagnostic. Check that the firmware is saved as `main.py` (or otherwise running), that the Pico is on the chosen serial port, and that it is at its TX-reading loop. Restart the bridge for a fresh transaction after correcting the issue.
 
-On the Pico, press and release glyph buttons **0, 2, 1, 2, 1**, then briefly press its Enter button. In the supplied firmware, glyph 0 is GP8, glyph 1 is GP3, glyph 2 is GP4, and Enter is GP2. Holding Enter longer than two seconds clears the entered sequence. The Pico increments its persisted counter, signs, and emits JSON. Firmware comments starting with `#` appear as progress messages.
+On the Pico, press and release glyph buttons **0, 2, 1, 2, 1**, then briefly press its Enter button. In the supplied firmware, glyph 0 (Will) is GP8, glyph 1 (Crew) is GP4, glyph 2 (Sea) is GP3, and Enter is GP2. Holding Enter longer than two seconds clears the entered sequence. The Pico increments its persisted counter, signs, and emits JSON. Firmware comments starting with `#` appear as progress messages.
 
 The bridge submits the matching authorization, prints the response, and exits after one attempt. Run the command again for a new transaction. If USB disconnects after creation, the bridge exits without resending; ensure the Pico has returned to its TX-reading loop before trying again (reset it if it is still collecting glyphs). Keep `counter.txt` intact when resetting.
 
