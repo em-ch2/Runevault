@@ -1,13 +1,15 @@
 package com.runevault;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.runevault.events.PipelineEvents;
 import com.runevault.lore.GeminiGlyphGenerator;
+import com.runevault.lore.SafeAssessment;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -27,14 +29,16 @@ public class DashboardTransactionApi {
  private final DeviceAuthorizationService authorization;
  private final TransactionRepository transactions;
  private final GeminiGlyphGenerator glyphGenerator;
+ private final PipelineEvents events;
 
  private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DashboardTransactionApi.class);
 
  public DashboardTransactionApi(DeviceAuthorizationService authorization, TransactionRepository transactions,
-   GeminiGlyphGenerator glyphGenerator) {
+   GeminiGlyphGenerator glyphGenerator, PipelineEvents events) {
   this.authorization = authorization;
   this.transactions = transactions;
   this.glyphGenerator = glyphGenerator;
+  this.events = events;
  }
 
  public record CreatePending(
@@ -47,27 +51,25 @@ public class DashboardTransactionApi {
    String bankReceiptId, String bankStatus, String bankProvider,
    com.runevault.banking.BankReceipt.Outcome bankOutcome,
    com.runevault.banking.BankReceipt.Reason bankReason,
-   Instant bankSubmittedAt, Instant bankOutcomeAt, String lore, String riskLevel,
-   AuditEvent.Reason geminiDecisionReason, Instant geminiDecisionAt) {
-  private static final ObjectMapper JSON = new ObjectMapper();
+   Instant bankSubmittedAt, Instant bankOutcomeAt, Long newBalanceMinor,
+   String lore, Double translationConfidence, Double riskScore, List<String> riskFlags,
+   String riskExplanation, String securityMessage,
+   AuditEvent.Reason geminiDecisionReason, String geminiDecisionExplanation, Instant geminiDecisionAt) {
 
   TransactionView(Transaction transaction) {
+   this(transaction, SafeAssessment.of(transaction));
+  }
+
+  // Gemini text goes through SafeAssessment: plain, capped, and never the approval glyphs.
+  private TransactionView(Transaction transaction, SafeAssessment audit) {
    this(transaction.getTransactionId(), transaction.getAmountMinor(), transaction.getDestination(),
     transaction.getStatus(), transaction.getCreatedAt(), transaction.getVerifiedAt(), transaction.getRequesterSubject(),
     transaction.getBankReceiptId(), transaction.getBankStatus(), transaction.getBankProvider(),
     transaction.getBankOutcome(), transaction.getBankReason(),
-    transaction.getBankSubmittedAt(), transaction.getBankOutcomeAt(),
-    audit(transaction, "lore", "text"), audit(transaction, "risk", "level"),
-    transaction.getGeminiDecisionReason(), transaction.getGeminiDecisionAt());
-  }
-
-  private static String audit(Transaction transaction, String section, String field) {
-   if (transaction.getAuditJson() == null) return null;
-   try {
-    return JSON.readTree(transaction.getAuditJson()).path(section).path(field).asText(null);
-   } catch (Exception e) {
-    return null;
-   }
+    transaction.getBankSubmittedAt(), transaction.getBankOutcomeAt(), transaction.getNewBalanceMinor(),
+    audit.lore(), audit.translationConfidence(), audit.riskScore(), audit.riskFlags(),
+    audit.riskExplanation(), audit.securityMessage(),
+    transaction.getGeminiDecisionReason(), transaction.getGeminiDecisionExplanation(), transaction.getGeminiDecisionAt());
   }
  }
 
@@ -77,8 +79,10 @@ public class DashboardTransactionApi {
    @AuthenticationPrincipal Jwt jwt) {
   try {
    String glyphs = glyphGenerator.generate();
-   return authorization.createPending(
+   var response = authorization.createPending(
     new DeviceApi.Pending(request.device(), request.amount(), request.dest(), glyphs), jwt.getSubject(), true);
+   events.createdIfSuccessful(response);
+   return response;
   } catch (GeminiGlyphGenerator.Unavailable e) {
    log.error("Gemini approval glyph generation is unavailable", e);
    return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)

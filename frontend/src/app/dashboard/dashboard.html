@@ -5,7 +5,11 @@
   </div>
   <div class="topbar-status">
     @if (mode() === 'live') {
-      <span class="pill pill-quiet">Live backend · physical approval only</span>
+      <span class="pill" [class.pill-good]="liveOpen()" [class.pill-bad]="feed.connection() === 'closed'">
+        <span class="dot"></span>
+        @if (liveOpen()) { Live updates on } @else if (feed.connection() === 'connecting') { Connecting to live updates… }
+        @else if (feed.liveEnabled) { Live updates offline, checking every 3 s } @else { Live updates off }
+      </span>
     } @else if (tablet(); as tab) {
       <span class="pill" [class.pill-good]="tab.state === 'connected'" [class.pill-bad]="tab.state !== 'connected'">
         <span class="dot"></span>
@@ -31,20 +35,18 @@
 
 <div class="mode-switch" role="group" aria-label="Dashboard mode">
   <button class="btn btn-ghost" type="button" [attr.aria-pressed]="mode() === 'live'" (click)="switchMode('live')">Live API</button>
-  <button class="btn btn-ghost" type="button" [attr.aria-pressed]="mode() === 'demo'" [disabled]="!feed.isMock" (click)="switchMode('demo')">Demo preview</button>
+  <button class="btn btn-ghost" type="button" [attr.aria-pressed]="mode() === 'demo'" (click)="switchMode('demo')">Demo preview</button>
 </div>
 
 @if (mode() === 'demo') {
 <div class="mock-bar">
   Demo preview uses scripted data only. It does not create backend transactions.
 </div>
-@if (feed.isMock) {
-  <div class="mock-bar">
-    <span>Demo mode: playing a scripted transfer.</span>
-    <button class="btn btn-ghost" type="button" (click)="replay('approved')">Replay transfer</button>
-    <button class="btn btn-ghost" type="button" (click)="replay('rejected')">Replay rejected</button>
-  </div>
-}
+<div class="mock-bar">
+  <span>Demo mode: playing a scripted transfer.</span>
+  <button class="btn btn-ghost" type="button" (click)="replay('approved')">Replay transfer</button>
+  <button class="btn btn-ghost" type="button" (click)="replay('rejected')">Replay rejected</button>
+</div>
 } @else {
 <main class="grid live-grid">
   <section class="slab pending" aria-labelledby="live-create-title">
@@ -81,25 +83,43 @@
         role="status">
         {{ transaction.status }} · {{ liveStatus(transaction) }}
       </p>
-      @if (transaction.bankProvider) {
-        <p class="muted small">Provider {{ transaction.bankProvider }} · {{ transaction.bankStatus }}
-          @if (transaction.bankOutcomeAt) { · updated {{ time(transaction.bankOutcomeAt) }} }
-        </p>
+      @if (transaction.geminiDecisionReason || transaction.securityMessage) {
+        <div class="decision" [class.decision-blocked]="transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED'">
+          @if (transaction.geminiDecisionReason) { <p class="decision-title">{{ decisionLabel(transaction.geminiDecisionReason) }}</p> }
+          @if (transaction.geminiDecisionExplanation) { <p class="small">{{ transaction.geminiDecisionExplanation }}</p> }
+          @if (transaction.securityMessage) { <p class="small muted">Gemini: {{ transaction.securityMessage }}</p> }
+          @if (transaction.riskFlags?.length) { <p class="small muted">Flags: {{ transaction.riskFlags!.join(' · ') }}</p> }
+        </div>
       }
-      @if (transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED') {
-        <p class="muted small">Gemini policy: {{ transaction.geminiDecisionReason }}</p>
-      }
-      @if (transaction.bankReceiptId) {
-        <p class="muted small">Bank receipt <span class="mono">{{ transaction.bankReceiptId }}</span> · {{ transaction.bankStatus }}</p>
+      @if (transaction.riskScore != null || transaction.translationConfidence != null) {
+        <div class="gauges">
+          @if (transaction.riskScore != null) {
+            <app-gauge label="Gemini risk score" [value]="transaction.riskScore" [max]="100" kind="max"
+              [limit]="metrics()?.policy?.maxRiskScore ?? 30" />
+          }
+          @if (transaction.translationConfidence != null) {
+            <app-gauge label="Translation confidence" [value]="transaction.translationConfidence" [max]="1" kind="min"
+              [percent]="true" [limit]="metrics()?.policy?.minTranslationConfidence ?? 0.8" />
+          }
+        </div>
       }
       @if (transaction.lore) {
         <blockquote class="lore-text">{{ transaction.lore }}</blockquote>
-        @if (transaction.riskLevel) {
-          <p class="muted small">
-            Gemini risk assessment:
-            <span [class]="'risk risk-' + transaction.riskLevel.toLowerCase()">{{ transaction.riskLevel }}</span>
-          </p>
-        }
+      }
+      @if (transaction.bankProvider) {
+        <div class="receipt-card" [class.receipt-bad]="transaction.bankOutcome === 'FAILED' || transaction.bankOutcome === 'UNKNOWN'">
+          <p class="receipt-title">Bank receipt · {{ bankOutcomeLabel(transaction.bankOutcome) }}</p>
+          <dl class="facts">
+            <div><dt>Provider</dt><dd>{{ transaction.bankProvider }} · {{ transaction.bankStatus }}</dd></div>
+            <div><dt>Receipt</dt><dd class="mono">{{ transaction.bankReceiptId ?? 'None issued' }}</dd></div>
+            <div><dt>Submitted</dt><dd>{{ transaction.bankSubmittedAt ? time(transaction.bankSubmittedAt) : 'Not submitted' }}</dd></div>
+            @if (transaction.bankOutcomeAt) { <div><dt>Recorded</dt><dd>{{ time(transaction.bankOutcomeAt) }}</dd></div> }
+            <div><dt>New balance</dt><dd>{{ transaction.newBalanceMinor != null ? money(transaction.newBalanceMinor) : 'Unavailable' }}</dd></div>
+          </dl>
+          @if (transaction.newBalanceMinor == null && transaction.bankOutcome !== 'FAILED') {
+            <p class="muted small">Shown only when the bank confirms the source account dropped by exactly this amount.</p>
+          }
+        </div>
       }
     } @else if (createdForSelection(); as pending) {
       <p class="mono">{{ pending.tx_id }}</p>
@@ -124,7 +144,7 @@
     <button class="btn btn-ghost" type="button" (click)="refresh()" [disabled]="loadingRecords()">
       {{ loadingRecords() ? 'Loading…' : 'Refresh status' }}
     </button>
-    <p class="muted small">Pending, physically verified, executing, and bank-pending transactions refresh every three seconds. Physical approval and a bank receipt alone do not confirm completion.</p>
+    <p class="muted small">Status updates arrive live. If the live connection drops, in-flight transfers are checked every three seconds until it returns. Only a completed bank receipt confirms money moved.</p>
   </section>
 
   <section class="slab activity live-list" aria-labelledby="live-list-title">
@@ -141,6 +161,36 @@
         }
       </ul>
     }
+  </section>
+
+  <section class="slab live-events" aria-labelledby="live-events-title">
+    <h2 id="live-events-title">Live pipeline</h2>
+    @if (liveEvents().length === 0) {
+      <p class="empty">{{ liveOpen() ? 'Waiting for the next pipeline stage.' : 'Live events appear here once connected.' }}</p>
+    } @else {
+      <ol class="event-list" aria-live="polite">
+        @for (event of liveEvents(); track event.eventId) {
+          <li [class]="'event event-' + eventTone(event)">
+            <span class="event-time">{{ time(event.timestamp) }}</span>
+            <button class="btn-link mono" type="button" (click)="select(event.transactionId)">{{ shortId(event.transactionId) }}</button>
+            <span>{{ eventLabel(event) }}</span>
+          </li>
+        }
+      </ol>
+    }
+  </section>
+
+  <section class="slab metrics" aria-labelledby="metrics-title">
+    <h2 id="metrics-title">Approvals vs blocks</h2>
+    @if (metrics(); as m) {
+      <app-approvals-chart [points]="m.minutes" />
+      <p class="muted small">From the Tiger Data pipeline_events table ({{ m.source === 'timescale-continuous-aggregate' ? 'one-minute continuous aggregate' : 'raw events' }}). Blocked includes rejected tablet approvals.</p>
+    } @else if (metricsError()) {
+      <p class="form-error" role="alert">{{ metricsError() }}</p>
+    } @else {
+      <p role="status">Loading metrics…</p>
+    }
+    <button class="btn btn-ghost" type="button" (click)="loadMetrics()">Reload metrics</button>
   </section>
 </main>
 }

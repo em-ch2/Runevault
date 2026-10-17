@@ -37,8 +37,8 @@ class PicoExecutionHttpTest {
   org.mockito.Mockito.when(lore.audit(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
    org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString()))
    .thenReturn(mapper.readTree("""
-    {"lore":{"title":"Safe passage","text":"A voyage."},"risk":{"level":"LOW","reasons":[]},
-     "translation_confidence":0.8,"risk_score":30}
+    {"lore_translation":"A voyage.","translation_confidence":0.8,"risk_score":30,
+     "risk_flags":[],"risk_explanation":"Routine.","security_message":"Looks routine."}
     """));
   var created = mvc.perform(post("/api/device/transactions").header("X-Bridge-Token", TOKEN)
    .contentType("application/json").content(mapper.writeValueAsString(

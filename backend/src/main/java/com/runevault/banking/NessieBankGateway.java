@@ -74,10 +74,12 @@ public class NessieBankGateway implements BankGateway {
         BigDecimal amount = BigDecimal.valueOf(amountMinor, 2); // cents -> dollars
 
         ObjectNode body;
+        BigDecimal balanceBefore;
         try {
             JsonNode source = unwrap(get("/accounts/" + sourceAccountId));
             if (!source.path("balance").isNumber()) throw new IllegalArgumentException("Missing balance");
             BigDecimal balance = source.path("balance").decimalValue();
+            balanceBefore = balance;
             if (balance.compareTo(amount) < 0) {
                 return result(transactionId, amountMinor, currency, destination, null,
                         "INSUFFICIENT_FUNDS", BankReceipt.Outcome.FAILED,
@@ -141,10 +143,12 @@ public class NessieBankGateway implements BankGateway {
                     "MISSING_RECEIPT", BankReceipt.Reason.MALFORMED_RESPONSE, submittedAt);
             if (normalized.equals("pending") || normalized.equals("processing") || normalized.equals("accepted"))
                 return result(transactionId, amountMinor, currency, destination, receiptId, status,
-                        BankReceipt.Outcome.ACCEPTED_PENDING, BankReceipt.Reason.ACCEPTED_PENDING, submittedAt);
+                        BankReceipt.Outcome.ACCEPTED_PENDING, BankReceipt.Reason.ACCEPTED_PENDING, submittedAt)
+                        .withNewBalanceMinor(confirmedBalance(transactionId, balanceBefore, amount));
             if (normalized.equals("completed") || normalized.equals("complete"))
                 return result(transactionId, amountMinor, currency, destination, receiptId, status,
-                        BankReceipt.Outcome.COMPLETED, BankReceipt.Reason.CONFIRMED_COMPLETED, submittedAt);
+                        BankReceipt.Outcome.COMPLETED, BankReceipt.Reason.CONFIRMED_COMPLETED, submittedAt)
+                        .withNewBalanceMinor(confirmedBalance(transactionId, balanceBefore, amount));
             return result(transactionId, amountMinor, currency, destination, receiptId, status,
                     BankReceipt.Outcome.UNKNOWN, BankReceipt.Reason.PROVIDER_STATUS_UNKNOWN, submittedAt);
         } catch (NessieException e) {
@@ -169,11 +173,30 @@ public class NessieBankGateway implements BankGateway {
                 BankReceipt.Outcome.UNKNOWN, reason, submittedAt);
     }
 
+    // Reads the source balance after an accepted transfer. Returns it only when it is exactly the
+    // pre-transfer balance minus this amount; any other value or error means "not reliably known".
+    // The transfer was already submitted, so a failure here must never change the banking outcome.
+    private Long confirmedBalance(String transactionId, BigDecimal before, BigDecimal amount) {
+        try {
+            JsonNode balance = unwrap(get("/accounts/" + sourceAccountId)).path("balance");
+            if (!balance.isNumber()) return null;
+            BigDecimal after = balance.decimalValue();
+            if (after.compareTo(before.subtract(amount)) != 0) return null;
+            return after.movePointRight(2).longValueExact();
+        } catch (IOException | RuntimeException e) {
+            log.warn("Balance after transfer {} is unavailable ({})", transactionId, e.getClass().getSimpleName());
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+    }
+
     private BankReceipt result(String txId, long amountMinor, String currency, String destination,
             String receiptId, String status, BankReceipt.Outcome outcome, BankReceipt.Reason reason,
             java.time.Instant submittedAt) {
         return new BankReceipt(receiptId, txId, "nessie", status, amountMinor, currency,
-                destination, outcome, reason, submittedAt);
+                destination, outcome, reason, submittedAt, null);
     }
 
     // Create responses may be wrapped as {"message":..., "objectCreated":{...}}

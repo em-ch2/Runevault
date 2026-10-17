@@ -1,9 +1,10 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { afterEach, vi } from 'vitest';
 import { AuthService } from '../auth/auth.service';
-import { FeedService } from '../feed/feed.service';
+import { FeedConnection, FeedService } from '../feed/feed.service';
+import { TransferTransportEvent } from '../feed/feed-event';
 import { TransactionApiService } from '../transactions/transaction-api.service';
 import { Dashboard } from './dashboard';
 import { INITIAL_STATE, TransferStore } from './transfer-store';
@@ -12,19 +13,38 @@ describe('Dashboard live transactions', () => {
   const pending = { transactionId: 'abc123', amountMinor: 50000, destination: 'acct-999',
     status: 'PENDING' as const, createdAt: new Date().toISOString(), verifiedAt: null,
     requesterSubject: 'auth0|user' };
-  const api = { create: vi.fn(), list: vi.fn() };
+  const api = { create: vi.fn(), list: vi.fn(), metrics: vi.fn() };
+  const metrics = { from: '2026-10-17T12:00:00Z', to: '2026-10-17T12:02:00Z', source: 'pipeline-events', approved: 3, blocked: 2,
+    policy: { minTranslationConfidence: 0.8, maxRiskScore: 30 },
+    minutes: [
+      { minute: '2026-10-17T12:00:00Z', approved: 1, blocked: 0 },
+      { minute: '2026-10-17T12:01:00Z', approved: 2, blocked: 1 },
+      { minute: '2026-10-17T12:02:00Z', approved: 0, blocked: 1 },
+    ] };
+  let feed: { liveEnabled: boolean; connection: ReturnType<typeof signal<FeedConnection>>; startLive: ReturnType<typeof vi.fn>;
+    startDemo: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; playMock: ReturnType<typeof vi.fn>;
+    transportEvents: Subject<TransferTransportEvent>; opened: Subject<void> };
+  const event = (changes: Partial<TransferTransportEvent> = {}, payload: Partial<TransferTransportEvent['payload']> = {}): TransferTransportEvent => ({
+    eventId: crypto.randomUUID(), transactionId: 'abc123', stage: 'GEMINI', outcome: 'REJECTED', status: 'VERIFIED',
+    timestamp: new Date().toISOString(), ...changes,
+    payload: { lore: null, translationConfidence: null, riskScore: null, riskFlags: [], securityMessage: null,
+      explanation: null, reasonCode: null, receipt: null, newBalanceMinor: null, errorState: null, ...payload },
+  });
 
   afterEach(() => vi.useRealTimers());
 
   beforeEach(() => {
     api.create.mockReset();
     api.list.mockReset().mockReturnValue(of({ content: [] }));
+    api.metrics.mockReset().mockReturnValue(of(metrics));
+    feed = { liveEnabled: true, connection: signal<FeedConnection>('closed'), startLive: vi.fn(), startDemo: vi.fn(),
+      stop: vi.fn(), playMock: vi.fn(), transportEvents: new Subject(), opened: new Subject() };
     TestBed.configureTestingModule({
       imports: [Dashboard],
       providers: [
         { provide: TransactionApiService, useValue: api },
         { provide: AuthService, useValue: { user: signal({ name: 'Ada', email: 'ada@example.com' }), busy: signal(false), error: signal(null), signOut: vi.fn() } },
-        { provide: FeedService, useValue: { isMock: true, connection: signal('mock'), start: vi.fn(), stop: vi.fn() } },
+        { provide: FeedService, useValue: feed },
         { provide: TransferStore, useValue: { state: signal(INITIAL_STATE) } },
       ],
     });
@@ -60,6 +80,25 @@ describe('Dashboard live transactions', () => {
     expect(fixture.nativeElement.textContent).not.toContain('Funds transferred');
     vi.advanceTimersByTime(3000);
     expect(api.list).toHaveBeenCalledTimes(3);
+    fixture.destroy();
+  });
+
+  it('shows the six-field Gemini assessment for a transfer', () => {
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'EXECUTED', verifiedAt: new Date().toISOString(),
+      lore: 'The forge is lit to begin the great exchange.', translationConfidence: 0.92, riskScore: 72,
+      riskFlags: ['new destination', 'large amount'], securityMessage: 'This amount is far above earlier transfers.' }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('The forge is lit to begin the great exchange.');
+    expect(text).toContain('72 / 100');
+    expect(text).toContain('Outside policy');
+    expect(text).toContain('Translation confidence');
+    expect(text).toContain('92%');
+    expect(text).toContain('This amount is far above earlier transfers.');
+    expect(text).toContain('new destination · large amount');
+    expect(fixture.nativeElement.querySelector('.gauge-fill-bad')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[role="meter"]')?.getAttribute('aria-valuetext')).toBe('72 / 100, Outside policy');
     fixture.destroy();
   });
 
@@ -119,7 +158,7 @@ describe('Dashboard live transactions', () => {
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Gemini policy blocked transfer');
-    expect(fixture.nativeElement.textContent).toContain('GEMINI_LOW_CONFIDENCE');
+    expect(fixture.nativeElement.textContent).toContain('Blocked: translation confidence too low');
     vi.advanceTimersByTime(3000);
     expect(api.list).toHaveBeenCalledTimes(1);
     fixture.destroy();
@@ -134,6 +173,88 @@ describe('Dashboard live transactions', () => {
     expect(fixture.nativeElement.textContent).toContain('Approval window expired');
     vi.advanceTimersByTime(3000);
     expect(api.list).toHaveBeenCalledTimes(1);
+    fixture.destroy();
+  });
+
+  it('applies live events to the selected transfer without polling while the socket is open', () => {
+    vi.useFakeTimers();
+    feed.connection.set('open');
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'VERIFIED', verifiedAt: new Date().toISOString() }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    feed.transportEvents.next(event({}, { riskScore: 72, translationConfidence: 0.9, reasonCode: 'GEMINI_HIGH_RISK',
+      errorState: 'BLOCKED', explanation: 'Risk score 72 is above the limit of 30, so banking was blocked.',
+      securityMessage: 'Unusually large for this destination.' }));
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Blocked: risk above limit');
+    expect(text).toContain('Risk score 72 is above the limit of 30, so banking was blocked.');
+    expect(text).toContain('Gemini: Unusually large for this destination.');
+    expect(text).toContain('72 / 100');
+    vi.advanceTimersByTime(9000);
+    expect(api.list).toHaveBeenCalledTimes(1);
+    fixture.destroy();
+  });
+
+  it('shows the bank receipt card with outcome, timestamps and the confirmed balance', () => {
+    feed.connection.set('open');
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'EXECUTING', verifiedAt: new Date().toISOString() }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    feed.transportEvents.next(event({ stage: 'BANK_PENDING', outcome: 'ACCEPTED_PENDING', status: 'BANK_PENDING' },
+      { reasonCode: 'ACCEPTED_PENDING', newBalanceMinor: 450000,
+        receipt: { provider: 'nessie', receiptId: 'receipt-7', providerStatus: 'pending', submittedAt: new Date().toISOString() } }));
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Bank receipt · Accepted, settlement pending');
+    expect(text).toContain('receipt-7');
+    expect(text).toContain('$4,500.00');
+    expect(text).not.toContain('Completed');
+    fixture.destroy();
+  });
+
+  it('shows the balance as unavailable when the bank did not confirm it', () => {
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'OUTCOME_UNKNOWN', verifiedAt: new Date().toISOString(),
+      bankProvider: 'nessie', bankStatus: 'NETWORK_UNCERTAIN', bankOutcome: 'UNKNOWN', newBalanceMinor: null }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Outcome unknown, check Nessie before any retry');
+    expect(text).toContain('Unavailable');
+    fixture.destroy();
+  });
+
+  it('resynchronizes from the API and metrics each time the live socket reopens', () => {
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    expect(feed.startLive).toHaveBeenCalled();
+    expect(api.list).toHaveBeenCalledTimes(1);
+    feed.connection.set('open');
+    feed.opened.next();
+    expect(api.list).toHaveBeenCalledTimes(2);
+    expect(api.metrics).toHaveBeenCalledTimes(2);
+    fixture.destroy();
+  });
+
+  it('refreshes when an event names a transfer it has not loaded yet', () => {
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    feed.transportEvents.next(event({ transactionId: 'made-in-another-tab', stage: 'PENDING', outcome: 'PENDING', status: 'PENDING' }));
+    expect(api.list).toHaveBeenCalledTimes(2);
+    expect(fixture.componentInstance.liveEvents()[0].transactionId).toBe('made-in-another-tab');
+    fixture.destroy();
+  });
+
+  it('charts approvals versus blocks with a legend, totals and a table view', () => {
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('.chart-legend')?.textContent).toContain('Approved 3');
+    expect(el.querySelector('.chart-legend')?.textContent).toContain('Blocked 2');
+    expect(el.querySelectorAll('.chart-bar-approved').length).toBe(2);
+    expect(el.querySelectorAll('.chart-bar-blocked').length).toBe(2);
+    expect(el.querySelectorAll('.chart-table tbody tr').length).toBe(3);
+    expect(el.querySelector('svg.chart')?.getAttribute('aria-label')).toContain('3 approved, 2 blocked');
     fixture.destroy();
   });
 });

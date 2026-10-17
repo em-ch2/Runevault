@@ -60,7 +60,8 @@ public class FakeBankGateway implements BankGateway {
                 destination,
                 BankReceipt.Outcome.COMPLETED,
                 BankReceipt.Reason.CONFIRMED_COMPLETED,
-                java.time.Instant.now()
+                java.time.Instant.now(),
+                null // The fake bank keeps no ledger, so the balance is unavailable.
             );
         });
     }

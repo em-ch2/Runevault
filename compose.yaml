@@ -1,7 +1,10 @@
 name: runevault
 services:
   postgres:
-    image: postgres:17-alpine
+    # PostgreSQL 17 with TimescaleDB for the pipeline_events hypertable (Tiger Data). The preload
+    # flag is required because the image only enables it automatically on a brand-new data volume.
+    image: timescale/timescaledb:2.17.2-pg17
+    command: ["postgres", "-c", "shared_preload_libraries=timescaledb"]
     environment:
       POSTGRES_DB: runevault
       POSTGRES_USER: runevault

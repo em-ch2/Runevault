@@ -3,6 +3,7 @@ package com.runevault.transactions;
 import com.runevault.Transaction;
 import com.runevault.banking.BankGateway;
 import com.runevault.banking.BankReceipt;
+import com.runevault.events.PipelineEvents;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -15,10 +16,12 @@ public class ExecutionService {
 
  private final BankGateway bank;
  private final BankOutcomeService outcomes;
+ private final PipelineEvents events;
 
- public ExecutionService(BankGateway bank, BankOutcomeService outcomes) {
+ public ExecutionService(BankGateway bank, BankOutcomeService outcomes, PipelineEvents events) {
   this.bank = bank;
   this.outcomes = outcomes;
+  this.events = events;
  }
 
  // Called only by TransactionProcessor after its durable policy gate and execution claim.
@@ -47,6 +50,8 @@ public class ExecutionService {
    receipt = unknown(tx, BankReceipt.Reason.MALFORMED_RESPONSE);
   }
   Transaction saved = outcomes.record(id, receipt);
+  // The bank outcome has committed; a notification failure cannot change it or resend money.
+  events.bankOutcome(saved);
   Map<String, Object> result = new LinkedHashMap<>();
   result.put("status", saved.getStatus().name());
   result.put("receipt", receipt);
@@ -56,7 +61,7 @@ public class ExecutionService {
 
  private BankReceipt unknown(VerifiedTransaction tx, BankReceipt.Reason reason) {
   return new BankReceipt(null, tx.id(), "nessie", "OUTCOME_UNKNOWN", tx.amountMinor(),
-   tx.currency(), tx.destination(), BankReceipt.Outcome.UNKNOWN, reason, null);
+   tx.currency(), tx.destination(), BankReceipt.Outcome.UNKNOWN, reason, null, null);
  }
 
 }
