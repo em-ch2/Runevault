@@ -63,6 +63,22 @@ describe('Dashboard live transactions', () => {
     fixture.destroy();
   });
 
+  it('shows the six-field Gemini assessment for a transfer', () => {
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'EXECUTED', verifiedAt: new Date().toISOString(),
+      lore: 'The forge is lit to begin the great exchange.', translationConfidence: 0.92, riskScore: 72,
+      riskFlags: ['new destination', 'large amount'], securityMessage: 'This amount is far above earlier transfers.' }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('The forge is lit to begin the great exchange.');
+    expect(text).toContain('72/100');
+    expect(text).toContain('Translation confidence 92%');
+    expect(text).toContain('This amount is far above earlier transfers.');
+    expect(text).toContain('new destination · large amount');
+    expect(fixture.nativeElement.querySelector('.risk-high')).not.toBeNull();
+    fixture.destroy();
+  });
+
   it('does not label historical simulations as physical approvals', () => {
     api.list.mockReturnValue(of({ content: [{ ...pending, status: 'SIMULATED' }] }));
     const fixture = TestBed.createComponent(Dashboard);

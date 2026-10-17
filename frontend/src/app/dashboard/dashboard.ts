@@ -210,6 +210,15 @@ export class Dashboard implements OnInit, OnDestroy {
     return (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   }
 
+  // Display bands only; the backend's configured thresholds decide blocking.
+  riskBand(score: number): 'low' | 'medium' | 'high' {
+    return score <= 30 ? 'low' : score <= 60 ? 'medium' : 'high';
+  }
+
+  percent(fraction: number): string {
+    return `${Math.round(fraction * 100)}%`;
+  }
+
   liveStatus(transaction: TransactionRecord): string {
     switch (transaction.status) {
       case 'EXECUTED': return 'Completed';

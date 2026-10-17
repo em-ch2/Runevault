@@ -33,7 +33,11 @@ export interface TransactionRecord {
   bankSubmittedAt?: string | null;
   bankOutcomeAt?: string | null;
   lore?: string | null;
-  riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+  translationConfidence?: number | null;
+  riskScore?: number | null;
+  riskFlags?: string[] | null;
+  riskExplanation?: string | null;
+  securityMessage?: string | null;
   geminiDecisionReason?: 'GEMINI_APPROVED' | 'GEMINI_UNAVAILABLE' | 'GEMINI_INVALID_RESPONSE' | 'GEMINI_LOW_CONFIDENCE' | 'GEMINI_HIGH_RISK' | null;
   geminiDecisionAt?: string | null;
 }

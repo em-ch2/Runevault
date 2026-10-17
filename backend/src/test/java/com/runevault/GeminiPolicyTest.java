@@ -12,8 +12,8 @@ class GeminiPolicyTest {
 
  private com.fasterxml.jackson.databind.JsonNode assessment(String confidence, String score) throws Exception {
   return mapper.readTree("""
-   {"lore":{"title":"T","text":"A"},"risk":{"level":"LOW","reasons":[]},
-    "translation_confidence":%s,"risk_score":%s}
+   {"lore_translation":"A voyage.","translation_confidence":%s,"risk_score":%s,
+    "risk_flags":[],"risk_explanation":"Routine.","security_message":"Looks routine."}
    """.formatted(confidence, score));
  }
 
@@ -21,7 +21,7 @@ class GeminiPolicyTest {
   var policy = new GeminiPolicy(new BigDecimal("0.9"), new BigDecimal("20"));
   assertEquals(AuditEvent.Reason.GEMINI_APPROVED, policy.decide(assessment("0.9", "20")));
   assertEquals(AuditEvent.Reason.GEMINI_LOW_CONFIDENCE, policy.decide(assessment("0.89", "20")));
-  assertEquals(AuditEvent.Reason.GEMINI_HIGH_RISK, policy.decide(assessment("0.9", "20.01")));
+  assertEquals(AuditEvent.Reason.GEMINI_HIGH_RISK, policy.decide(assessment("0.9", "21")));
  }
 
  @Test void invalidThresholdConfigurationFailsStartup() {

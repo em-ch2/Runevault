@@ -96,12 +96,19 @@
       }
       @if (transaction.lore) {
         <blockquote class="lore-text">{{ transaction.lore }}</blockquote>
-        @if (transaction.riskLevel) {
-          <p class="muted small">
-            Gemini risk assessment:
-            <span [class]="'risk risk-' + transaction.riskLevel.toLowerCase()">{{ transaction.riskLevel }}</span>
-          </p>
-        }
+      }
+      @if (transaction.riskScore != null) {
+        <p class="muted small">
+          Gemini risk score
+          <span [class]="'risk risk-' + riskBand(transaction.riskScore)">{{ transaction.riskScore }}/100</span>
+          @if (transaction.translationConfidence != null) { · Translation confidence {{ percent(transaction.translationConfidence) }} }
+        </p>
+      }
+      @if (transaction.securityMessage) {
+        <p class="small">{{ transaction.securityMessage }}</p>
+      }
+      @if (transaction.riskFlags?.length) {
+        <p class="muted small">Flags: {{ transaction.riskFlags!.join(' · ') }}</p>
       }
     } @else if (createdForSelection(); as pending) {
       <p class="mono">{{ pending.tx_id }}</p>

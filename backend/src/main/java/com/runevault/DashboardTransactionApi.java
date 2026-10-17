@@ -1,9 +1,13 @@
 package com.runevault;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import jakarta.validation.Valid;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.StreamSupport;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -31,26 +35,39 @@ public class DashboardTransactionApi {
    String bankReceiptId, String bankStatus, String bankProvider,
    com.runevault.banking.BankReceipt.Outcome bankOutcome,
    com.runevault.banking.BankReceipt.Reason bankReason,
-   Instant bankSubmittedAt, Instant bankOutcomeAt, String lore, String riskLevel,
+   Instant bankSubmittedAt, Instant bankOutcomeAt,
+   String lore, Double translationConfidence, Integer riskScore, List<String> riskFlags,
+   String riskExplanation, String securityMessage,
    AuditEvent.Reason geminiDecisionReason, Instant geminiDecisionAt) {
   private static final ObjectMapper JSON = new ObjectMapper();
 
   TransactionView(Transaction transaction) {
+   this(transaction, audit(transaction));
+  }
+
+  private TransactionView(Transaction transaction, JsonNode audit) {
    this(transaction.getTransactionId(), transaction.getAmountMinor(), transaction.getDestination(),
     transaction.getStatus(), transaction.getCreatedAt(), transaction.getVerifiedAt(), transaction.getRequesterSubject(),
     transaction.getBankReceiptId(), transaction.getBankStatus(), transaction.getBankProvider(),
     transaction.getBankOutcome(), transaction.getBankReason(),
     transaction.getBankSubmittedAt(), transaction.getBankOutcomeAt(),
-    audit(transaction, "lore", "text"), audit(transaction, "risk", "level"),
+    audit.path("lore_translation").asText(null),
+    audit.path("translation_confidence").isNumber() ? audit.path("translation_confidence").asDouble() : null,
+    audit.path("risk_score").isNumber() ? audit.path("risk_score").asInt() : null,
+    audit.path("risk_flags").isArray()
+     ? StreamSupport.stream(audit.path("risk_flags").spliterator(), false).map(JsonNode::asText).toList() : null,
+    audit.path("risk_explanation").asText(null),
+    audit.path("security_message").asText(null),
     transaction.getGeminiDecisionReason(), transaction.getGeminiDecisionAt());
   }
 
-  private static String audit(Transaction transaction, String section, String field) {
-   if (transaction.getAuditJson() == null) return null;
+  // Rows audited with the older lore-risk-v1 shape, or not at all, show no Gemini fields.
+  private static JsonNode audit(Transaction transaction) {
+   if (transaction.getAuditJson() == null) return MissingNode.getInstance();
    try {
-    return JSON.readTree(transaction.getAuditJson()).path(section).path(field).asText(null);
+    return JSON.readTree(transaction.getAuditJson());
    } catch (Exception e) {
-    return null;
+    return MissingNode.getInstance();
    }
   }
  }

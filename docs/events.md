@@ -97,7 +97,7 @@ Gemini returned a valid assessment and a decision was recorded (`GEMINI_DECISION
 | `security_message` | string | Plain-English status, up to 300 characters |
 | `decision` | string | `GEMINI_APPROVED`, `GEMINI_LOW_CONFIDENCE` or `GEMINI_HIGH_RISK` |
 
-> Gemini currently returns the `lore-risk-v1` shape (`lore.title`, `lore.text`, `risk.level`, `risk.reasons`, `translation_confidence`, `risk_score`). Moving the prompt and `LoreAuditService.validate` to the six fields above, enforced with a Gemini `responseSchema`, is pending (C).
+> Gemini returns these six fields (prompt `lore-risk-v2`), enforced with a Gemini `responseSchema` and re-checked by `LoreAuditService.validate`. Any missing or out-of-range field becomes `GEMINI_INVALID_RESPONSE`. Transactions audited earlier with `lore-risk-v1` keep their stored JSON; the dashboard shows no Gemini fields for them.
 
 ### `transfer_blocked`
 
