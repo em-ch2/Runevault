@@ -28,8 +28,7 @@ public class GeminiAiAuditor implements AiAuditor {
         try {
             return parser.parse(client.generate(AuditPrompt.build(transaction, facts)));
         } catch (GeminiException e) {
-            return new AuditResult(String.join(" ", facts), AuditResult.RiskLevel.MEDIUM,
-                List.of("AI assessment unavailable; human review is required."), true, "fallback");
+            return AuditResult.fallback(String.join(" ", facts));
         }
     }
 }

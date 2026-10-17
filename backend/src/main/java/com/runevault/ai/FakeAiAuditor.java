@@ -14,7 +14,6 @@ import java.util.Objects;
     havingValue = "mock",
     matchIfMissing = true
 )
-
 public class FakeAiAuditor implements AiAuditor {
     private final GlyphDictionary glyphDictionary;
 
@@ -32,7 +31,10 @@ public class FakeAiAuditor implements AiAuditor {
         return new AuditResult(
             String.join(" ", facts),
             AuditResult.RiskLevel.LOW,
-            List.of("Offline simulation; no real risk assessment performed."),
+            0.0,
+            List.of("offline_simulation"),
+            "Offline simulation; no real risk assessment performed.",
+            "Hardware authorization verified (simulation mode).",
             false,
             "mock"
         );

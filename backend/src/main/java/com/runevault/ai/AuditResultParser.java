@@ -11,8 +11,11 @@ import java.util.Set;
 
 @Component
 public class AuditResultParser {
+    static final double REVIEW_SCORE_THRESHOLD = 0.5;
+    private static final int MAX_FLAGS = 6;
     private static final Set<String> FIELDS = Set.of(
-        "lore", "riskLevel", "riskReasons", "requiresHumanReview");
+        "lore_translation", "risk_level", "risk_score",
+        "risk_flags", "risk_explanation", "security_message");
     private final ObjectMapper mapper = new ObjectMapper()
         .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
         .enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
@@ -26,15 +29,21 @@ public class AuditResultParser {
             while (names.hasNext()) {
                 if (!FIELDS.contains(names.next())) throw invalid();
             }
-            String lore = requiredText(root.path("lore"));
-            AuditResult.RiskLevel risk = AuditResult.RiskLevel.valueOf(requiredText(root.path("riskLevel")));
-            JsonNode reasons = root.path("riskReasons");
-            if (!reasons.isArray() || reasons.size() < 1 || reasons.size() > 4) throw invalid();
-            var parsedReasons = new ArrayList<String>();
-            for (JsonNode reason : reasons) parsedReasons.add(requiredText(reason));
-            JsonNode review = root.path("requiresHumanReview");
-            if (!review.isBoolean()) throw invalid();
-            return new AuditResult(lore, risk, parsedReasons, review.booleanValue(), "gemini");
+            String lore = requiredText(root.path("lore_translation"));
+            AuditResult.RiskLevel risk = AuditResult.RiskLevel.valueOf(requiredText(root.path("risk_level")));
+            JsonNode scoreNode = root.path("risk_score");
+            if (!scoreNode.isNumber()) throw invalid();
+            double score = scoreNode.doubleValue();
+            if (Double.isNaN(score) || score < 0.0 || score > 1.0) throw invalid();
+            JsonNode flags = root.path("risk_flags");
+            if (!flags.isArray() || flags.size() > MAX_FLAGS) throw invalid();
+            var parsedFlags = new ArrayList<String>();
+            for (JsonNode flag : flags) parsedFlags.add(requiredText(flag));
+            String explanation = requiredText(root.path("risk_explanation"));
+            String message = requiredText(root.path("security_message"));
+            // Deterministic backend rule: the model cannot clear its own review flag.
+            boolean review = risk != AuditResult.RiskLevel.LOW || score >= REVIEW_SCORE_THRESHOLD;
+            return new AuditResult(lore, risk, score, parsedFlags, explanation, message, review, "gemini");
         } catch (JsonProcessingException | IllegalArgumentException e) {
             // Do not expose model output or transaction data in errors.
             throw invalid();

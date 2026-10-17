@@ -48,4 +48,15 @@ class AuditPromptTest {
         assertThrows(IllegalArgumentException.class,
             () -> AuditPrompt.build(transaction(), List.of()));
     }
+
+    @Test
+    void asksForExactlyTheContractFields() {
+        String prompt = AuditPrompt.build(transaction(), List.of("Fact one."));
+
+        for (String field : List.of("lore_translation", "risk_level", "risk_score",
+                "risk_flags", "risk_explanation", "security_message")) {
+            assertTrue(prompt.contains("\"" + field + "\""), field);
+        }
+        assertTrue(!prompt.contains("requiresHumanReview"));
+    }
 }

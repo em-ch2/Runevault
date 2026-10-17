@@ -29,21 +29,22 @@ class GeminiAiAuditorTest {
             assertEquals("fallback", result.source());
             assertTrue(result.requiresHumanReview());
             assertEquals(AuditResult.RiskLevel.MEDIUM, result.riskLevel());
-            assertEquals(String.join(" ", new GlyphDictionary().decode("AB")), result.lore());
+            assertEquals(String.join(" ", new GlyphDictionary().decode("AB")), result.loreTranslation());
         }
     }
 
-    @Test void selectsExactlyOneAuditor() {
-        var context = new ApplicationContextRunner()
-            .withUserConfiguration(FakeAiAuditor.class, GeminiAiAuditor.class, AuditResultParser.class, GlyphDictionary.class)
-            .withBean(GeminiClient.class, () -> client);
-        context.run(c -> {
-            assertEquals(1, c.getBeansOfType(AiAuditor.class).size());
-            assertInstanceOf(FakeAiAuditor.class, c.getBean(AiAuditor.class));
-        });
-        context.withPropertyValues("runevault.ai.provider=gemini").run(c -> {
-            assertEquals(1, c.getBeansOfType(AiAuditor.class).size());
-            assertInstanceOf(GeminiAiAuditor.class, c.getBean(AiAuditor.class));
-        });
+    @Test void selectsTheRightAuditor() {
+    var base = new ApplicationContextRunner()
+        .withUserConfiguration(FakeAiAuditor.class, GeminiAiAuditor.class,
+            AuditResultParser.class, GlyphDictionary.class)
+        .withBean(GeminiClient.class, () -> client)
+        .withPropertyValues("runevault.mode=local");
+
+    base.run(c -> {
+        assertEquals(1, c.getBeansOfType(AiAuditor.class).size());
+        assertInstanceOf(FakeAiAuditor.class, c.getBean(AiAuditor.class));
+    });
+    base.withPropertyValues("runevault.ai.provider=gemini").run(c ->
+        assertInstanceOf(GeminiAiAuditor.class, c.getBean(AiAuditor.class)));
     }
 }
