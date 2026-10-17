@@ -154,14 +154,14 @@ class TransactionPolicyHttpTest {
   assertEquals(0, auditEvents.count());
  }
 
- @Test void legacyChallengeCannotBypassPolicy() throws Exception {
+ @Test void legacyChallengeIsUnavailableInAuthProfile() throws Exception {
   for (String intent : List.of(
    "{\"deviceId\":\"pico-demo-1\",\"amountMinor\":50001,\"destination\":\"harbor\",\"glyphs\":\"ABCD\"}",
    "{\"deviceId\":\"pico-demo-1\",\"amountMinor\":50000,\"destination\":\"other\",\"glyphs\":\"ABCD\"}")) {
-   mvc.perform(post("/api/challenges").header("X-Bridge-Token", TOKEN)
-    .contentType("application/json").content(intent)).andExpect(status().isBadRequest());
+   mvc.perform(post("/api/challenges").header("Authorization", "Bearer creator").header("X-Bridge-Token", TOKEN)
+    .contentType("application/json").content(intent)).andExpect(status().isForbidden());
   }
   assertEquals(0, transactions.count());
-  assertEquals(2, auditEvents.count());
+  assertEquals(0, auditEvents.count());
  }
 }

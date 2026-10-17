@@ -1,7 +1,8 @@
 # Security platform: first implementation
 
 ## Profiles
-- Default `dev`: bridge token required on challenge/approval endpoints; health public; other endpoints denied.
+- Default `dev`: health and Pico bridge endpoints available; legacy challenge/approval routes unavailable.
+- Explicit `dev,simulator`: enables legacy challenge/approval routes with a bridge token and the fake bank adapter only. It cannot be combined with `auth`.
 - `auth`: same bridge gate plus Auth0 JWT validation for dashboard API routes. Admin status requires `admin:platform` permission. Set SPRING_PROFILES_ACTIVE=auth, AUTH0_ISSUER_URI (HTTPS issuer with trailing slash), AUTH0_AUDIENCE, RUNEVAULT_BRIDGE_TOKEN (random 32+ bytes), and RUNEVAULT_DEVICE_SECRET.
 - `prod`: deliberately refuses startup. Persistent replay and execution storage are not ready. Do not bypass this guard to deploy real transfers.
 
@@ -11,7 +12,7 @@ Set `AUTH0_ISSUER_URI=https://<tenant>.auth0.com/` (the exact Auth0 issuer, incl
 
 Dashboard `POST /api/transactions` requires `create:transactions` and accepts `{ "device": "slab-01", "amount": 50000, "dest": "acct-999", "glyphs": "0-2-1-2-1" }`. It creates a pending Pico transaction. `GET /api/transactions?page=0&size=20` requires `read:transactions` and lists newest first. The persisted requester identity comes from the verified access token's `sub` claim; a request-body identity is ignored. `GET /api/admin/audit-events` and `GET /api/admin/status` require `admin:platform`. The existing `/api/device/transactions` and `/api/device/authorize` routes continue to use `X-Bridge-Token` independently of dashboard JWT permissions.
 
-GET /api/admin/status requires an Auth0 access token with permissions=["admin:platform"]. The bridge credential cannot access admin routes. Challenge/approval endpoints require X-Bridge-Token, even in dev. Never put that token in the browser. Bridge credential and device HMAC secret are distinct.
+GET /api/admin/status requires an Auth0 access token with permissions=["admin:platform"]. The bridge credential cannot access admin routes. Legacy challenge/approval endpoints exist only with `dev,simulator` and require `X-Bridge-Token`. Never put that token in the browser. Bridge credential and device HMAC secret are distinct.
 
 GET /api/admin/audit-events requires the same Auth0 `admin:platform` permission. It returns Spring Data pagination metadata and audit records newest first; `page` defaults to 0 and `size` to 20 (maximum 100). For example, `/api/admin/audit-events?page=0&size=20`. Device authorization attempts store timestamp, event type, device ID, transaction ID, outcome, and a fixed reason code in PostgreSQL. Rejected attempts are committed, including invalid signatures, counter replays, expired/mismatched transactions, wrong glyphs, and locked-device attempts. Request bodies, signatures, HMAC keys, and bridge tokens are not stored in these records. No public audit read or unlock route exists.
 

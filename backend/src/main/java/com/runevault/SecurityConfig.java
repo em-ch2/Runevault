@@ -29,14 +29,20 @@ public class SecurityConfig {
    @Value("${runevault.bridge-token}") String token,
    @Value("${runevault.requests-per-minute}") int limit) throws Exception {
   boolean auth = env.acceptsProfiles(Profiles.of("auth"));
+  boolean simulator = env.acceptsProfiles(Profiles.of("simulator"));
+  if (env.acceptsProfiles(Profiles.of("prod")))
+   throw new IllegalStateException("Production banking is not enabled");
   if (!auth && !env.acceptsProfiles(Profiles.of("dev"))) throw new IllegalStateException("Select dev or auth profile");
+  if (simulator && (auth || !env.acceptsProfiles(Profiles.of("dev"))))
+   throw new IllegalStateException("Simulator requires dev and cannot run with auth");
   if (token.length() < 24 || (auth && token.startsWith("local-"))) throw new IllegalStateException("Set a strong bridge token (24+ characters)");
   http.csrf(c -> c.disable()).sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
   http.authorizeHttpRequests(a -> {
    a.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll();
    a.requestMatchers("/api/health").permitAll();
    // Bridge requests have their own credential, checked by Gate before authorization.
-   a.requestMatchers("/api/challenges", "/api/approvals", "/api/device/authorize", "/api/device/transactions", "/api/device/transactions/*", "/api/lore/*").permitAll();
+   if (simulator) a.requestMatchers("/api/challenges", "/api/approvals").permitAll();
+   a.requestMatchers("/api/device/authorize", "/api/device/transactions", "/api/device/transactions/*", "/api/lore/*").permitAll();
    if (auth) {
     a.requestMatchers(HttpMethod.POST, "/api/transactions").hasAuthority("PERM_create:transactions");
     a.requestMatchers(HttpMethod.GET, "/api/transactions").hasAuthority("PERM_read:transactions");
@@ -52,18 +58,19 @@ public class SecurityConfig {
    converter.setJwtGrantedAuthoritiesConverter(permissions);
    http.oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(converter)));
   }
-  http.addFilterBefore(new Gate(token, limit), UsernamePasswordAuthenticationFilter.class);
+  http.addFilterBefore(new Gate(token, limit, simulator), UsernamePasswordAuthenticationFilter.class);
   return http.build();
  }
 
  static class Gate extends OncePerRequestFilter {
   private final byte[] token;
   private final int limit;
+  private final boolean simulator;
   private long window = System.nanoTime();
   private int count;
-  Gate(String token, int limit) {
+  Gate(String token, int limit, boolean simulator) {
    if (limit < 1) throw new IllegalArgumentException("Request limit must be positive");
-   this.token = token.getBytes(StandardCharsets.UTF_8); this.limit = limit;
+   this.token = token.getBytes(StandardCharsets.UTF_8); this.limit = limit; this.simulator = simulator;
   }
   private synchronized boolean allow() {
    long now = System.nanoTime();
@@ -74,7 +81,7 @@ public class SecurityConfig {
    String path = request.getRequestURI().substring(request.getContextPath().length());
    if (path.equals("/api/health")) { chain.doFilter(request,response); return; }
    if (!allow()) { response.setHeader("Retry-After","60"); response.sendError(429); return; }
-   if (path.equals("/api/challenges") || path.equals("/api/approvals")
+   if ((simulator && (path.equals("/api/challenges") || path.equals("/api/approvals")))
      || path.equals("/api/device/authorize") || path.equals("/api/device/transactions")
      || (request.getMethod().equals("GET") && path.matches("/api/device/transactions/[^/]+"))
      || (request.getMethod().equals("GET") && path.matches("/api/lore/[^/]+"))) {

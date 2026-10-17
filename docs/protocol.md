@@ -49,7 +49,9 @@ No banking or Gemini call occurs in the claim transaction. Person C should invok
 
 Every fresh, validly signed attempt consumes its counter, including transaction mismatches and wrong glyphs. Invalid signatures do not mutate device state. Only wrong glyphs for a matching pending transaction count toward the five-attempt lockout. A successful authorization resets consecutive wrong attempts. Lockout and counters survive application restarts and apply across transactions. Lockout has no automatic expiry; a trusted operator must reset `device_states.failed_attempts` while retaining `last_counter`. No public unlock endpoint is exposed.
 
-## Existing challenge/approval flow
+## Explicit simulator challenge/approval flow
+
+This legacy flow exists only with the `dev,simulator` profiles. It uses `FakeBankGateway` directly, returns `mode: simulator`, persists `SIMULATED` rows without physical verification, and cannot feed the live execution claim. The normal `auth` profile does not expose these routes. `GET /api/health` remains available in either profile.
 
 POST /api/challenges: {"deviceId":"pico-demo-1","amountMinor":2500,"destination":"demo-harbor","glyphs":"ABCD"}
 Returns challengeId, expiresAt (Unix seconds), intent and signingText. Challenge expires in 120 seconds.

@@ -14,15 +14,15 @@ class SecurityGateTest {
   return response;
  }
  @Test void missingAndWrongTokensRejected() throws Exception {
-  var gate = new SecurityConfig.Gate(TOKEN, 10);
+  var gate = new SecurityConfig.Gate(TOKEN, 10, true);
   assertEquals(401,request(gate,null).getStatus());
   assertEquals(401,request(gate,"wrong").getStatus());
  }
  @Test void validTokenAccepted() throws Exception {
-  assertEquals(200,request(new SecurityConfig.Gate(TOKEN,10),TOKEN).getStatus());
+  assertEquals(200,request(new SecurityConfig.Gate(TOKEN,10,true),TOKEN).getStatus());
  }
  @Test void limitsRequests() throws Exception {
-  var gate = new SecurityConfig.Gate(TOKEN,1);
+  var gate = new SecurityConfig.Gate(TOKEN,1,true);
   assertEquals(200,request(gate,TOKEN).getStatus());
   var response = request(gate,TOKEN);
   assertEquals(429,response.getStatus());

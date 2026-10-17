@@ -321,6 +321,15 @@ class DeviceAuthorizationTest {
   }
  }
 
+ @Test void legacySimulatorRoutesAreUnavailableInDefaultDev() throws Exception {
+  mvc.perform(post("/api/challenges").header("X-Bridge-Token", TOKEN)
+   .contentType("application/json").content("{}"))
+   .andExpect(status().isForbidden());
+  mvc.perform(post("/api/approvals").header("X-Bridge-Token", TOKEN)
+   .contentType("application/json").content("{}"))
+   .andExpect(status().isForbidden());
+ }
+
  @Test void malformedPayloadRejected() throws Exception {
   mvc.perform(post("/api/device/authorize").header("X-Bridge-Token", TOKEN)
    .contentType("application/json").content("{}"))

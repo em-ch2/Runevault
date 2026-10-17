@@ -52,6 +52,18 @@ class DashboardPermissionsHttpTest {
   token("admin", "auth0|admin", "create:transactions", "read:transactions", "admin:platform");
  }
 
+ @Test void simulatorRoutesAreUnavailableButHealthAndDashboardRemain() throws Exception {
+  mvc.perform(get("/api/health")).andExpect(status().isOk()).andExpect(jsonPath("status").value("ok"));
+  mvc.perform(post("/api/challenges").header("Authorization", "Bearer employee")
+   .header("X-Bridge-Token", "test-bridge-token-with-enough-characters")
+   .contentType("application/json").content("{}")) .andExpect(status().isForbidden());
+  mvc.perform(post("/api/approvals").header("Authorization", "Bearer employee")
+   .header("X-Bridge-Token", "test-bridge-token-with-enough-characters")
+   .contentType("application/json").content("{}")) .andExpect(status().isForbidden());
+  mvc.perform(get("/api/transactions").header("Authorization", "Bearer employee"))
+   .andExpect(status().isOk());
+ }
+
  private void token(String value, String subject, String... permissions) {
   Jwt jwt = Jwt.withTokenValue(value).header("alg", "RS256")
    .issuer("https://issuer.example.test/").audience(List.of("https://api.runevault"))

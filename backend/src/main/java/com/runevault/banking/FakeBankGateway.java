@@ -1,6 +1,6 @@
 package com.runevault.banking;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 @Service
-@ConditionalOnProperty(name = "runevault.mode", havingValue = "local")
+@Profile("simulator & dev & !auth")
 public class FakeBankGateway implements BankGateway {
     
     private final ConcurrentMap<String, BankReceipt> receipts = 
