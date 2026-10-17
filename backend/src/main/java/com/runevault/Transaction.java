@@ -28,6 +28,7 @@ public class Transaction {
  private Instant expiresAt;
  @Column(length = 255)
  private String requesterSubject;
+ private Instant executionClaimedAt;
 
  public enum Status { PENDING, SIMULATED }
 
@@ -50,6 +51,8 @@ public class Transaction {
  public String getExpectedGlyphs() { return expectedGlyphs; }
  public Instant getExpiresAt() { return expiresAt; }
  public String getRequesterSubject() { return requesterSubject; }
+ public Instant getExecutionClaimedAt() { return executionClaimedAt; }
+ public void claimForExecution() { executionClaimedAt = Instant.now(); }
  public void authorizeSimulation() { status = Status.SIMULATED; }
 
  protected Transaction() {}

@@ -6,14 +6,62 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 from urllib.error import URLError
+from urllib.error import HTTPError
 from urllib.request import build_opener
 
 import usb_bridge
 
 
 class BridgeTest(unittest.TestCase):
+    def test_existing_transaction_uses_stored_amount_and_destination(self):
+        port = Mock()
+        command = b"TX|abc123|50000|acct-999\n"
+        port.write.return_value = len(command)
+        response = MagicMock()
+        response.status = 200
+        response.read.return_value = json.dumps({"tx_id": "abc123", "device": "slab-01",
+                                                  "status": "PENDING", "amount": 50000,
+                                                  "dest": "acct-999", "expires_at": 9999999999}).encode()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        opener = Mock()
+        opener.open.return_value = response
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(usb_bridge.send_existing(port, "http://localhost:8080", "secret",
+                                                       opener, "abc123", "slab-01"), "abc123")
+        self.assertEqual(opener.open.call_args.args[0].get_header("X-bridge-token"), "secret")
+        self.assertIn("/api/device/transactions/abc123?device=slab-01", opener.open.call_args.args[0].full_url)
+        port.write.assert_called_once_with(command)
+
+    def test_existing_transaction_rejects_mismatch_and_expiry_before_serial_write(self):
+        for change in ({"device": "other"}, {"status": "SIMULATED"},
+                       {"expires_at": 1}, {"amount": "50000"}):
+            port = Mock()
+            response = MagicMock()
+            response.status = 200
+            details = {"tx_id": "abc123", "device": "slab-01", "status": "PENDING",
+                       "amount": 50000, "dest": "acct-999", "expires_at": 9999999999}
+            details.update(change)
+            response.read.return_value = json.dumps(details).encode()
+            response.__enter__ = Mock(return_value=response)
+            response.__exit__ = Mock(return_value=False)
+            opener = Mock()
+            opener.open.return_value = response
+            with self.assertRaises(ValueError):
+                usb_bridge.send_existing(port, "http://localhost:8080", "secret", opener, "abc123", "slab-01")
+            port.write.assert_not_called()
+
+    def test_existing_lookup_rejection_never_writes_to_pico(self):
+        port = Mock()
+        opener = Mock()
+        error = HTTPError("http://localhost", 404, "missing", {}, io.BytesIO(b"{}"))
+        opener.open.side_effect = error
+        with self.assertRaisesRegex(ValueError, "HTTP 404"):
+            usb_bridge.send_existing(port, "http://localhost:8080", "secret", opener, "abc123", "slab-01")
+        port.write.assert_not_called()
+
     def test_firmware_acknowledges_matching_transaction(self):
         port = Mock()
         port.read.side_effect = [bytes([byte]) for byte in
@@ -135,6 +183,14 @@ class BridgeTest(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True), patch("usb_bridge.LOCAL_ENV", Path("missing.env")), patch("usb_bridge.serial.Serial") as serial_port:
             with contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(usb_bridge.main(), 2)
+            serial_port.assert_not_called()
+
+    def test_existing_mode_disallows_amount_and_destination_overrides(self):
+        with patch("usb_bridge.bridge_token", return_value="test-token"), patch.dict(
+                "os.environ", {"RUNEVAULT_SERIAL_PORT": "COM3"}), patch("usb_bridge.serial.Serial") as serial_port:
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as exit_status:
+                usb_bridge.main(["--tx-id", "abc123", "--amount", "50001", "--dest", "other"])
+            self.assertEqual(exit_status.exception.code, 2)
             serial_port.assert_not_called()
 
 

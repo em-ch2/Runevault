@@ -8,7 +8,7 @@ import re
 import sys
 import time
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import serial
@@ -123,6 +123,41 @@ def send_pending(port, base, token, opener, device, amount, dest, glyphs):
     return body["tx_id"]
 
 
+def send_existing(port, base, token, opener, transaction_id, device):
+    url = base + "/api/device/transactions/" + quote(transaction_id, safe="") + "?device=" + quote(device, safe="")
+    request = Request(url, headers={"X-Bridge-Token": token}, method="GET")
+    try:
+        response = opener.open(request, timeout=10)
+    except HTTPError as error:
+        with error:
+            error.read(65536)
+        raise ValueError(f"Transaction lookup rejected (HTTP {error.code}); nothing sent to Pico") from None
+    except (URLError, TimeoutError, OSError):
+        raise ValueError("Transaction lookup failed; nothing sent to Pico") from None
+    try:
+        with response:
+            if response.status != 200:
+                raise ValueError("Transaction lookup failed; nothing sent to Pico")
+            details = json.loads(response.read(4097).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, TimeoutError, OSError):
+        raise ValueError("Invalid transaction lookup response; nothing sent to Pico") from None
+    if (not isinstance(details, dict) or details.get("tx_id") != transaction_id
+            or details.get("device") != device or details.get("status") != "PENDING"
+            or type(details.get("amount")) is not int or not 1 <= details["amount"] <= 100000000
+            or not isinstance(details.get("dest"), str)
+            or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", details["dest"]) is None
+            or type(details.get("expires_at")) is not int
+            or details["expires_at"] <= time.time()):
+        raise ValueError("Transaction is not a valid pending assignment; nothing sent to Pico")
+    command = f"TX|{transaction_id}|{details['amount']}|{details['dest']}\n".encode("ascii")
+    if port.write(command) != len(command):
+        raise OSError("Incomplete serial write")
+    port.flush()
+    print(f"Sent existing transaction {transaction_id} to Pico. Enter its assigned glyph sequence, "
+          "then briefly press Enter.", flush=True)
+    return transaction_id
+
+
 def wait_for_pico_ack(port, transaction_id, seconds=8):
     """Confirm the firmware accepted TX before asking for button presses."""
     deadline = time.monotonic() + seconds
@@ -167,9 +202,14 @@ def main(argv=None):
     parser.add_argument("--amount", type=int, help="Create and send one transaction, amount in cents")
     parser.add_argument("--dest", help="Destination for the new transaction")
     parser.add_argument("--glyphs", help="Expected sequence, e.g. 0-2-1-2-1")
+    parser.add_argument("--tx-id", help="Load an existing pending transaction; cannot override amount or destination")
     parser.add_argument("--device", default="slab-01")
     args = parser.parse_args(argv)
     creating = any(value is not None for value in (args.amount, args.dest, args.glyphs))
+    if args.tx_id is not None and (creating or re.fullmatch(r"[A-Za-z0-9_-]{1,36}", args.tx_id) is None):
+        parser.error("--tx-id requires a valid ID and cannot be combined with --amount, --dest, or --glyphs")
+    if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", args.device) is None:
+        parser.error("--device must be a valid device ID")
     if creating and (args.amount is None or not 1 <= args.amount <= 100000000
                      or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", args.dest or "") is None
                      or re.fullmatch(r"[0-2](-[0-2]){0,63}", args.glyphs or "") is None
@@ -184,12 +224,15 @@ def main(argv=None):
             try:
                 with serial.Serial(port_name, baudrate=baud, timeout=1, write_timeout=5) as port:
                     print(f"Connected to {port_name}; forwarding Pico authorizations to {url}", flush=True)
-                    if creating:
+                    if creating or args.tx_id is not None:
                         input("Ensure the Pico firmware is running and waiting for TX. Press Enter here when ready: ")
                         creation_attempted = True
                         try:
-                            transaction_id = send_pending(port, base, token, opener, args.device,
-                                                          args.amount, args.dest, args.glyphs)
+                            if creating:
+                                transaction_id = send_pending(port, base, token, opener, args.device,
+                                                              args.amount, args.dest, args.glyphs)
+                            else:
+                                transaction_id = send_existing(port, base, token, opener, args.tx_id, args.device)
                         except ValueError as error:
                             print(str(error), file=sys.stderr, flush=True)
                             return 1
@@ -199,7 +242,8 @@ def main(argv=None):
                                   "This pending transaction will expire; restart the bridge after fixing the Pico.",
                                   file=sys.stderr, flush=True)
                             return 1
-                        print(f"Pico accepted TX. Press glyphs {args.glyphs}, then briefly press its GP2 Enter button.",
+                        sequence = args.glyphs if creating else "the sequence assigned to this transaction"
+                        print(f"Pico accepted TX. Press glyphs {sequence}, then briefly press its GP2 Enter button.",
                               flush=True)
                     for line in messages(port):
                         if line.startswith(b"#"):
@@ -214,7 +258,7 @@ def main(argv=None):
                             print("Skipped authorization for a different transaction.", file=sys.stderr, flush=True)
                             continue
                         result = forward(payload, url, token, opener)
-                        if creating:
+                        if creating or args.tx_id is not None:
                             return 0 if result is not None and result[0] == 200 else 1
             except (serial.SerialException, OSError):
                 if creation_attempted:

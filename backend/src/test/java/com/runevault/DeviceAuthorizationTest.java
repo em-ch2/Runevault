@@ -5,6 +5,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.HexFormat;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import com.runevault.transactions.TransactionService;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties = {"runevault.bridge-token=test-bridge-token-with-enough-characters", "runevault.requests-per-minute=10000"})
@@ -34,6 +38,7 @@ class DeviceAuthorizationTest {
  @Autowired TransactionRepository transactions;
  @Autowired DeviceStateRepository devices;
  @Autowired AuditEventRepository auditEvents;
+ @Autowired TransactionService transactionService;
 
  private static String randomKey() {
   byte[] bytes = new byte[32];
@@ -103,6 +108,88 @@ class DeviceAuthorizationTest {
   assertEquals(AuditEvent.Reason.APPROVED, event.getReason());
   assertEquals(id, event.getTransactionId());
   assertNotNull(event.getTimestamp());
+ }
+
+ @Test void bridgeCanLoadOnlyLiveAssignedPendingTransaction() throws Exception {
+  String id = pending();
+  String path = "/api/device/transactions/" + id + "?device=slab-01";
+  mvc.perform(get(path)).andExpect(status().isUnauthorized());
+  mvc.perform(get(path).header("X-Bridge-Token", "wrong")).andExpect(status().isUnauthorized());
+  mvc.perform(get(path).header("X-Bridge-Token", TOKEN))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.tx_id").value(id))
+   .andExpect(jsonPath("$.amount").value(50000)).andExpect(jsonPath("$.dest").value("acct-999"))
+   .andExpect(jsonPath("$.device").value("slab-01"))
+   .andExpect(jsonPath("$.status").value("PENDING"))
+   .andExpect(jsonPath("$.expires_at").isNumber())
+   .andExpect(jsonPath("$.expectedGlyphs").doesNotExist())
+   .andExpect(jsonPath("$.sig").doesNotExist());
+  mvc.perform(get("/api/device/transactions/missing?device=slab-01").header("X-Bridge-Token", TOKEN))
+   .andExpect(status().isNotFound());
+  mvc.perform(get("/api/device/transactions/" + id + "?device=other").header("X-Bridge-Token", TOKEN))
+   .andExpect(status().isConflict());
+  authorize(signed(id, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  mvc.perform(get(path).header("X-Bridge-Token", TOKEN)).andExpect(status().isConflict());
+ }
+
+ @Test void expiredLookupAndTamperedPayloadAreRejectedAndAudited() throws Exception {
+  String id = pending();
+  var transaction = transactions.findById(id).orElseThrow();
+  var field = Transaction.class.getDeclaredField("expiresAt");
+  field.setAccessible(true);
+  field.set(transaction, java.time.Instant.now().minusSeconds(1));
+  transactions.saveAndFlush(transaction);
+  mvc.perform(get("/api/device/transactions/" + id + "?device=slab-01")
+   .header("X-Bridge-Token", TOKEN)).andExpect(status().isGone());
+  authorize(signed(id, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isConflict());
+  assertEquals(AuditEvent.Reason.TRANSACTION_EXPIRED, auditEvents.findAll().get(0).getReason());
+  String fresh = pending();
+  var signed = signed(fresh, 2, 50000, "acct-999", GLYPHS);
+  authorize(new DeviceApi.Authorization(1, "slab-01", 2L, fresh, 50001L,
+   "acct-999", GLYPHS, signed.sig())).andExpect(status().isUnauthorized());
+  assertEquals(Transaction.Status.PENDING, transactions.findById(fresh).orElseThrow().getStatus());
+  assertTrue(auditEvents.findAll().stream().anyMatch(event -> event.getReason() == AuditEvent.Reason.INVALID_SIGNATURE));
+ }
+
+ @Test void onlyCommittedPicoApprovalCanBeClaimedOnceForExecution() throws Exception {
+  String id = pending();
+  assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(id));
+  authorize(signed(id, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  var verified = transactionService.claimPicoAuthorized(id);
+  assertEquals(id, verified.id());
+  assertEquals(50000, verified.amountMinor());
+  assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(id));
+  assertNotNull(transactions.findById(id).orElseThrow().getExecutionClaimedAt());
+ }
+
+ @Test void concurrentDuplicateApprovalsHaveOneWinner() throws Exception {
+  String id = pending();
+  var request = signed(id, 1, 50000, "acct-999", GLYPHS);
+  var start = new CountDownLatch(1);
+  try (var workers = Executors.newFixedThreadPool(2)) {
+   var first = workers.submit(() -> { start.await(); return authorize(request).andReturn().getResponse().getStatus(); });
+   var second = workers.submit(() -> { start.await(); return authorize(request).andReturn().getResponse().getStatus(); });
+   start.countDown();
+   assertEquals(java.util.Set.of(200, 409), java.util.Set.of(first.get(), second.get()));
+  }
+  assertEquals(1, auditEvents.findAll().stream().filter(e -> e.getOutcome() == AuditEvent.Outcome.APPROVED).count());
+ }
+
+ @Test void concurrentExecutionClaimsHaveOneWinner() throws Exception {
+  String id = pending();
+  authorize(signed(id, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  var start = new CountDownLatch(1);
+  try (var workers = Executors.newFixedThreadPool(2)) {
+   java.util.concurrent.Callable<Boolean> claim = () -> {
+    start.await();
+    try { transactionService.claimPicoAuthorized(id); return true; }
+    catch (IllegalStateException rejected) { return false; }
+   };
+   var first = workers.submit(claim);
+   var second = workers.submit(claim);
+   start.countDown();
+   assertNotEquals(first.get(), second.get());
+  }
+  assertNotNull(transactions.findById(id).orElseThrow().getExecutionClaimedAt());
  }
 
  @Test void invalidSignatureDoesNotChangeDeviceOrTransaction() throws Exception {

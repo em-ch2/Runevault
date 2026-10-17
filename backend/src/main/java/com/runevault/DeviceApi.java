@@ -4,14 +4,20 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.util.Map;
+import java.time.Instant;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/device")
 public class DeviceApi {
  private final DeviceAuthorizationService service;
- public DeviceApi(DeviceAuthorizationService service) { this.service = service; }
+ private final TransactionRepository transactions;
+ public DeviceApi(DeviceAuthorizationService service, TransactionRepository transactions) {
+  this.service = service; this.transactions = transactions;
+ }
 
  public record Authorization(
   @NotNull @Min(1) @Max(1) Integer v,
@@ -32,6 +38,23 @@ public class DeviceApi {
  @PostMapping("/transactions")
  public ResponseEntity<Map<String, Object>> pending(@Valid @RequestBody Pending request) {
   return service.createPending(request);
+ }
+
+ @GetMapping("/transactions/{id}")
+ public Map<String, Object> pendingDetails(@PathVariable String id, @RequestParam String device) {
+  if (!id.matches("[A-Za-z0-9_-]{1,36}") || !device.matches("[A-Za-z0-9_-]{1,64}"))
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid transaction or device ID");
+  var transaction = transactions.findById(id)
+   .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Transaction not found"));
+  if (!device.equals(transaction.getDeviceId()))
+   throw new ResponseStatusException(HttpStatus.CONFLICT, "Transaction assigned to another device");
+  if (transaction.getStatus() != Transaction.Status.PENDING)
+   throw new ResponseStatusException(HttpStatus.CONFLICT, "Transaction already authorized");
+  if (transaction.getExpiresAt() == null || !transaction.getExpiresAt().isAfter(Instant.now()))
+   throw new ResponseStatusException(HttpStatus.GONE, "Transaction expired");
+  return Map.of("tx_id", transaction.getTransactionId(), "amount", transaction.getAmountMinor(),
+   "dest", transaction.getDestination(), "device", transaction.getDeviceId(),
+   "status", transaction.getStatus().name(), "expires_at", transaction.getExpiresAt().getEpochSecond());
  }
 
  @PostMapping("/authorize")
