@@ -26,21 +26,30 @@ public class Transaction {
  @Column(length = 127)
  private String expectedGlyphs;
  private Instant expiresAt;
+ @Column(length = 255)
+ private String requesterSubject;
 
  public enum Status { PENDING, SIMULATED }
 
  public static Transaction pending(String id, long amount, String destination, String device, String glyphs) {
+  return pending(id, amount, destination, device, glyphs, null);
+ }
+
+ public static Transaction pending(String id, long amount, String destination, String device, String glyphs,
+   String requesterSubject) {
   Transaction transaction = new Transaction(id, amount, destination);
   transaction.status = Status.PENDING;
   transaction.deviceId = device;
   transaction.expectedGlyphs = glyphs;
   transaction.expiresAt = Instant.now().plusSeconds(120);
+  transaction.requesterSubject = requesterSubject;
   return transaction;
  }
 
  public String getDeviceId() { return deviceId; }
  public String getExpectedGlyphs() { return expectedGlyphs; }
  public Instant getExpiresAt() { return expiresAt; }
+ public String getRequesterSubject() { return requesterSubject; }
  public void authorizeSimulation() { status = Status.SIMULATED; }
 
  protected Transaction() {}

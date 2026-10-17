@@ -45,11 +45,17 @@ public class DeviceAuthorizationService {
 
  @Transactional
  public ResponseEntity<Map<String, Object>> createPending(DeviceApi.Pending request) {
+  return createPending(request, null);
+ }
+
+ @Transactional
+ public ResponseEntity<Map<String, Object>> createPending(DeviceApi.Pending request, String requesterSubject) {
   if (key.length == 0) return error(503, "Device key is not configured");
   if (!deviceId.equals(request.device())) return error(404, "Unknown device");
   var device = devices.findForUpdate(request.device()).orElseGet(() -> devices.saveAndFlush(new DeviceState(request.device())));
   if (device.isLocked()) return error(423, "Device locked");
-  var transaction = Transaction.pending(UUID.randomUUID().toString(), request.amount(), request.dest(), request.device(), request.glyphs());
+  var transaction = Transaction.pending(UUID.randomUUID().toString(), request.amount(), request.dest(),
+   request.device(), request.glyphs(), requesterSubject);
   transactions.save(transaction);
   return ResponseEntity.status(201).body(Map.of("tx_id", transaction.getTransactionId(), "status", "PENDING",
    "expires_at", transaction.getExpiresAt().getEpochSecond()));
