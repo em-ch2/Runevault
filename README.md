@@ -4,7 +4,7 @@ Three-person hackathon starter. Read docs/protocol.md before changing messages.
 
 Team pipeline decision: `TransactionProcessor` is the single live orchestration path. Physical Pico verification commits first; Gemini must return valid JSON with `translation_confidence >= 0.8` and `risk_score <= 30` before the transaction can be claimed for Nessie sandbox banking. Gemini failure, timeout, malformed output, or a missing field blocks banking and records a fixed audit reason. Set `RUNEVAULT_MIN_TRANSLATION_CONFIDENCE` and `RUNEVAULT_MAX_RISK_SCORE` in `.env` to adjust the backend thresholds. An `EXECUTING` claim and an unknown bank outcome are never automatically retried. See [the internal handoff and event contracts](docs/events.md).
 
-Vultr is the planned hosting target and Tiger Data is the planned event destination; neither is provisioned by this branch. Person C's dashboard event contract is separate from the internal `VerifiedTransaction` handoff.
+Vultr is the hosting target. Tiger Data `pipeline_events` is the intended audit/metrics destination, but its schema and writer are not implemented or provisioned yet; the existing PostgreSQL `AuditEvent` records remain the durable security audit. Person C's dashboard event contract is separate from the internal `VerifiedTransaction` handoff.
 
 | Owner | Files |
 | --- | --- |
