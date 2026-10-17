@@ -47,7 +47,7 @@ install -m 644 /PATH/TO/VERIFIED_TIGER_CA.pem deploy/certs/tiger-ca.pem
 
 Replace every placeholder in `.env.cloud`; retain the registered Auth0 audience. Keep `.env.cloud` and the CA out of Git. Obtain and verify the CA independently. `sslmode=verify-full` checks the database certificate and hostname, so the JDBC URL must use Tiger's certificate hostname. A mounted CA is supported via `sslrootcert`; do not downgrade to `sslmode=require`. See [pgJDBC SSL documentation](https://jdbc.postgresql.org/documentation/ssl/).
 
-Cloud startup sets Hibernate to `validate` and SQL initialization to `never`. Local development uses Hibernate `update` and `schema-postgresql.sql`; there is no managed migration tool. **Blocker:** a fresh Tiger database needs a reviewed schema/bootstrap procedure before backend readiness can pass. Migration of existing local rows requires a separate reviewed plan. Do not run the local initialization script against Tiger blindly: it includes historical data updates and constraint changes. Do not create hypertables in this package.
+Cloud startup keeps Hibernate at `validate` and SQL initialization at `never`. Flyway applies the versioned application-table migrations first. Read [the database migration procedure](../docs/database-migrations.md), review the target schema and backup before first startup, and confirm the migration history afterward. A fresh Tiger database receives the application tables; importing historical local data is a separate reviewed operation. Person C's `pipeline_events` and TimescaleDB aggregates are not included yet.
 
 ## Validate and start
 
@@ -66,6 +66,8 @@ curl --fail https://YOUR_DOMAIN/api/health
 Caddy obtains HTTPS certificates after DNS and inbound 80/443 work. It redirects HTTP to HTTPS, forwards `/api/*` unchanged to Spring Boot, and sends other paths to Nginx with Angular SPA fallback. `/ws/transfers` proxies ticket-authenticated WebSocket upgrades to Spring Boot. Set `RUNEVAULT_WS_ALLOWED_ORIGINS` to the exact deployed HTTPS origin. Caddy access logging is off so URLs, query strings, and credential headers do not enter access logs; keep application logs private. `/actuator/*` is blocked by Caddy. Backend readiness remains on the Compose network. Only `/api/health` is intended as a public unauthenticated check; dashboard and bridge security remain intact.
 
 Set a DNS A record for `YOUR_DOMAIN` to the server's public IPv4 address, adding AAAA only if IPv6 works. Permit inbound TCP 80/443; restrict SSH TCP 22 to your own IP where practical. Do not open 8080, 4200, 5432, or 5433 in Vultr firewall or UFW; Compose publishes none of them. Limit Tiger Cloud access to the server's outbound address if supported.
+
+Before public testing, manually verify the Auth0 application's deployed callback and logout URLs and allowed web origin are exactly `https://YOUR_DOMAIN`; confirm the registered API audience remains `https://api.runevault`, RS256 and RBAC permissions are enabled, and test users have appropriate roles. In the Auth0 dashboard, verify MFA policy and enrollment for the administrator account, then exercise login, logout, and an admin-only request over HTTPS. These tenant settings cannot be verified from this repository alone and are **unverified** until someone with tenant access checks them. Also verify DNS resolution, certificate issuance, Caddy's `/api/health`, blocked public `/actuator/health`, and bridge authentication without a token before using hardware remotely.
 
 Inspect safely:
 

@@ -1,10 +1,25 @@
--- Hibernate's update mode does not widen an existing enum CHECK constraint.
+-- Flyway baselines pre-existing application tables at V1, then runs this
+-- idempotent upgrade. Never reset counters, revocations, claims, or audit rows.
+-- Hibernate's old update mode did not widen enum CHECK constraints.
 -- Preserve historical SIMULATED rows; Pico approvals become VERIFIED and claims become EXECUTING.
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS verified_at timestamp(6) with time zone;
 -- Every existing transaction was USD; backfill before claims read currency from storage.
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS currency varchar(3);
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS device_id varchar(64);
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS expected_glyphs varchar(127);
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS expires_at timestamp(6) with time zone;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS requester_subject varchar(255);
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS execution_claimed_at timestamp(6) with time zone;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS audit_json text;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS audit_source varchar(64);
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS prompt_version varchar(64);
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS audited_at timestamp(6) with time zone;
 ALTER TABLE device_states ADD COLUMN IF NOT EXISTS revoked_at timestamp(6) with time zone;
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS device_id varchar(64);
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS transaction_id varchar(36);
 ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS actor_subject varchar(255);
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS bank_receipt_id varchar(64);
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS bank_status varchar(64);
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS bank_provider varchar(32);
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS bank_outcome varchar(32);
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS bank_reason varchar(40);
@@ -53,3 +68,4 @@ ALTER TABLE audit_events
   'ACCEPTED_PENDING', 'CONFIRMED_COMPLETED', 'DEFINITE_REJECTION', 'PRE_SUBMISSION_FAILURE',
   'SUBMISSION_UNCERTAIN', 'MALFORMED_RESPONSE', 'PROVIDER_STATUS_UNKNOWN',
   'GEMINI_APPROVED', 'GEMINI_UNAVAILABLE', 'GEMINI_INVALID_RESPONSE', 'GEMINI_LOW_CONFIDENCE', 'GEMINI_HIGH_RISK'));
+CREATE INDEX IF NOT EXISTS idx_audit_events_timestamp ON audit_events (timestamp, id);

@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -20,6 +21,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * moves to migration files, move these statements there and delete afterPropertiesSet.
  */
 @Component
+@DependsOnDatabaseInitialization
 public class PipelineEventWriter implements InitializingBean {
  private static final Logger log = LoggerFactory.getLogger(PipelineEventWriter.class);
 

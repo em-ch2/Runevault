@@ -55,6 +55,12 @@ class CloudDeploymentGuardTest {
   assertThrows(IllegalStateException.class, () -> CloudDeploymentGuard.validate(env));
  }
 
+ @Test void rejectsDisabledCloudMigrations() {
+  MockEnvironment env = valid();
+  env.setProperty("spring.flyway.enabled", "false");
+  assertThrows(IllegalStateException.class, () -> CloudDeploymentGuard.validate(env));
+ }
+
  @Test void rejectsPlaceholderAndSimulatorProfile() {
   MockEnvironment env = valid();
   env.setProperty("RUNEVAULT_PICO_KEY", "poneglyph-dev-key-change-me-0001");
