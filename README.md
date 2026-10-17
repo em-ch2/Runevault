@@ -10,10 +10,10 @@ Three-person hackathon starter. Read docs/protocol.md before changing messages.
 
 Start: install Docker Desktop, copy .env.example to .env, then run `docker compose up --build`.
 Backend: http://localhost:8080/api/health
-Dashboard placeholder: http://localhost:4200
+Dashboard: build it first with `cd frontend && npm install && npm run build`, then http://localhost:4200. For development run `npm start` in frontend/ instead. See frontend/README.md.
 Run `node bridge/simulator.mjs` with Node 22+ to submit a signed simulated approval.
 
-Only local simulation is implemented. No money moves. Auth0, Gemini, Nessie, Angular and production deployment remain team tasks. Do not publicly expose the unauthenticated starter.
+Only local simulation is implemented. No money moves. The Angular dashboard runs on mock data and mock accounts; Auth0, Gemini, Nessie, the dashboard WebSocket and production deployment remain team tasks. Do not publicly expose the unauthenticated starter.
 
 Successful signed simulations are saved to PostgreSQL in the `transactions` table, with the challenge ID as transaction ID, the USD amount in minor units, destination, status, and creation/update timestamps. Compose starts PostgreSQL before the backend and retains records in the `postgres-data` volume across restarts. `docker compose down -v` deletes that data.
 
