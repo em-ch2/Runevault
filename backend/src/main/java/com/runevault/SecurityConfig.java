@@ -51,7 +51,7 @@ public class SecurityConfig {
    a.requestMatchers(HttpMethod.GET, "/api/health", "/actuator/health/liveness", "/actuator/health/readiness").permitAll();
    // Bridge requests have their own credential, checked by Gate before authorization.
    if (simulator) a.requestMatchers("/api/challenges", "/api/approvals").permitAll();
-   a.requestMatchers("/api/device/authorize", "/api/device/transactions", "/api/device/transactions/*", "/api/lore/*").permitAll();
+   a.requestMatchers("/api/device/authorize", "/api/device/transactions", "/api/device/transactions/*", "/api/device/pending", "/api/lore/*").permitAll();
    if (auth) {
     a.requestMatchers(HttpMethod.POST, "/api/transactions").hasAuthority("PERM_create:transactions");
     a.requestMatchers(HttpMethod.GET, "/api/transactions").hasAuthority("PERM_read:transactions");

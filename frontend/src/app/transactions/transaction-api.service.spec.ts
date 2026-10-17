@@ -24,8 +24,8 @@ describe('TransactionApiService', () => {
 
   afterEach(() => http.verify());
 
-  it('posts the backend pending format with an audience-scoped token', () => {
-    const body = { device: 'slab-01', amount: 50000, dest: 'acct-999', glyphs: '0-2-1-2-1' };
+  it('posts transaction details without glyphs using an audience-scoped token', () => {
+    const body = { device: 'slab-01', amount: 50000, dest: 'acct-999' };
     let result: unknown;
     api.create(body).subscribe((response) => result = response);
     const request = http.expectOne('/api/transactions');
@@ -35,8 +35,8 @@ describe('TransactionApiService', () => {
     expect(getAccessTokenSilently).toHaveBeenCalledWith({
       authorizationParams: { audience: environment.auth0.audience },
     });
-    request.flush({ tx_id: 'abc123', status: 'PENDING', expires_at: 9999999999 });
-    expect(result).toEqual({ tx_id: 'abc123', status: 'PENDING', expires_at: 9999999999 });
+    request.flush({ tx_id: 'abc123', status: 'PENDING', expires_at: 9999999999, glyphs: '0-2-1-2-1' });
+    expect(result).toEqual({ tx_id: 'abc123', status: 'PENDING', expires_at: 9999999999, glyphs: '0-2-1-2-1' });
   });
 
   it('gets paged backend records with the token only on Runevault API requests', () => {

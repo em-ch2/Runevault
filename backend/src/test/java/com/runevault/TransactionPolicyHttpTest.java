@@ -47,24 +47,30 @@ class TransactionPolicyHttpTest {
  @Autowired AuditEventRepository auditEvents;
  @Autowired TransactionService transactionService;
  @MockBean JwtDecoder decoder;
+ @MockBean com.runevault.lore.GeminiGlyphGenerator glyphGenerator;
 
  @BeforeEach void prepare() {
   auditEvents.deleteAll();
   transactions.deleteAll();
   devices.deleteAll();
+  when(glyphGenerator.generate()).thenReturn(GLYPHS);
   when(decoder.decode("creator")).thenReturn(Jwt.withTokenValue("creator").header("alg", "RS256")
    .issuer("https://issuer.example.test/").audience(List.of("https://api.runevault"))
    .subject("auth0|creator").issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(300))
    .claim("permissions", List.of("create:transactions")).build());
  }
 
- private String body(long amount, String dest) throws Exception {
-  return mapper.writeValueAsString(Map.of("device", "slab-01", "amount", amount,
-   "dest", dest, "glyphs", GLYPHS));
+ private String body(String path, long amount, String dest) throws Exception {
+  var body = new java.util.LinkedHashMap<String, Object>();
+  body.put("device", "slab-01");
+  body.put("amount", amount);
+  body.put("dest", dest);
+  if (path.startsWith("/api/device")) body.put("glyphs", GLYPHS);
+  return mapper.writeValueAsString(body);
  }
 
  private String create(String path, long amount, String dest) throws Exception {
-  var request = post(path).contentType("application/json").content(body(amount, dest));
+  var request = post(path).contentType("application/json").content(body(path, amount, dest));
   if (path.startsWith("/api/device")) request.header("X-Bridge-Token", TOKEN);
   else request.header("Authorization", "Bearer creator");
   var response = mvc.perform(request).andExpect(status().isCreated()).andReturn();
@@ -91,8 +97,8 @@ class TransactionPolicyHttpTest {
   String bridgeId = create("/api/device/transactions", 49999, "harbor");
   assertEquals(2, transactions.count());
   for (String path : List.of("/api/transactions", "/api/device/transactions")) {
-   var excess = post(path).contentType("application/json").content(body(50001, "acct-999"));
-   var destination = post(path).contentType("application/json").content(body(50000, "other"));
+   var excess = post(path).contentType("application/json").content(body(path, 50001, "acct-999"));
+   var destination = post(path).contentType("application/json").content(body(path, 50000, "other"));
    if (path.startsWith("/api/device")) {
     excess.header("X-Bridge-Token", TOKEN);
     destination.header("X-Bridge-Token", TOKEN);

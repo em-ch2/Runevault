@@ -47,11 +47,17 @@ public class DeviceAuthorizationService {
 
  @Transactional
  public ResponseEntity<Map<String, Object>> createPending(DeviceApi.Pending request) {
-  return createPending(request, null);
+  return createPending(request, null, false);
  }
 
  @Transactional
  public ResponseEntity<Map<String, Object>> createPending(DeviceApi.Pending request, String requesterSubject) {
+  return createPending(request, requesterSubject, false);
+ }
+
+ @Transactional
+ public ResponseEntity<Map<String, Object>> createPending(DeviceApi.Pending request, String requesterSubject,
+   boolean includeGlyphs) {
   if (key.length == 0) return error(503, "Device key is not configured");
   if (!deviceId.equals(request.device())) return error(404, "Unknown device");
   if (!policy.allowsAmount(request.amount())) {
@@ -74,8 +80,12 @@ public class DeviceAuthorizationService {
   var transaction = Transaction.pending(UUID.randomUUID().toString(), request.amount(), request.dest(),
    request.device(), request.glyphs(), requesterSubject);
   transactions.save(transaction);
-  return ResponseEntity.status(201).body(Map.of("tx_id", transaction.getTransactionId(), "status", "PENDING",
-   "expires_at", transaction.getExpiresAt().getEpochSecond()));
+  Map<String, Object> response = new java.util.LinkedHashMap<>();
+  response.put("tx_id", transaction.getTransactionId());
+  response.put("status", "PENDING");
+  response.put("expires_at", transaction.getExpiresAt().getEpochSecond());
+  if (includeGlyphs) response.put("glyphs", transaction.getExpectedGlyphs());
+  return ResponseEntity.status(201).body(response);
  }
 
  public static String signingText(DeviceApi.Authorization request) {

@@ -20,11 +20,12 @@ public class DeviceApi {
  private final TransactionRepository transactions;
  private final DeviceStateRepository devices;
  private final TransactionProcessor processor;
+ private final TransactionPolicy policy;
  private final boolean autoExecute;
  public DeviceApi(DeviceAuthorizationService service, TransactionRepository transactions, DeviceStateRepository devices,
-   TransactionProcessor processor, @Value("${runevault.auto-execute:true}") boolean autoExecute) {
+   TransactionProcessor processor, TransactionPolicy policy, @Value("${runevault.auto-execute:true}") boolean autoExecute) {
   this.service = service; this.transactions = transactions; this.devices = devices;
-  this.processor = processor; this.autoExecute = autoExecute;
+  this.processor = processor; this.policy = policy; this.autoExecute = autoExecute;
  }
 
  public record Authorization(
@@ -65,6 +66,25 @@ public class DeviceApi {
   return Map.of("tx_id", transaction.getTransactionId(), "amount", transaction.getAmountMinor(),
    "dest", transaction.getDestination(), "device", transaction.getDeviceId(),
    "status", transaction.getStatus().name(), "expires_at", transaction.getExpiresAt().getEpochSecond());
+ }
+
+ // Polled by hardware/bridge.py: the next live pending transaction for this device, without its glyphs.
+ @GetMapping("/pending")
+ public ResponseEntity<Map<String, Object>> nextPending(@RequestParam String device) {
+  if (!device.matches("[A-Za-z0-9_-]{1,64}"))
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid device ID");
+  var state = devices.findById(device).orElse(null);
+  if (state != null && state.isRevoked())
+   throw new ResponseStatusException(HttpStatus.LOCKED, "Device revoked");
+  // A locked device cannot authorize, so do not hand it work to retry forever.
+  if (state != null && state.isLocked(policy.maxIncorrectGlyphAttempts()))
+   throw new ResponseStatusException(HttpStatus.LOCKED, "Device locked");
+  return transactions.findFirstByDeviceIdAndStatusAndExpiresAtAfterOrderByCreatedAtAsc(
+    device, Transaction.Status.PENDING, Instant.now())
+   .map(t -> ResponseEntity.ok(Map.<String, Object>of("tx_id", t.getTransactionId(), "amount", t.getAmountMinor(),
+    "dest", t.getDestination(), "device", t.getDeviceId(), "status", t.getStatus().name(),
+    "expires_at", t.getExpiresAt().getEpochSecond())))
+   .orElseGet(() -> ResponseEntity.noContent().build());
  }
 
  @PostMapping("/authorize")
