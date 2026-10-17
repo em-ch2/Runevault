@@ -21,7 +21,27 @@ public class Transaction {
  @Column(nullable = false)
  private Instant updatedAt;
 
- public enum Status { SIMULATED }
+ @Column(length = 64)
+ private String deviceId;
+ @Column(length = 127)
+ private String expectedGlyphs;
+ private Instant expiresAt;
+
+ public enum Status { PENDING, SIMULATED }
+
+ public static Transaction pending(String id, long amount, String destination, String device, String glyphs) {
+  Transaction transaction = new Transaction(id, amount, destination);
+  transaction.status = Status.PENDING;
+  transaction.deviceId = device;
+  transaction.expectedGlyphs = glyphs;
+  transaction.expiresAt = Instant.now().plusSeconds(120);
+  return transaction;
+ }
+
+ public String getDeviceId() { return deviceId; }
+ public String getExpectedGlyphs() { return expectedGlyphs; }
+ public Instant getExpiresAt() { return expiresAt; }
+ public void authorizeSimulation() { status = Status.SIMULATED; }
 
  protected Transaction() {}
 
