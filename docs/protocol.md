@@ -8,7 +8,7 @@ Compose binds the backend to localhost; a remote bridge needs a separately confi
 
 Configure `RUNEVAULT_PICO_DEVICE_ID=slab-01` and `RUNEVAULT_PICO_KEY` with the UTF-8 key provisioned on the device. There is no default key; Pico endpoints return 503 when it is absent. The existing demo signing key is separate and is not used for Pico authorization. This minimal implementation supports one configured device/key, with durable device state in PostgreSQL.
 
-On startup, Hibernate adds nullable transaction fields without deleting existing rows. The PostgreSQL initialization script allows physical and banking states (`PENDING`, `SIMULATED`, `VERIFIED`, `EXECUTING`, `BANK_PENDING`, `EXECUTED`, `FAILED`, and `OUTCOME_UNKNOWN`), adds outcome evidence fields, and backfills existing currency with `USD`. Historical `SIMULATED` records keep that status and do not gain a verification timestamp. Earlier receipt-only completion labels are reclassified conservatively. Production migrations remain outside this hackathon change.
+On startup, Flyway applies versioned PostgreSQL migrations before Hibernate validates the schema. The migrations allow physical and banking states (`PENDING`, `SIMULATED`, `VERIFIED`, `EXECUTING`, `BANK_PENDING`, `EXECUTED`, `FAILED`, and `OUTCOME_UNKNOWN`), add outcome evidence fields, and backfill existing currency with `USD`. Historical `SIMULATED` records keep that status and do not gain a verification timestamp. Earlier receipt-only completion labels are reclassified conservatively. See [the migration procedure](database-migrations.md) before using an existing database.
 
 Before authorization, the trusted backend client creates a pending transaction using `POST /api/device/transactions`, with the same bridge header:
 

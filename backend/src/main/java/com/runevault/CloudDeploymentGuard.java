@@ -32,6 +32,8 @@ public class CloudDeploymentGuard implements EnvironmentPostProcessor, Ordered {
    fail("Cloud schema must be validated, not modified automatically");
   if (!"never".equals(env.getProperty("spring.sql.init.mode")))
    fail("Cloud SQL initialization must be disabled");
+  if (!env.getProperty("spring.flyway.enabled", Boolean.class, true))
+   fail("Cloud Flyway migrations must be enabled");
   String domain = required(env, "RUNEVAULT_DOMAIN", 4);
   if (!domain.matches("(?i)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\\.[a-z]{2,}"))
    fail("RUNEVAULT_DOMAIN must be a public hostname");
