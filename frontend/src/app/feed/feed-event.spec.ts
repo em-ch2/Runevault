@@ -3,16 +3,55 @@ import { parseFeedEvent, parseTransportEvent } from './feed-event';
 describe('parseTransportEvent', () => {
   const event = {
     eventId: '11111111-1111-1111-1111-111111111111', transactionId: 'tx-1',
-    stage: 'VERIFIED', outcome: 'APPROVED', timestamp: '2026-10-17T12:00:00Z',
-    payload: { translationConfidence: null, riskScore: null, securityCode: null,
-      receiptId: null, providerStatus: null },
+    stage: 'BANK_PENDING', outcome: 'ACCEPTED_PENDING', status: 'BANK_PENDING', timestamp: '2026-10-17T12:00:00Z',
+    payload: {
+      lore: 'The forge is lit.', translationConfidence: 0.9, riskScore: 10, riskFlags: ['known destination'],
+      securityMessage: 'Looks routine.', explanation: 'Risk score 10 is within the limit of 30.',
+      reasonCode: 'ACCEPTED_PENDING',
+      receipt: { provider: 'nessie', receiptId: 'r-1', providerStatus: 'pending', submittedAt: '2026-10-17T11:59:59Z' },
+      newBalanceMinor: 450000, errorState: null,
+    },
   };
-  it('accepts a safe envelope and discards extra fields', () => {
-    expect(parseTransportEvent({ ...event, sig: 'secret' })).toEqual(event);
+  const withPayload = (changes: Record<string, unknown>) => ({ ...event, payload: { ...event.payload, ...changes } });
+
+  it('accepts the documented envelope and discards extra fields', () => {
+    expect(parseTransportEvent({ ...event, sig: 'secret', glyphs: '0-1-2' })).toEqual(event);
   });
-  it('rejects malformed status and numeric fields', () => {
+
+  it('accepts a blocked event with no scores, receipt or balance', () => {
+    const blocked = parseTransportEvent({ ...event, stage: 'GEMINI', outcome: 'REJECTED', status: 'VERIFIED',
+      payload: { lore: null, translationConfidence: null, riskScore: null, riskFlags: [], securityMessage: null,
+        explanation: 'Gemini could not assess this transfer.', reasonCode: 'GEMINI_UNAVAILABLE', receipt: null,
+        newBalanceMinor: null, errorState: 'BLOCKED' } });
+    expect(blocked?.payload.errorState).toBe('BLOCKED');
+    expect(blocked?.payload.receipt).toBeNull();
+  });
+
+  it('rejects unknown stages, statuses and error states', () => {
     expect(parseTransportEvent({ ...event, stage: 'TRANSFERRED' })).toBeNull();
-    expect(parseTransportEvent({ ...event, payload: { ...event.payload, riskScore: 101 } })).toBeNull();
+    expect(parseTransportEvent({ ...event, status: 'DONE' })).toBeNull();
+    expect(parseTransportEvent(withPayload({ errorState: 'OOPS' }))).toBeNull();
+  });
+
+  it('rejects out-of-range numbers and unsafe balances', () => {
+    expect(parseTransportEvent(withPayload({ riskScore: 101 }))).toBeNull();
+    expect(parseTransportEvent(withPayload({ translationConfidence: 1.5 }))).toBeNull();
+    expect(parseTransportEvent(withPayload({ newBalanceMinor: 12.5 }))).toBeNull();
+    expect(parseTransportEvent(withPayload({ newBalanceMinor: -1 }))).toBeNull();
+  });
+
+  it('rejects free-text reason codes, oversized text and too many flags', () => {
+    expect(parseTransportEvent(withPayload({ reasonCode: 'Gemini said no' }))).toBeNull();
+    expect(parseTransportEvent(withPayload({ lore: 'x'.repeat(2001) }))).toBeNull();
+    expect(parseTransportEvent(withPayload({ securityMessage: 42 }))).toBeNull();
+    expect(parseTransportEvent(withPayload({ riskFlags: ['a', 'b', 'c', 'd', 'e', 'f'] }))).toBeNull();
+    expect(parseTransportEvent(withPayload({ riskFlags: [''] }))).toBeNull();
+  });
+
+  it('rejects malformed receipts', () => {
+    expect(parseTransportEvent(withPayload({ receipt: { provider: null } }))).toBeNull();
+    expect(parseTransportEvent(withPayload({ receipt: { ...event.payload.receipt, submittedAt: 'yesterday' } }))).toBeNull();
+    expect(parseTransportEvent(withPayload({ receipt: 'r-1' }))).toBeNull();
   });
 });
 

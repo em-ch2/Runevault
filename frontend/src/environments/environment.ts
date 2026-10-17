@@ -4,6 +4,8 @@ export const environment = {
     clientId: 'VXOx3TrDK15L7XPejXwXYFQEtpRqXYlH',
     audience: 'https://api.runevault',
   },
-  // Empty = mock feed. For live transport use the same-origin proxy, e.g. ws://localhost:4200/ws/transfers.
-  feedUrl: '',
+  // Live transfer events. A path resolves against the page's own host as ws:// or wss://, so dev
+  // (Angular proxy), Docker (nginx) and the HTTPS deployment (Caddy) all use the same build.
+  // Set to '' to turn live updates off; the dashboard then falls back to polling.
+  feedUrl: '/ws/transfers',
 };

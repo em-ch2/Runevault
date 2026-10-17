@@ -1,9 +1,13 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subscription, interval } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
-import { PendingTransactionResponse, TransactionApiService, TransactionRecord, transactionError } from '../transactions/transaction-api.service';
+import { PendingTransactionResponse, PipelineMetrics, TransactionApiService, TransactionRecord, transactionError } from '../transactions/transaction-api.service';
+import { TransferTransportEvent } from '../feed/feed-event';
+import { ApprovalsChart } from './approvals-chart';
+import { Gauge } from './gauge';
+import { mergeLiveEvent } from './live-merge';
 import { FeedService } from '../feed/feed.service';
 import { MockScenario } from '../feed/mock-feed';
 import { GLYPH_NAMES, Glyph } from './glyph';
@@ -13,7 +17,7 @@ const STAGE_ORDER: Stage[] = ['received', 'sealed', 'verified', 'executed'];
 
 @Component({
   selector: 'app-dashboard',
-  imports: [Glyph, ReactiveFormsModule],
+  imports: [ApprovalsChart, Gauge, Glyph, ReactiveFormsModule],
   templateUrl: './dashboard.html',
 })
 export class Dashboard implements OnInit, OnDestroy {
@@ -44,6 +48,18 @@ export class Dashboard implements OnInit, OnDestroy {
   });
   private poll: Subscription | null = null;
   private listRequest: Subscription | null = null;
+  private readonly feedSubscriptions: Subscription[] = [];
+  readonly liveEvents = signal<TransferTransportEvent[]>([]);
+  readonly metrics = signal<PipelineMetrics | null>(null);
+  readonly metricsError = signal<string | null>(null);
+  readonly liveOpen = computed(() => this.feed.connection() === 'open');
+  // Polling is only a fallback: it runs while the live socket is down and a transfer is in flight.
+  private readonly pollingFallback = effect(() => {
+    this.feed.connection();
+    this.records();
+    this.selectedId();
+    this.syncPolling();
+  });
 
   readonly glyphNames = GLYPH_NAMES;
   readonly stages: { key: Stage; label: string }[] = [
@@ -83,29 +99,57 @@ export class Dashboard implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
+    this.feedSubscriptions.push(
+      this.feed.transportEvents.subscribe((event) => this.applyLiveEvent(event)),
+      // Fetch the authoritative state again after every (re)connect, in case events were missed.
+      this.feed.opened.subscribe(() => { this.refresh(true); this.loadMetrics(); }),
+    );
     this.refresh();
+    this.loadMetrics();
+    this.feed.startLive();
   }
 
   ngOnDestroy(): void {
     this.poll?.unsubscribe();
     this.listRequest?.unsubscribe();
+    for (const subscription of this.feedSubscriptions) subscription.unsubscribe();
     this.feed.stop();
   }
 
   switchMode(mode: 'live' | 'demo'): void {
     if (this.mode() === mode) return;
-    if (mode === 'demo' && !this.feed.isMock) return;
     this.mode.set(mode);
     if (mode === 'demo') {
-      this.poll?.unsubscribe();
-      this.poll = null;
+      this.stopPolling();
       this.listRequest?.unsubscribe();
       this.listRequest = null;
-      this.feed.start();
+      this.feed.startDemo();
     } else {
       this.feed.stop();
+      this.feed.startLive();
       this.refresh();
     }
+  }
+
+  applyLiveEvent(event: TransferTransportEvent): void {
+    if (this.mode() !== 'live') return;
+    this.liveEvents.update((events) => [event, ...events.filter((e) => e.eventId !== event.eventId)].slice(0, 12));
+    const known = this.records().some((r) => r.transactionId === event.transactionId);
+    if (!known) {
+      this.refresh(true);
+    } else {
+      this.records.update((records) => records.map((r) => r.transactionId === event.transactionId ? mergeLiveEvent(r, event) : r));
+      // verifiedAt is not part of the event, so fetch it once when the tablet's approval is accepted.
+      if (event.stage === 'VERIFIED' && event.outcome === 'APPROVED') this.refresh(true);
+    }
+    if (event.stage === 'GEMINI' || (event.stage === 'VERIFIED' && event.outcome === 'REJECTED')) this.loadMetrics();
+  }
+
+  loadMetrics(): void {
+    this.api.metrics(30).subscribe({
+      next: (metrics) => { this.metrics.set(metrics); this.metricsError.set(null); },
+      error: (error: unknown) => this.metricsError.set(transactionError(error)),
+    });
   }
 
   refresh(polling = false): void {
@@ -118,8 +162,7 @@ export class Dashboard implements OnInit, OnDestroy {
         this.apiError.set(null);
         this.loadingRecords.set(false);
         this.listRequest = null;
-        if (this.awaitingApproval()) this.startPolling();
-        else this.stopPolling();
+        this.syncPolling();
       },
       error: (error: unknown) => {
         this.apiError.set(transactionError(error));
@@ -146,7 +189,6 @@ export class Dashboard implements OnInit, OnDestroy {
         this.created.set(created);
         this.selectedId.set(created.tx_id);
         this.creating.set(false);
-        this.startPolling();
         this.refresh();
       },
       error: (error: unknown) => {
@@ -158,8 +200,7 @@ export class Dashboard implements OnInit, OnDestroy {
 
   select(id: string): void {
     this.selectedId.set(id);
-    if (this.awaitingApproval()) this.startPolling();
-    else this.stopPolling();
+    this.syncPolling();
   }
 
   approvalExpired(transaction: TransactionRecord | null): boolean {
@@ -177,6 +218,11 @@ export class Dashboard implements OnInit, OnDestroy {
       || transaction?.status === 'BANK_PENDING') return true;
     return (transaction?.status === 'PENDING' || (transaction === null && this.createdForSelection() !== null))
       && !this.approvalExpired(transaction);
+  }
+
+  private syncPolling(): void {
+    if (this.mode() === 'live' && !this.liveOpen() && this.awaitingApproval()) this.startPolling();
+    else this.stopPolling();
   }
 
   private startPolling(): void {
@@ -215,6 +261,60 @@ export class Dashboard implements OnInit, OnDestroy {
 
   money(cents: number): string {
     return (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  }
+
+  // Display bands only; the backend's configured thresholds decide blocking.
+  riskBand(score: number): 'low' | 'medium' | 'high' {
+    return score <= 30 ? 'low' : score <= 60 ? 'medium' : 'high';
+  }
+
+  percent(fraction: number): string {
+    return `${Math.round(fraction * 100)}%`;
+  }
+
+  decisionLabel(code: string | null | undefined): string {
+    switch (code) {
+      case 'GEMINI_APPROVED': return 'Approved by policy';
+      case 'GEMINI_HIGH_RISK': return 'Blocked: risk above limit';
+      case 'GEMINI_LOW_CONFIDENCE': return 'Blocked: translation confidence too low';
+      case 'GEMINI_INVALID_RESPONSE': return 'Blocked: Gemini answer was invalid';
+      case 'GEMINI_UNAVAILABLE': return 'Blocked: Gemini unavailable';
+      default: return 'Awaiting Gemini review';
+    }
+  }
+
+  bankOutcomeLabel(outcome: TransactionRecord['bankOutcome']): string {
+    switch (outcome) {
+      case 'COMPLETED': return 'Completed';
+      case 'ACCEPTED_PENDING': return 'Accepted, settlement pending';
+      case 'FAILED': return 'Rejected by bank, no money moved';
+      case 'UNKNOWN': return 'Outcome unknown, check Nessie before any retry';
+      default: return 'Not sent to the bank';
+    }
+  }
+
+  eventLabel(event: TransferTransportEvent): string {
+    const code = event.payload.reasonCode;
+    switch (event.stage) {
+      case 'PENDING': return 'Transfer created, waiting for the tablet';
+      case 'VERIFIED': return event.outcome === 'APPROVED' ? 'Tablet signature verified'
+        : `Tablet approval rejected${code ? ` (${code})` : ''}`;
+      case 'GEMINI': return event.outcome === 'APPROVED' ? 'Gemini review passed policy' : this.decisionLabel(code);
+      case 'EXECUTING': return 'Sending to the bank';
+      case 'BANK_PENDING': return 'Bank accepted, settlement pending';
+      case 'EXECUTED': return 'Bank confirmed the transfer';
+      case 'FAILED': return 'Bank rejected the transfer';
+      case 'OUTCOME_UNKNOWN': return 'Bank outcome unknown, review required';
+    }
+  }
+
+  eventTone(event: TransferTransportEvent): 'good' | 'bad' | 'wait' {
+    if (event.payload.errorState !== null) return 'bad';
+    return event.stage === 'EXECUTED' || (event.stage === 'GEMINI' && event.outcome === 'APPROVED') ? 'good' : 'wait';
+  }
+
+  shortId(id: string): string {
+    return id.length > 8 ? `${id.slice(0, 8)}…` : id;
   }
 
   liveStatus(transaction: TransactionRecord): string {

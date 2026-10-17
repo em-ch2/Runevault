@@ -1,55 +1,118 @@
 export type TabletState = 'connected' | 'locked' | 'disconnected';
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 
+export type TransportStage = 'PENDING' | 'VERIFIED' | 'GEMINI' | 'EXECUTING' | 'BANK_PENDING' | 'EXECUTED' | 'FAILED' | 'OUTCOME_UNKNOWN';
+export type TransportOutcome = 'PENDING' | 'APPROVED' | 'REJECTED' | 'ACCEPTED_PENDING' | 'COMPLETED' | 'FAILED' | 'UNKNOWN';
+export type TransportStatus = 'PENDING' | 'SIMULATED' | 'VERIFIED' | 'EXECUTING' | 'BANK_PENDING' | 'EXECUTED' | 'FAILED' | 'OUTCOME_UNKNOWN';
+export type TransportErrorState = 'REJECTED' | 'BLOCKED' | 'FAILED' | 'UNKNOWN';
+
+export interface TransportReceipt {
+  provider: string;
+  receiptId: string | null;
+  providerStatus: string | null;
+  submittedAt: string | null;
+}
+
+// Live /ws/transfers envelope (docs/events.md). Every field is derived from committed backend records.
 export interface TransferTransportEvent {
   eventId: string;
   transactionId: string;
-  stage: 'PENDING' | 'VERIFIED' | 'GEMINI' | 'EXECUTING' | 'BANK_PENDING' | 'EXECUTED' | 'FAILED' | 'OUTCOME_UNKNOWN';
-  outcome: 'PENDING' | 'APPROVED' | 'REJECTED' | 'ACCEPTED_PENDING' | 'COMPLETED' | 'FAILED' | 'UNKNOWN';
+  stage: TransportStage;
+  outcome: TransportOutcome;
+  status: TransportStatus;
   timestamp: string;
   payload: {
+    lore: string | null;
     translationConfidence: number | null;
     riskScore: number | null;
-    securityCode: string | null;
-    receiptId: string | null;
-    providerStatus: string | null;
+    riskFlags: string[];
+    securityMessage: string | null;
+    explanation: string | null;
+    reasonCode: string | null;
+    receipt: TransportReceipt | null;
+    newBalanceMinor: number | null;
+    errorState: TransportErrorState | null;
   };
+}
+
+const STAGES: TransportStage[] = ['PENDING', 'VERIFIED', 'GEMINI', 'EXECUTING', 'BANK_PENDING', 'EXECUTED', 'FAILED', 'OUTCOME_UNKNOWN'];
+const OUTCOMES: TransportOutcome[] = ['PENDING', 'APPROVED', 'REJECTED', 'ACCEPTED_PENDING', 'COMPLETED', 'FAILED', 'UNKNOWN'];
+const STATUSES: TransportStatus[] = ['PENDING', 'SIMULATED', 'VERIFIED', 'EXECUTING', 'BANK_PENDING', 'EXECUTED', 'FAILED', 'OUTCOME_UNKNOWN'];
+const ERROR_STATES: TransportErrorState[] = ['REJECTED', 'BLOCKED', 'FAILED', 'UNKNOWN'];
+const INVALID = Symbol('invalid');
+
+// Plain text only: null, or a string of 1..max characters. Anything else invalidates the event.
+function text(value: unknown, max: number): string | null | typeof INVALID {
+  if (value === null || value === undefined) return null;
+  return typeof value === 'string' && value.length >= 1 && value.length <= max ? value : INVALID;
+}
+
+function bounded(value: unknown, max: number): number | null | typeof INVALID {
+  if (value === null || value === undefined) return null;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max ? value : INVALID;
+}
+
+function receiptOf(value: unknown): TransportReceipt | null | typeof INVALID {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) return INVALID;
+  const r = value as Record<string, unknown>;
+  const provider = text(r['provider'], 32);
+  const receiptId = text(r['receiptId'], 64);
+  const providerStatus = text(r['providerStatus'], 64);
+  const submittedAt = text(r['submittedAt'], 40);
+  if (provider === INVALID || provider === null || receiptId === INVALID || providerStatus === INVALID
+    || submittedAt === INVALID || (submittedAt !== null && Number.isNaN(Date.parse(submittedAt)))) return INVALID;
+  return { provider, receiptId, providerStatus, submittedAt };
 }
 
 export function parseTransportEvent(raw: unknown): TransferTransportEvent | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
   const e = raw as Record<string, unknown>;
-  const stages = ['PENDING', 'VERIFIED', 'GEMINI', 'EXECUTING', 'BANK_PENDING', 'EXECUTED', 'FAILED', 'OUTCOME_UNKNOWN'];
-  const outcomes = ['PENDING', 'APPROVED', 'REJECTED', 'ACCEPTED_PENDING', 'COMPLETED', 'FAILED', 'UNKNOWN'];
   if (typeof e['eventId'] !== 'string' || !/^[0-9a-f-]{36}$/.test(e['eventId']) ||
-      typeof e['transactionId'] !== 'string' || !/^[A-Za-z0-9-]{1,63}$/.test(e['transactionId']) ||
-      !stages.includes(e['stage'] as string) || !outcomes.includes(e['outcome'] as string) ||
+      typeof e['transactionId'] !== 'string' || !/^[A-Za-z0-9_-]{1,36}$/.test(e['transactionId']) ||
+      !STAGES.includes(e['stage'] as TransportStage) || !OUTCOMES.includes(e['outcome'] as TransportOutcome) ||
+      !STATUSES.includes(e['status'] as TransportStatus) ||
       typeof e['timestamp'] !== 'string' || Number.isNaN(Date.parse(e['timestamp']))) return null;
   const p = e['payload'];
   if (typeof p !== 'object' || p === null || Array.isArray(p)) return null;
   const payload = p as Record<string, unknown>;
-  const confidence = payload['translationConfidence'];
-  const risk = payload['riskScore'];
-  if (confidence !== null && (typeof confidence !== 'number' || !Number.isFinite(confidence) || confidence < 0 || confidence > 1)) return null;
-  if (risk !== null && (typeof risk !== 'number' || !Number.isFinite(risk) || risk < 0 || risk > 100)) return null;
-  const code = payload['securityCode'];
-  const receipt = payload['receiptId'];
-  const status = payload['providerStatus'];
-  if (code !== null && (typeof code !== 'string' || !/^[A-Z0-9_]{1,64}$/.test(code))) return null;
-  if (receipt !== null && (typeof receipt !== 'string' || receipt.length > 64)) return null;
-  if (status !== null && (typeof status !== 'string' || status.length > 64)) return null;
+
+  const lore = text(payload['lore'], 2000);
+  const securityMessage = text(payload['securityMessage'], 300);
+  const explanation = text(payload['explanation'], 300);
+  const confidence = bounded(payload['translationConfidence'], 1);
+  const risk = bounded(payload['riskScore'], 100);
+  const receipt = receiptOf(payload['receipt']);
+  const code = payload['reasonCode'];
+  const balance = payload['newBalanceMinor'];
+  const errorState = payload['errorState'];
+  const flagsRaw = payload['riskFlags'] ?? [];
+  if (lore === INVALID || securityMessage === INVALID || explanation === INVALID || confidence === INVALID
+    || risk === INVALID || receipt === INVALID) return null;
+  if (code !== null && code !== undefined && (typeof code !== 'string' || !/^[A-Z0-9_]{1,64}$/.test(code))) return null;
+  if (balance !== null && balance !== undefined && (typeof balance !== 'number' || !Number.isSafeInteger(balance) || balance < 0)) return null;
+  if (errorState !== null && errorState !== undefined && !ERROR_STATES.includes(errorState as TransportErrorState)) return null;
+  if (!Array.isArray(flagsRaw) || flagsRaw.length > 5
+    || !flagsRaw.every((f) => typeof f === 'string' && f.length >= 1 && f.length <= 80)) return null;
+
   return {
     eventId: e['eventId'] as string,
     transactionId: e['transactionId'] as string,
-    stage: e['stage'] as TransferTransportEvent['stage'],
-    outcome: e['outcome'] as TransferTransportEvent['outcome'],
+    stage: e['stage'] as TransportStage,
+    outcome: e['outcome'] as TransportOutcome,
+    status: e['status'] as TransportStatus,
     timestamp: e['timestamp'] as string,
     payload: {
-      translationConfidence: confidence as number | null,
-      riskScore: risk as number | null,
-      securityCode: code as string | null,
-      receiptId: receipt as string | null,
-      providerStatus: status as string | null,
+      lore,
+      translationConfidence: confidence,
+      riskScore: risk,
+      riskFlags: flagsRaw as string[],
+      securityMessage,
+      explanation,
+      reasonCode: (code ?? null) as string | null,
+      receipt,
+      newBalanceMinor: (balance ?? null) as number | null,
+      errorState: (errorState ?? null) as TransportErrorState | null,
     },
   };
 }

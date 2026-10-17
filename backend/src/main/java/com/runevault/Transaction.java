@@ -44,6 +44,9 @@ public class Transaction {
  @Column(length = 40)
  private AuditEvent.Reason geminiDecisionReason;
  private Instant geminiDecisionAt;
+ // Fixed, backend-written explanation of the decision; never model output.
+ @Column(length = 300)
+ private String geminiDecisionExplanation;
 
  @Column(length = 64)
  private String bankReceiptId;
@@ -59,6 +62,8 @@ public class Transaction {
  private BankReceipt.Reason bankReason;
  private Instant bankSubmittedAt;
  private Instant bankOutcomeAt;
+ // Source balance confirmed by the bank after the transfer, in cents; null when not reliably known.
+ private Long newBalanceMinor;
 
  public enum Status { PENDING, SIMULATED, VERIFIED, EXECUTING, BANK_PENDING, EXECUTED, FAILED, OUTCOME_UNKNOWN }
 
@@ -101,11 +106,16 @@ public class Transaction {
  public Instant getAuditedAt() { return auditedAt; }
  public AuditEvent.Reason getGeminiDecisionReason() { return geminiDecisionReason; }
  public Instant getGeminiDecisionAt() { return geminiDecisionAt; }
+ public String getGeminiDecisionExplanation() { return geminiDecisionExplanation; }
  public void recordGeminiDecision(AuditEvent.Reason reason, String json, Instant at) {
+  recordGeminiDecision(reason, json, null, at);
+ }
+ public void recordGeminiDecision(AuditEvent.Reason reason, String json, String explanation, Instant at) {
   if (status != Status.VERIFIED || verifiedAt == null || geminiDecisionAt != null || reason == null || at == null)
    throw new IllegalStateException("Gemini decision is not eligible");
   geminiDecisionReason = reason;
   geminiDecisionAt = at;
+  geminiDecisionExplanation = explanation == null ? null : explanation.substring(0, Math.min(300, explanation.length()));
   if (json != null) {
    auditJson = json;
    auditSource = "gemini";
@@ -120,6 +130,7 @@ public class Transaction {
  public BankReceipt.Reason getBankReason() { return bankReason; }
  public Instant getBankSubmittedAt() { return bankSubmittedAt; }
  public Instant getBankOutcomeAt() { return bankOutcomeAt; }
+ public Long getNewBalanceMinor() { return newBalanceMinor; }
  public void recordExecution(BankReceipt receipt, Instant recordedAt) {
   if (status != Status.EXECUTING) throw new IllegalStateException("Transaction is not executing");
   if (receipt == null || receipt.outcome() == null || receipt.reason() == null || recordedAt == null
@@ -133,6 +144,7 @@ public class Transaction {
   bankReason = receipt.reason();
   bankSubmittedAt = receipt.submittedAt();
   bankOutcomeAt = recordedAt;
+  newBalanceMinor = receipt.newBalanceMinor();
   status = switch (receipt.outcome()) {
    case ACCEPTED_PENDING -> Status.BANK_PENDING;
    case COMPLETED -> Status.EXECUTED;

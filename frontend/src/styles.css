@@ -10,6 +10,9 @@
   --good: #7fcfa6;
   --bad: #ef8a6f;
   --wait: #e9c46a;
+  /* Chart series, validated for this dark surface (lightness band, chroma, colorblind separation). */
+  --chart-approved: #1fa37a;
+  --chart-blocked: #e06a2b;
   --radius: 6px;
   --serif: 'Cinzel', 'Trajan Pro', Georgia, serif;
   --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -173,9 +176,11 @@ code, .mono { font-family: var(--mono); font-size: 0.92em; }
 .activity { grid-area: activity; }
 
 /* Keep the live layout after the shared grid and panel rules so its areas win. */
-.live-grid { grid-template-areas: 'pending status' 'list list'; }
+.live-grid { grid-template-areas: 'pending status' 'list list' 'events metrics'; }
 .live-grid > :nth-child(2) { grid-area: status; }
 .live-grid > .live-list { grid-area: list; }
+.live-grid > .live-events { grid-area: events; }
+.live-grid > .metrics { grid-area: metrics; }
 
 .empty { color: var(--ink-muted); margin: 0.5rem 0; }
 
@@ -242,10 +247,56 @@ code, .mono { font-family: var(--mono); font-size: 0.92em; }
 @media (max-width: 900px) {
   html { font-size: 16px; }
   .grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'pending' 'lore' 'receipt' 'activity'; padding: 1rem 16px 2rem; }
-  .live-grid { grid-template-areas: 'pending' 'status' 'list'; }
+  .live-grid { grid-template-areas: 'pending' 'status' 'list' 'events' 'metrics'; }
   .mode-switch { padding-left: 16px; padding-right: 16px; }
   .topbar, .mock-bar { padding-left: 16px; padding-right: 16px; }
   .amount { font-size: 2.3rem; }
   .facts div, .receipt-list div { grid-template-columns: 6.5rem minmax(0, 1fr); }
   .stages { font-size: 0.8rem; }
 }
+
+/* Gemini decision, gauges and receipt card */
+.decision { margin: 1rem 0; padding: 0.75rem 1rem; border: 1px solid var(--slab-edge); border-left: 3px solid var(--good); border-radius: var(--radius); }
+.decision-blocked { border-left-color: var(--bad); }
+.decision-title { margin: 0 0 0.35rem; font-weight: 600; }
+.decision p { margin: 0.25rem 0; }
+.gauges { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1rem; margin: 1rem 0; }
+.gauge-head, .gauge-foot { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.85rem; }
+.gauge-label { color: var(--ink-muted); }
+.gauge-value { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.gauge-track { position: relative; height: 0.6rem; margin: 0.35rem 0; background: var(--bg); border: 1px solid var(--slab-edge); border-radius: 999px; overflow: hidden; }
+.gauge-fill { height: 100%; background: var(--good); border-radius: 999px; transition: width 300ms ease; }
+.gauge-fill-bad { background: var(--bad); }
+.gauge-limit { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink); }
+.gauge-pass { color: var(--good); }
+.gauge-fail { color: var(--bad); font-weight: 600; }
+.receipt-card { margin: 1rem 0; padding: 0.75rem 1rem; border: 1px solid var(--slab-edge); border-radius: var(--radius); background: rgba(216, 179, 100, 0.04); }
+.receipt-bad { border-color: rgba(239, 138, 111, 0.6); }
+.receipt-title { margin: 0 0 0.6rem; font-weight: 600; }
+
+/* Live pipeline feed */
+.event-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.4rem; max-height: 20rem; overflow-y: auto; }
+.event { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 0.6rem; align-items: baseline; padding: 0.35rem 0.6rem; border-left: 3px solid var(--wait); font-size: 0.9rem; }
+.event-good { border-left-color: var(--good); }
+.event-bad { border-left-color: var(--bad); }
+.event-time { color: var(--ink-muted); font-variant-numeric: tabular-nums; font-size: 0.8rem; }
+
+/* Approvals vs blocks chart */
+.chart-legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; align-items: center; font-size: 0.85rem; margin: 0.5rem 0; }
+.chart-legend strong { font-variant-numeric: tabular-nums; }
+.chart-readout { margin-left: auto; font-variant-numeric: tabular-nums; }
+.swatch { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 3px; margin-right: 0.4rem; vertical-align: -1px; }
+.swatch-approved { background: var(--chart-approved); }
+.swatch-blocked { background: var(--chart-blocked); }
+.chart-scroll { overflow-x: auto; }
+.chart { display: block; width: 100%; min-width: 22rem; height: auto; }
+.chart-grid { stroke: var(--slab-edge); stroke-width: 1; }
+.chart-axis { stroke: var(--ink-muted); stroke-width: 1; }
+.chart-tick { fill: var(--ink-muted); font-size: 10px; font-family: var(--sans); font-variant-numeric: tabular-nums; }
+.chart-bar-approved { fill: var(--chart-approved); }
+.chart-bar-blocked { fill: var(--chart-blocked); }
+.chart-dim { opacity: 0.35; }
+.chart-hit { fill: transparent; }
+.chart-table { margin: 0.5rem 0; font-size: 0.85rem; }
+.chart-table table { border-collapse: collapse; margin-top: 0.5rem; }
+.chart-table th, .chart-table td { padding: 0.2rem 0.75rem 0.2rem 0; text-align: left; font-variant-numeric: tabular-nums; }

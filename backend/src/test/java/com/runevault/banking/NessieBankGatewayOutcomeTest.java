@@ -46,7 +46,8 @@ class NessieBankGatewayOutcomeTest {
     : BankReceipt.Outcome.COMPLETED, receipt.outcome());
    assertEquals("receipt-1", receipt.receiptId());
    assertNotNull(receipt.submittedAt());
-   verify(http, times(2)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+   // Preflight balance, transfer, then the post-transfer balance check.
+   verify(http, times(3)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
   }
  }
 
@@ -90,5 +91,37 @@ class NessieBankGatewayOutcomeTest {
   assertEquals(BankReceipt.Reason.PRE_SUBMISSION_FAILURE, receipt.reason());
   assertNull(receipt.submittedAt());
   verify(http, times(1)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+ }
+
+ @Test void newBalanceIsRecordedOnlyWhenTheBankConfirmsTheExactDrop() throws Exception {
+  // $1000.00 before; a $500.00 transfer confirmed by a $500.00 balance afterwards.
+  var before = response(200, "{\"balance\":1000}");
+  var created = response(201, "{\"objectCreated\":{\"_id\":\"receipt-2\",\"status\":\"pending\"}}");
+  var after = response(200, "{\"balance\":500}");
+  HttpClient confirmed = mock(HttpClient.class);
+  when(confirmed.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenReturn(before).thenReturn(created).thenReturn(after);
+  assertEquals(50000L, gateway(confirmed).transfer("tx-4", 50000, "USD", DEST).newBalanceMinor());
+
+  // Pending transfers that have not reduced the balance yet are reported as unavailable.
+  var created2 = response(201, "{\"objectCreated\":{\"_id\":\"receipt-3\",\"status\":\"pending\"}}");
+  var same = response(200, "{\"balance\":1000}");
+  HttpClient unchanged = mock(HttpClient.class);
+  when(unchanged.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenReturn(before).thenReturn(created2).thenReturn(same);
+  assertNull(gateway(unchanged).transfer("tx-5", 50000, "USD", DEST).newBalanceMinor());
+ }
+
+ @Test void balanceReadFailureNeverChangesTheBankingOutcome() throws Exception {
+  var balance = response(200, "{\"balance\":1000}");
+  var completed = response(201, "{\"objectCreated\":{\"_id\":\"receipt-4\",\"status\":\"completed\"}}");
+  HttpClient http = mock(HttpClient.class);
+  when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenReturn(balance).thenReturn(completed)
+   .thenThrow(new HttpTimeoutException("balance timeout"));
+  var receipt = gateway(http).transfer("tx-6", 50000, "USD", DEST);
+  assertEquals(BankReceipt.Outcome.COMPLETED, receipt.outcome());
+  assertEquals("receipt-4", receipt.receiptId());
+  assertNull(receipt.newBalanceMinor());
  }
 }

@@ -38,7 +38,7 @@ class PostgresBootstrapSpringTest {
  @Autowired JdbcTemplate jdbc;
 
  @Test void emptyPostgresMigratesBeforeHibernateValidation() {
-  assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class));
+  assertEquals(3, jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class));
   assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM transactions", Integer.class));
  }
 }

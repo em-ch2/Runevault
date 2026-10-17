@@ -21,9 +21,14 @@ public class GeminiDecisionService {
 
  @Transactional(propagation = Propagation.REQUIRES_NEW)
  public AuditEvent.Reason record(String id, AuditEvent.Reason reason, String json) {
+  return record(id, reason, json, null);
+ }
+
+ @Transactional(propagation = Propagation.REQUIRES_NEW)
+ public AuditEvent.Reason record(String id, AuditEvent.Reason reason, String json, String explanation) {
   Transaction transaction = transactions.findForUpdate(id).orElseThrow();
   if (transaction.getGeminiDecisionReason() != null) return transaction.getGeminiDecisionReason();
-  transaction.recordGeminiDecision(reason, json, Instant.now());
+  transaction.recordGeminiDecision(reason, json, explanation, Instant.now());
   transactions.saveAndFlush(transaction);
   auditEvents.saveAndFlush(new AuditEvent(AuditEvent.Type.GEMINI_DECISION,
    transaction.getDeviceId(), id,

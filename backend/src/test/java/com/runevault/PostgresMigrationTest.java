@@ -43,7 +43,7 @@ class PostgresMigrationTest {
    }
    try (var rows = statement.executeQuery("SELECT count(*) FROM flyway_schema_history WHERE success")) {
     rows.next();
-    assertEquals(2, rows.getInt(1));
+    assertEquals(3, rows.getInt(1));
    }
   }
  }
@@ -60,6 +60,7 @@ class PostgresMigrationTest {
    statement.execute("INSERT INTO audit_events (timestamp,event_type,outcome,reason) VALUES (CURRENT_TIMESTAMP,'EXECUTION_CLAIM','APPROVED','EXECUTION_CLAIMED')");
   }
   migrate("legacy_app");
+  migrate("legacy_app"); // Repeated startup must leave the migration history and data intact.
   try (var connection = DriverManager.getConnection(url("legacy_app"), postgres.getUsername(), postgres.getPassword());
        var statement = connection.createStatement()) {
    try (var rows = statement.executeQuery("SELECT last_counter,failed_attempts,revoked_at IS NOT NULL FROM device_states WHERE device_id='slab-01'")) {
@@ -68,12 +69,14 @@ class PostgresMigrationTest {
     assertEquals(5, rows.getInt(2));
     assertTrue(rows.getBoolean(3));
    }
-   try (var rows = statement.executeQuery("SELECT status,execution_claimed_at IS NOT NULL,verified_at IS NOT NULL,currency FROM transactions WHERE transaction_id='claimed'")) {
+   try (var rows = statement.executeQuery("SELECT status,execution_claimed_at IS NOT NULL,verified_at IS NOT NULL,currency,gemini_decision_explanation,new_balance_minor FROM transactions WHERE transaction_id='claimed'")) {
     assertTrue(rows.next());
     assertEquals("EXECUTING", rows.getString(1));
     assertTrue(rows.getBoolean(2));
     assertTrue(rows.getBoolean(3));
     assertEquals("USD", rows.getString(4));
+    org.junit.jupiter.api.Assertions.assertNull(rows.getString(5));
+    org.junit.jupiter.api.Assertions.assertNull(rows.getObject(6));
    }
    try (var rows = statement.executeQuery("SELECT count(*) FROM audit_events WHERE reason='EXECUTION_CLAIMED'")) {
     rows.next();

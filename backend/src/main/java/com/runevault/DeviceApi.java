@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import com.runevault.events.PipelineEvents;
 import com.runevault.transactions.TransactionProcessor;
 import org.springframework.beans.factory.annotation.Value;
 import java.time.Instant;
@@ -21,11 +22,12 @@ public class DeviceApi {
  private final DeviceStateRepository devices;
  private final TransactionProcessor processor;
  private final TransactionPolicy policy;
+ private final PipelineEvents events;
  private final boolean autoExecute;
  public DeviceApi(DeviceAuthorizationService service, TransactionRepository transactions, DeviceStateRepository devices,
-   TransactionProcessor processor, TransactionPolicy policy, @Value("${runevault.auto-execute:true}") boolean autoExecute) {
+   TransactionProcessor processor, TransactionPolicy policy, PipelineEvents events, @Value("${runevault.auto-execute:true}") boolean autoExecute) {
   this.service = service; this.transactions = transactions; this.devices = devices;
-  this.processor = processor; this.policy = policy; this.autoExecute = autoExecute;
+  this.processor = processor; this.policy = policy; this.events = events; this.autoExecute = autoExecute;
  }
 
  public record Authorization(
@@ -46,7 +48,9 @@ public class DeviceApi {
 
  @PostMapping("/transactions")
  public ResponseEntity<Map<String, Object>> pending(@Valid @RequestBody Pending request) {
-  return service.createPending(request);
+  var response = service.createPending(request);
+  events.createdIfSuccessful(response);
+  return response;
  }
 
  @GetMapping("/transactions/{id}")
@@ -90,6 +94,9 @@ public class DeviceApi {
  @PostMapping("/authorize")
  public ResponseEntity<Map<String, Object>> authorize(@Valid @RequestBody Authorization request) {
   var response = service.authorize(request);
+  // authorize() has committed; report the attempt to the transfer's owner either way.
+  if (response.getStatusCode().is2xxSuccessful()) events.verified(request.txId());
+  else events.verificationRejected(request.txId());
   if (!autoExecute || !response.getStatusCode().is2xxSuccessful()) return response;
   // authorize() has committed, so the execution claim sees the VERIFIED row.
   Map<String, Object> body = new LinkedHashMap<>(response.getBody());

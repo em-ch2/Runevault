@@ -32,10 +32,32 @@ export interface TransactionRecord {
   bankReason?: string | null;
   bankSubmittedAt?: string | null;
   bankOutcomeAt?: string | null;
+  newBalanceMinor?: number | null;
   lore?: string | null;
-  riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+  translationConfidence?: number | null;
+  riskScore?: number | null;
+  riskFlags?: string[] | null;
+  riskExplanation?: string | null;
+  securityMessage?: string | null;
   geminiDecisionReason?: 'GEMINI_APPROVED' | 'GEMINI_UNAVAILABLE' | 'GEMINI_INVALID_RESPONSE' | 'GEMINI_LOW_CONFIDENCE' | 'GEMINI_HIGH_RISK' | null;
+  geminiDecisionExplanation?: string | null;
   geminiDecisionAt?: string | null;
+}
+
+export interface MinutePoint {
+  minute: string;
+  approved: number;
+  blocked: number;
+}
+
+export interface PipelineMetrics {
+  from: string;
+  to: string;
+  source: string;
+  approved: number;
+  blocked: number;
+  minutes: MinutePoint[];
+  policy: { minTranslationConfidence: number; maxRiskScore: number };
 }
 
 interface TransactionPage {
@@ -76,6 +98,16 @@ export class TransactionApiService {
     return this.token().pipe(switchMap((token) => this.http.get<TransactionPage>(
       this.endpoint, {
         params: { page: 0, size: 100 },
+        headers: new HttpHeaders({ Authorization: `Bearer ${token}` }),
+      },
+    )));
+  }
+
+  // Approvals versus blocks per minute from the pipeline_events table (Tiger Data).
+  metrics(minutes = 30) {
+    return this.token().pipe(switchMap((token) => this.http.get<PipelineMetrics>(
+      '/api/metrics/pipeline', {
+        params: { minutes },
         headers: new HttpHeaders({ Authorization: `Bearer ${token}` }),
       },
     )));

@@ -66,8 +66,8 @@ class TransactionProcessorHttpTest {
  private void ai(String confidence, String risk) throws Exception {
   when(lore.audit(anyString(), anyString(), anyLong(), anyString()))
    .thenReturn(mapper.readTree("""
-    {"lore":{"title":"Voyage","text":"Safe passage"},"risk":{"level":"LOW","reasons":[]},
-     "translation_confidence":%s,"risk_score":%s}
+    {"lore_translation":"Safe passage.","translation_confidence":%s,"risk_score":%s,
+     "risk_flags":[],"risk_explanation":"Routine.","security_message":"Looks routine."}
     """.formatted(confidence, risk)));
  }
 
@@ -107,7 +107,7 @@ class TransactionProcessorHttpTest {
   mvc.perform(post("/api/device/authorize").header("X-Bridge-Token", TOKEN)
    .contentType("application/json").content(signed(low, 1)))
    .andExpect(status().isOk()).andExpect(jsonPath("$.execution.reason").value("GEMINI_LOW_CONFIDENCE"));
-  ai("0.8", "30.01"); String high = pending();
+  ai("0.8", "31"); String high = pending();
   mvc.perform(post("/api/device/authorize").header("X-Bridge-Token", TOKEN)
    .contentType("application/json").content(signed(high, 2)))
    .andExpect(status().isOk()).andExpect(jsonPath("$.execution.reason").value("GEMINI_HIGH_RISK"));
@@ -126,7 +126,7 @@ class TransactionProcessorHttpTest {
    .contentType("application/json").content(signed(unavailable, 1)))
    .andExpect(status().isOk()).andExpect(jsonPath("$.execution.reason").value("GEMINI_UNAVAILABLE"));
   doReturn(mapper.readTree("""
-   {"lore":{"title":"T","text":"A"},"risk":{"level":"LOW","reasons":[]}}
+   {"lore_translation":"Missing every score."}
    """)).when(lore).audit(anyString(), anyString(), anyLong(), anyString());
   String malformed = pending();
   mvc.perform(post("/api/device/authorize").header("X-Bridge-Token", TOKEN)

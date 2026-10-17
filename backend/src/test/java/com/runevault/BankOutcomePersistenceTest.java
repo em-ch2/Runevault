@@ -41,10 +41,10 @@ class BankOutcomePersistenceTest {
     String receiptId = outcome == BankReceipt.Outcome.UNKNOWN || outcome == BankReceipt.Outcome.FAILED
      ? null : "receipt-" + i;
     service.record(ids[i], new BankReceipt(receiptId, ids[i], "nessie", outcome.name(),
-     50000, "USD", "acct-999", outcome, reason, Instant.now()));
+     50000, "USD", "acct-999", outcome, reason, Instant.now(), null));
     assertThrows(IllegalStateException.class, () -> service.record(id,
      new BankReceipt(receiptId, id, "nessie", outcome.name(), 50000, "USD", "acct-999",
-      outcome, reason, Instant.now())));
+      outcome, reason, Instant.now(), null)));
    }
   }
   try (var second = new SpringApplicationBuilder(RunevaultApplication.class).profiles("dev", "test").run(arguments)) {
