@@ -6,9 +6,10 @@ import org.springframework.stereotype.Service;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 @Service
-@Profile("simulator & dev & !auth")
+@ConditionalOnProperty(name = "nessie.enabled", havingValue = "false", matchIfMissing = true)
 public class FakeBankGateway implements BankGateway {
     
     private final ConcurrentMap<String, BankReceipt> receipts = 

@@ -15,7 +15,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.runevault.banking.FakeBankGateway;
+import com.runevault.banking.BankGateway;
 import com.runevault.banking.BankReceipt;
 
 
@@ -24,12 +24,12 @@ import com.runevault.banking.BankReceipt;
 @RequestMapping("/api")
 public class TransactionApi {
  private final byte[] secret;
- private final FakeBankGateway bankGateway;
+ private final BankGateway bankGateway;
  private final TransactionRepository transactions;
  private final TransactionPolicy policy;
  private final AuditEventRepository auditEvents;
  private final Map<String, Challenge> pending = new ConcurrentHashMap<>();
- public TransactionApi(@Value("${runevault.device-secret}") String secret, FakeBankGateway bankGateway, TransactionRepository transactions, TransactionPolicy policy, AuditEventRepository auditEvents) {
+ public TransactionApi(@Value("${runevault.device-secret}") String secret, BankGateway bankGateway, TransactionRepository transactions, TransactionPolicy policy, AuditEventRepository auditEvents) {
   this.secret = secret.getBytes(StandardCharsets.UTF_8);
   this.bankGateway = bankGateway;
   this.transactions = transactions;
@@ -39,8 +39,8 @@ public class TransactionApi {
 
  public record Intent(@NotNull @Pattern(regexp="pico-demo-1") String deviceId,
   @Min(1) @Max(100000000) long amountMinor,
-  @NotNull @Pattern(regexp="[A-Za-z0-9_-]{1,64}") String destination,
-  @NotNull @Pattern(regexp="[A-D]{1,16}") String glyphs) {}
+  @NotNull @Pattern(regexp="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}") String destination,
+  @NotNull @Pattern(regexp="[0-2](-[0-2]){0,63}") String glyphs) {}
  public record Challenge(String challengeId, long expiresAt, Intent intent, String signingText, String mode) {}
  public record Approval(@NotNull String challengeId, @NotNull @Pattern(regexp="[0-9a-f]{64}") String signature) {}
  private void requirePolicy(long amount, String destination, String device, String transactionId, AuditEvent.Type type) {
