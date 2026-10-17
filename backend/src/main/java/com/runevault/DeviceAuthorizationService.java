@@ -19,16 +19,18 @@ public class DeviceAuthorizationService {
  private final TransactionRepository transactions;
  private final DeviceStateRepository devices;
  private final AuditEventRepository auditEvents;
+ private final TransactionPolicy policy;
  private final String deviceId;
  private final byte[] key;
 
  public DeviceAuthorizationService(TransactionRepository transactions, DeviceStateRepository devices,
-   AuditEventRepository auditEvents,
+   AuditEventRepository auditEvents, TransactionPolicy policy,
    @Value("${runevault.pico-device-id}") String deviceId,
    @Value("${runevault.pico-key}") String key) {
   this.transactions = transactions;
   this.devices = devices;
   this.auditEvents = auditEvents;
+  this.policy = policy;
   this.deviceId = deviceId;
   this.key = key.getBytes(StandardCharsets.UTF_8);
  }
@@ -52,8 +54,23 @@ public class DeviceAuthorizationService {
  public ResponseEntity<Map<String, Object>> createPending(DeviceApi.Pending request, String requesterSubject) {
   if (key.length == 0) return error(503, "Device key is not configured");
   if (!deviceId.equals(request.device())) return error(404, "Unknown device");
+  if (!policy.allowsAmount(request.amount())) {
+   auditEvents.save(new AuditEvent(AuditEvent.Type.TRANSACTION_CREATION, request.device(), null,
+    AuditEvent.Outcome.REJECTED, AuditEvent.Reason.AMOUNT_LIMIT_EXCEEDED));
+   return error(400, "Amount exceeds configured limit");
+  }
+  if (!policy.allowsDestination(request.dest())) {
+   auditEvents.save(new AuditEvent(AuditEvent.Type.TRANSACTION_CREATION, request.device(), null,
+    AuditEvent.Outcome.REJECTED, AuditEvent.Reason.DESTINATION_NOT_ALLOWED));
+   return error(400, "Destination is not allowed");
+  }
   var device = devices.findForUpdate(request.device()).orElseGet(() -> devices.saveAndFlush(new DeviceState(request.device())));
-  if (device.isLocked()) return error(423, "Device locked");
+  if (device.isRevoked()) {
+   auditEvents.save(new AuditEvent(AuditEvent.Type.TRANSACTION_CREATION, request.device(), null,
+    AuditEvent.Outcome.REJECTED, AuditEvent.Reason.DEVICE_REVOKED));
+   return error(423, "Device revoked");
+  }
+  if (device.isLocked(policy.maxIncorrectGlyphAttempts())) return error(423, "Device locked");
   var transaction = Transaction.pending(UUID.randomUUID().toString(), request.amount(), request.dest(),
    request.device(), request.glyphs(), requesterSubject);
   transactions.save(transaction);
@@ -82,7 +99,8 @@ public class DeviceAuthorizationService {
   // Lock device first, then transaction: concurrent requests cannot reuse a counter.
   var device = devices.findForUpdate(request.device()).orElse(null);
   if (device == null) return rejected(request, 409, "No pending device transaction", AuditEvent.Reason.NO_PENDING_DEVICE_TRANSACTION);
-  if (device.isLocked()) return rejected(request, 423, "Device locked", AuditEvent.Reason.DEVICE_LOCKED);
+  if (device.isRevoked()) return rejected(request, 423, "Device revoked", AuditEvent.Reason.DEVICE_REVOKED);
+  if (device.isLocked(policy.maxIncorrectGlyphAttempts())) return rejected(request, 423, "Device locked", AuditEvent.Reason.DEVICE_LOCKED);
   if (request.counter() <= device.getLastCounter()) return rejected(request, 409, "Counter replay", AuditEvent.Reason.COUNTER_REPLAY);
   // Consume every authenticated fresh counter, including rejected transaction/glyph attempts.
   device.consumeCounter(request.counter());
@@ -95,15 +113,21 @@ public class DeviceAuthorizationService {
   if (transaction.getExpiresAt() == null || !transaction.getExpiresAt().isAfter(Instant.now())) {
    return rejected(request, 409, "Pending transaction mismatch or expired", AuditEvent.Reason.TRANSACTION_EXPIRED);
   }
+  if (!policy.allowsAmount(transaction.getAmountMinor()))
+   return rejected(request, 403, "Amount exceeds configured limit", AuditEvent.Reason.AMOUNT_LIMIT_EXCEEDED);
+  if (!policy.allowsDestination(transaction.getDestination()))
+   return rejected(request, 403, "Destination is not allowed", AuditEvent.Reason.DESTINATION_NOT_ALLOWED);
   if (!request.glyphs().equals(transaction.getExpectedGlyphs())) {
    device.wrongGlyphs();
-   return rejected(request, device.isLocked() ? 423 : 403,
-    device.isLocked() ? "Device locked" : "Incorrect glyphs",
-    device.isLocked() ? AuditEvent.Reason.DEVICE_LOCKED : AuditEvent.Reason.INCORRECT_GLYPHS);
+   boolean locked = device.isLocked(policy.maxIncorrectGlyphAttempts());
+   return rejected(request, locked ? 423 : 403,
+    locked ? "Device locked" : "Incorrect glyphs",
+    locked ? AuditEvent.Reason.DEVICE_LOCKED : AuditEvent.Reason.INCORRECT_GLYPHS);
   }
   device.resetAttempts();
-  transaction.authorizeSimulation();
+  transaction.verifyPhysicalApproval(Instant.now());
   auditEvents.save(new AuditEvent(request.device(), request.txId(), AuditEvent.Outcome.APPROVED, AuditEvent.Reason.APPROVED));
-  return ResponseEntity.ok(Map.of("transactionId", transaction.getTransactionId(), "status", "SIMULATED", "signatureVerified", true));
+  return ResponseEntity.ok(Map.of("transactionId", transaction.getTransactionId(), "status", "VERIFIED",
+   "verifiedAt", transaction.getVerifiedAt(), "signatureVerified", true));
  }
 }

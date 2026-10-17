@@ -1,7 +1,12 @@
 package com.runevault;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.List;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +39,7 @@ class DashboardPermissionsHttpTest {
  @Autowired TransactionRepository transactions;
  @Autowired DeviceStateRepository devices;
  @Autowired AuditEventRepository auditEvents;
+ @Autowired ObjectMapper mapper;
  @MockBean JwtDecoder decoder;
 
  @BeforeEach void prepare() {
@@ -44,6 +50,18 @@ class DashboardPermissionsHttpTest {
   token("viewer", "auth0|viewer", "read:transactions");
   token("creator", "auth0|creator", "create:transactions");
   token("admin", "auth0|admin", "create:transactions", "read:transactions", "admin:platform");
+ }
+
+ @Test void simulatorRoutesAreUnavailableButHealthAndDashboardRemain() throws Exception {
+  mvc.perform(get("/api/health")).andExpect(status().isOk()).andExpect(jsonPath("status").value("ok"));
+  mvc.perform(post("/api/challenges").header("Authorization", "Bearer employee")
+   .header("X-Bridge-Token", "test-bridge-token-with-enough-characters")
+   .contentType("application/json").content("{}")) .andExpect(status().isForbidden());
+  mvc.perform(post("/api/approvals").header("Authorization", "Bearer employee")
+   .header("X-Bridge-Token", "test-bridge-token-with-enough-characters")
+   .contentType("application/json").content("{}")) .andExpect(status().isForbidden());
+  mvc.perform(get("/api/transactions").header("Authorization", "Bearer employee"))
+   .andExpect(status().isOk());
  }
 
  private void token(String value, String subject, String... permissions) {
@@ -88,5 +106,22 @@ class DashboardPermissionsHttpTest {
     .contentType("application/json").content(BODY))
    .andExpect(status().isCreated());
   assertNull(transactions.findAll().get(0).getRequesterSubject());
+ }
+
+ @Test void dashboardExposesPhysicalVerificationTime() throws Exception {
+  mvc.perform(post("/api/transactions").header("Authorization", "Bearer employee")
+    .contentType("application/json").content(BODY)).andExpect(status().isCreated());
+  String id = transactions.findAll().get(0).getTransactionId();
+  String signed = "v1|slab-01|1|" + id + "|50000|acct-999|0-2-1-2-1";
+  Mac mac = Mac.getInstance("HmacSHA256");
+  mac.init(new SecretKeySpec("test-pico-key-for-permission-tests".getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+  var approval = new DeviceApi.Authorization(1, "slab-01", 1L, id, 50000L, "acct-999",
+   "0-2-1-2-1", HexFormat.of().formatHex(mac.doFinal(signed.getBytes(StandardCharsets.UTF_8))));
+  mvc.perform(post("/api/device/authorize").header("X-Bridge-Token", "test-bridge-token-with-enough-characters")
+    .contentType("application/json").content(mapper.writeValueAsString(approval)))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("VERIFIED"));
+  mvc.perform(get("/api/transactions").header("Authorization", "Bearer employee"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].status").value("VERIFIED"))
+   .andExpect(jsonPath("$.content[0].verifiedAt").isNotEmpty());
  }
 }

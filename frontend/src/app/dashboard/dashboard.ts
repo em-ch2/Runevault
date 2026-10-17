@@ -56,7 +56,7 @@ export class Dashboard implements OnInit, OnDestroy {
     if (t === null) return 'No pending transfer';
     if (t.stage === 'received') return 'Awaiting tablet';
     if (t.stage === 'sealed') return 'Sealed, verifying signature';
-    if (t.stage === 'verified') return 'Verified, moving funds';
+    if (t.stage === 'verified') return 'Physical approval verified';
     if (t.stage === 'executed') return 'Executed';
     return 'Rejected, nothing moved';
   });

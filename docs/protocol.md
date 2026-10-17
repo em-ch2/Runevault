@@ -8,7 +8,7 @@ Compose binds the backend to localhost; a remote bridge needs a separately confi
 
 Configure `RUNEVAULT_PICO_DEVICE_ID=slab-01` and `RUNEVAULT_PICO_KEY` with the UTF-8 key provisioned on the device. There is no default key; Pico endpoints return 503 when it is absent. The existing demo signing key is separate and is not used for Pico authorization. This minimal implementation supports one configured device/key, with durable device state in PostgreSQL.
 
-On startup, Hibernate adds the new nullable transaction fields and device table. The PostgreSQL initialization script widens the existing status CHECK constraint to allow `PENDING` without deleting receipts. This retains the demo schema-update approach; production migrations remain outside this hackathon change.
+On startup, Hibernate adds nullable transaction fields without deleting existing rows. The PostgreSQL initialization script allows `PENDING`, `SIMULATED`, `VERIFIED`, and `EXECUTING`, adds nullable `verified_at` and `currency`, and backfills existing rows with `USD`. Historical `SIMULATED` records keep that status and do not gain a verification timestamp. Production migrations remain outside this hackathon change.
 
 Before authorization, the trusted backend client creates a pending transaction using `POST /api/device/transactions`, with the same bridge header:
 
@@ -34,9 +34,13 @@ v1|<device>|<counter>|<tx_id>|<amount>|<dest>|<glyphs>
 
 That sample is a signing test vector; `abc123` must actually exist as a matching pending transaction to authorize it. The supplied firmware development key was verified against this vector. To run the optional golden-vector JUnit test, supply that key through `PICO_TEST_VECTOR_KEY`; normal tests generate an ephemeral key and need no secrets.
 
-Successful authorization returns HTTP 200 with `transactionId`, `status: SIMULATED`, and `signatureVerified: true`. It updates the existing transaction; no money moves. A database transaction and row locks serialize device counters and transaction consumption.
+Successful authorization returns HTTP 200 with `transactionId`, `status: VERIFIED`, `verifiedAt`, and `signatureVerified: true`. It updates the existing transaction; no money moves. A database transaction and row locks commit the verification timestamp, consumed device counter, and approval audit event together.
 
-Person C's execution pipeline can call `TransactionService.claimPicoAuthorized(id)` only after the authorization request commits. This method locks the persisted row, requires a Pico-authorized `SIMULATED` transaction, writes a durable one-time execution claim, and returns a `VerifiedTransaction`. A second claim, including after restart, fails. The claim is at-most-once: if execution fails after claiming, investigate rather than automatically retry. This handoff does not itself invoke the bank gateway.
+Milestone 2 handoff: after the physical authorization call returns and commits, Person C's Spring service may inject `TransactionService` and call `claimPicoAuthorized(txId)`. This separate proxied service opens a short transaction, locks the stored transaction row, and requires `VERIFIED`, `verifiedAt`, an assigned device and expected glyphs, no prior claim, stored USD currency, and current amount/destination policy compliance. It saves `EXECUTING` and `executionClaimedAt` with an `EXECUTION_CLAIM` audit event, then commits. Its immutable `VerifiedTransaction` return value contains the stored ID, device, cents, currency, destination, glyphs, status, and timestamps. The caller supplies only the transaction ID; it cannot override execution details. Only one local claim wins, including across restarts. Historical `SIMULATED` rows cannot be claimed.
+
+No banking or Gemini call occurs in the claim transaction. Person C should invoke downstream processing only after `claimPicoAuthorized` returns and its transaction commits, using its returned values. `EXECUTING` means execution was claimed, not that funds moved. If processing stops or times out, leave the row `EXECUTING`; inspect the claim audit and reconcile the downstream provider's actual result before any operator-directed recovery. Do not automatically revert to `VERIFIED` or blindly retry a bank call. A database claim prevents duplicate local claims, but cannot guarantee exactly-once banking execution. The legacy simulator is isolated; real banking still requires Person C's integration and reconciliation checks.
+
+Revocation locks the persisted device row. Physical authorization and execution claim lock the same device row before locking a transaction row. If revocation commits first, the claim is rejected and audited; if the claim commits first, revocation cannot undo processing already in progress. A revoked device cannot create pending transactions or authorize an existing one. Historical `SIMULATED` rows remain ineligible.
 
 - 400: malformed/unsupported fields.
 - 401: missing/wrong bridge token, unknown configured device, or invalid signature.
@@ -47,7 +51,9 @@ Person C's execution pipeline can call `TransactionService.claimPicoAuthorized(i
 
 Every fresh, validly signed attempt consumes its counter, including transaction mismatches and wrong glyphs. Invalid signatures do not mutate device state. Only wrong glyphs for a matching pending transaction count toward the five-attempt lockout. A successful authorization resets consecutive wrong attempts. Lockout and counters survive application restarts and apply across transactions. Lockout has no automatic expiry; a trusted operator must reset `device_states.failed_attempts` while retaining `last_counter`. No public unlock endpoint is exposed.
 
-## Existing challenge/approval flow
+## Explicit simulator challenge/approval flow
+
+This legacy flow exists only with the `dev,simulator` profiles. It uses `FakeBankGateway` directly, returns `mode: simulator`, persists `SIMULATED` rows without physical verification, and cannot feed the live execution claim. The normal `auth` profile does not expose these routes. `GET /api/health` remains available in either profile.
 
 POST /api/challenges: {"deviceId":"pico-demo-1","amountMinor":2500,"destination":"demo-harbor","glyphs":"ABCD"}
 Returns challengeId, expiresAt (Unix seconds), intent and signingText. Challenge expires in 120 seconds.

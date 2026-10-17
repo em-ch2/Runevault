@@ -15,8 +15,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class DeviceApi {
  private final DeviceAuthorizationService service;
  private final TransactionRepository transactions;
- public DeviceApi(DeviceAuthorizationService service, TransactionRepository transactions) {
-  this.service = service; this.transactions = transactions;
+ private final DeviceStateRepository devices;
+ public DeviceApi(DeviceAuthorizationService service, TransactionRepository transactions, DeviceStateRepository devices) {
+  this.service = service; this.transactions = transactions; this.devices = devices;
  }
 
  public record Authorization(
@@ -48,6 +49,8 @@ public class DeviceApi {
    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Transaction not found"));
   if (!device.equals(transaction.getDeviceId()))
    throw new ResponseStatusException(HttpStatus.CONFLICT, "Transaction assigned to another device");
+  if (devices.findById(device).map(DeviceState::isRevoked).orElse(false))
+   throw new ResponseStatusException(HttpStatus.LOCKED, "Device revoked");
   if (transaction.getStatus() != Transaction.Status.PENDING)
    throw new ResponseStatusException(HttpStatus.CONFLICT, "Transaction already authorized");
   if (transaction.getExpiresAt() == null || !transaction.getExpiresAt().isAfter(Instant.now()))
