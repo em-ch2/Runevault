@@ -19,10 +19,11 @@ class TransactionApiTest {
  private final TransactionService transactionService = spy(new TransactionService(repository));
  private final AtomicInteger transfers = new AtomicInteger();
  private final FakeBankGateway bank = new FakeBankGateway();
+ private final AuditEventRepository auditEvents = mock(AuditEventRepository.class);
  private final TransactionApi api = new TransactionApi("test-key", "local", (id, amount, currency, destination) -> {
   transfers.incrementAndGet();
   return bank.transfer(id, amount, currency, destination);
- }, repository, transactionService);
+ }, repository, transactionService, new TransactionPolicy(100000000, java.util.List.of("harbor"), 5), auditEvents);
  private TransactionApi.Challenge challenge() {
   return api.challenge(new TransactionApi.Intent("pico-demo-1",2500,"harbor","ABCD"));
  }
@@ -68,7 +69,8 @@ class TransactionApiTest {
   assertEquals(String.join("\n", "runevault-v1", c.challengeId(), "pico-demo-1", "2500", "USD", "harbor", "ABCD", Long.toString(c.expiresAt())), c.signingText());
  }
  @Test void productionModeRefused() {
-  assertThrows(IllegalStateException.class,() -> new TransactionApi("key","production", new FakeBankGateway(), repository, transactionService));
+  assertThrows(IllegalStateException.class,() -> new TransactionApi("key","production", new FakeBankGateway(), repository, transactionService,
+   new TransactionPolicy(100000000, java.util.List.of("harbor"), 5), auditEvents));
  }
  @Test void failedSaveLeavesChallengeAvailableForRetry() throws Exception {
   var c = challenge();

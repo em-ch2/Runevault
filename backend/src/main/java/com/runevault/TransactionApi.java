@@ -27,8 +27,10 @@ public class TransactionApi {
  private final BankGateway bankGateway;
  private final TransactionRepository transactions;
  private final TransactionService transactionService;
+ private final TransactionPolicy policy;
+ private final AuditEventRepository auditEvents;
  private final Map<String, Challenge> pending = new ConcurrentHashMap<>();
- public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode, BankGateway bankGateway, TransactionRepository transactions, TransactionService transactionService) {
+ public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode, BankGateway bankGateway, TransactionRepository transactions, TransactionService transactionService, TransactionPolicy policy, AuditEventRepository auditEvents) {
   if (!"local".equals(mode)) {
     throw new IllegalStateException(
       "Production security is not implemented."
@@ -39,6 +41,8 @@ public class TransactionApi {
   this.bankGateway = bankGateway;
   this.transactions = transactions;
   this.transactionService = transactionService;
+  this.policy = policy;
+  this.auditEvents = auditEvents;
  }
 
  public record Intent(@NotNull @Pattern(regexp="pico-demo-1") String deviceId,
@@ -47,8 +51,18 @@ public class TransactionApi {
   @NotNull @Pattern(regexp="[A-D]{1,16}") String glyphs) {}
  public record Challenge(String challengeId, long expiresAt, Intent intent, String signingText) {}
  public record Approval(@NotNull String challengeId, @NotNull @Pattern(regexp="[0-9a-f]{64}") String signature) {}
+ private void requirePolicy(long amount, String destination, String device, String transactionId, AuditEvent.Type type) {
+  AuditEvent.Reason reason = !policy.allowsAmount(amount) ? AuditEvent.Reason.AMOUNT_LIMIT_EXCEEDED
+   : !policy.allowsDestination(destination) ? AuditEvent.Reason.DESTINATION_NOT_ALLOWED : null;
+  if (reason != null) {
+   auditEvents.save(new AuditEvent(type, device, transactionId, AuditEvent.Outcome.REJECTED, reason));
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+    reason == AuditEvent.Reason.AMOUNT_LIMIT_EXCEEDED ? "Amount exceeds configured limit" : "Destination is not allowed");
+  }
+ }
  @GetMapping("/health") public Map<String,String> health() { return Map.of("status","ok","mode","simulation"); }
  @PostMapping("/challenges") public synchronized Challenge challenge(@Valid @RequestBody Intent intent) {
+  requirePolicy(intent.amountMinor(), intent.destination(), intent.deviceId(), null, AuditEvent.Type.TRANSACTION_CREATION);
   long now = Instant.now().getEpochSecond();
   pending.entrySet().removeIf(e -> e.getValue().expiresAt() <= now);
   if (pending.size() >= 1000) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
@@ -65,6 +79,7 @@ public class TransactionApi {
   Mac mac = Mac.getInstance("HmacSHA256");
   mac.init(new SecretKeySpec(secret,"HmacSHA256"));
   if (!MessageDigest.isEqual(mac.doFinal(c.signingText().getBytes(StandardCharsets.UTF_8)), HexFormat.of().parseHex(approval.signature()))) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid signature");
+  requirePolicy(c.intent().amountMinor(), c.intent().destination(), c.intent().deviceId(), c.challengeId(), AuditEvent.Type.DEVICE_AUTHORIZATION);
   // Save before consuming the challenge or transferring, so a failed write can be retried.
   transactions.saveAndFlush(new Transaction(c.challengeId(), c.intent().amountMinor(), c.intent().destination()));
   if (!pending.remove(c.challengeId(), c)) throw new ResponseStatusException(HttpStatus.CONFLICT,"Already consumed");

@@ -17,7 +17,7 @@ public class DeviceState {
  public DeviceState(String deviceId) { this.deviceId = deviceId; }
  public long getLastCounter() { return lastCounter; }
  public int getFailedAttempts() { return failedAttempts; }
- public boolean isLocked() { return failedAttempts >= 5; }
+ public boolean isLocked(int maxAttempts) { return failedAttempts >= maxAttempts; }
  public void consumeCounter(long counter) { lastCounter = counter; }
  public void wrongGlyphs() { failedAttempts++; }
  public void resetAttempts() { failedAttempts = 0; }

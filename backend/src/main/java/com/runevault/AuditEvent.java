@@ -25,19 +25,23 @@ public class AuditEvent {
  @Column(nullable = false, updatable = false, length = 40)
  private Reason reason;
 
- public enum Type { DEVICE_AUTHORIZATION }
+ public enum Type { DEVICE_AUTHORIZATION, TRANSACTION_CREATION }
  public enum Outcome { APPROVED, REJECTED }
  public enum Reason {
   APPROVED, UNKNOWN_DEVICE, INVALID_SIGNATURE, NO_PENDING_DEVICE_TRANSACTION,
   COUNTER_REPLAY, TRANSACTION_EXPIRED, TRANSACTION_MISMATCH,
-  INCORRECT_GLYPHS, DEVICE_LOCKED
+  INCORRECT_GLYPHS, DEVICE_LOCKED, AMOUNT_LIMIT_EXCEEDED, DESTINATION_NOT_ALLOWED
  }
 
  protected AuditEvent() {}
 
  public AuditEvent(String deviceId, String transactionId, Outcome outcome, Reason reason) {
+  this(Type.DEVICE_AUTHORIZATION, deviceId, transactionId, outcome, reason);
+ }
+
+ public AuditEvent(Type type, String deviceId, String transactionId, Outcome outcome, Reason reason) {
   timestamp = Instant.now();
-  eventType = Type.DEVICE_AUTHORIZATION;
+  eventType = type;
   this.deviceId = deviceId;
   this.transactionId = transactionId;
   this.outcome = outcome;

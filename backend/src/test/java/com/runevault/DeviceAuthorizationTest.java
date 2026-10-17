@@ -225,7 +225,7 @@ class DeviceAuthorizationTest {
     .andExpect(status().is(counter == 5 ? 423 : 403));
   }
   var device = devices.findById("slab-01").orElseThrow();
-  assertTrue(device.isLocked());
+  assertTrue(device.isLocked(5));
   assertEquals(5, device.getLastCounter());
   authorize(signed(other, 6, 50000, "acct-999", GLYPHS)).andExpect(status().is(423));
   assertEquals(Transaction.Status.PENDING, transactions.findById(id).orElseThrow().getStatus());
