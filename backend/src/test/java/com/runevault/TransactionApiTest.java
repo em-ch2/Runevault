@@ -2,6 +2,7 @@ package com.runevault;
 
 import com.runevault.banking.FakeBankGateway;
 import com.runevault.banking.BankReceipt;
+import com.runevault.transactions.TransactionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 import javax.crypto.Mac;
@@ -15,12 +16,13 @@ import org.mockito.ArgumentCaptor;
 
 class TransactionApiTest {
  private final TransactionRepository repository = mock(TransactionRepository.class);
+ private final TransactionService transactionService = spy(new TransactionService());
  private final AtomicInteger transfers = new AtomicInteger();
  private final FakeBankGateway bank = new FakeBankGateway();
  private final TransactionApi api = new TransactionApi("test-key", "local", (id, amount, currency, destination) -> {
   transfers.incrementAndGet();
   return bank.transfer(id, amount, currency, destination);
- }, repository);
+ }, repository, transactionService);
  private TransactionApi.Challenge challenge() {
   return api.challenge(new TransactionApi.Intent("pico-demo-1",2500,"harbor","ABCD"));
  }
@@ -46,6 +48,10 @@ class TransactionApiTest {
   assertEquals(2500, saved.getValue().getAmountMinor());
   assertEquals("harbor", saved.getValue().getDestination());
   assertEquals(Transaction.Status.SIMULATED, saved.getValue().getStatus());
+  var order = inOrder(repository, transactionService);
+  order.verify(repository).saveAndFlush(any(Transaction.class));
+  order.verify(transactionService).createVerifiedTransaction(c.challengeId(), "pico-demo-1", 2500, "harbor", "ABCD");
+  verifyNoMoreInteractions(transactionService);
  }
  @Test void tamperedAmountFailsWithoutConsumingChallenge() throws Exception {
   var c = challenge();
@@ -53,7 +59,7 @@ class TransactionApiTest {
   var error = assertThrows(ResponseStatusException.class,() -> api.approve(bad));
   assertEquals(401,error.getStatusCode().value());
   assertEquals(0,transfers.get());
-  verifyNoInteractions(repository);
+  verifyNoInteractions(repository, transactionService);
   assertEquals(true,api.approve(new TransactionApi.Approval(c.challengeId(),sign(c.signingText()))).get("signatureVerified"));
   assertEquals(1,transfers.get());
  }
@@ -62,7 +68,7 @@ class TransactionApiTest {
   assertEquals(String.join("\n", "runevault-v1", c.challengeId(), "pico-demo-1", "2500", "USD", "harbor", "ABCD", Long.toString(c.expiresAt())), c.signingText());
  }
  @Test void productionModeRefused() {
-  assertThrows(IllegalStateException.class,() -> new TransactionApi("key","production", new FakeBankGateway(), repository));
+  assertThrows(IllegalStateException.class,() -> new TransactionApi("key","production", new FakeBankGateway(), repository, transactionService));
  }
  @Test void failedSaveLeavesChallengeAvailableForRetry() throws Exception {
   var c = challenge();
@@ -71,6 +77,7 @@ class TransactionApiTest {
    .thenThrow(new org.springframework.dao.DataAccessResourceFailureException("Unavailable"))
    .thenAnswer(invocation -> invocation.getArgument(0));
   assertThrows(org.springframework.dao.DataAccessResourceFailureException.class, () -> api.approve(approval));
+  verifyNoInteractions(transactionService);
   assertEquals(0, transfers.get());
   assertEquals("SIMULATED", api.approve(approval).get("status"));
   assertEquals(1, transfers.get());

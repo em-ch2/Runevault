@@ -16,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.runevault.banking.BankGateway;
 import com.runevault.banking.BankReceipt;
+import com.runevault.transactions.TransactionService;
+import com.runevault.transactions.VerifiedTransaction;
 
 
 @RestController
@@ -24,8 +26,9 @@ public class TransactionApi {
  private final byte[] secret;
  private final BankGateway bankGateway;
  private final TransactionRepository transactions;
+ private final TransactionService transactionService;
  private final Map<String, Challenge> pending = new ConcurrentHashMap<>();
- public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode, BankGateway bankGateway, TransactionRepository transactions) {
+ public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode, BankGateway bankGateway, TransactionRepository transactions, TransactionService transactionService) {
   if (!"local".equals(mode)) {
     throw new IllegalStateException(
       "Production security is not implemented."
@@ -35,7 +38,9 @@ public class TransactionApi {
   this.secret = secret.getBytes(StandardCharsets.UTF_8);
   this.bankGateway = bankGateway;
   this.transactions = transactions;
+  this.transactionService = transactionService;
  }
+
  public record Intent(@NotNull @Pattern(regexp="pico-demo-1") String deviceId,
   @Min(1) @Max(100000000) long amountMinor,
   @NotNull @Pattern(regexp="[A-Za-z0-9_-]{1,64}") String destination,
@@ -63,7 +68,8 @@ public class TransactionApi {
   // Save before consuming the challenge or transferring, so a failed write can be retried.
   transactions.saveAndFlush(new Transaction(c.challengeId(), c.intent().amountMinor(), c.intent().destination()));
   if (!pending.remove(c.challengeId(), c)) throw new ResponseStatusException(HttpStatus.CONFLICT,"Already consumed");
-  BankReceipt receipt = bankGateway.transfer(c.challengeId(), c.intent().amountMinor(), "USD", c.intent().destination());
+  VerifiedTransaction verified = transactionService.createVerifiedTransaction(c.challengeId(), c.intent().deviceId(), c.intent().amountMinor(), c.intent().destination(), c.intent().glyphs());
+  BankReceipt receipt = bankGateway.transfer(verified.id(), verified.amountMinor(), verified.currency(), verified.destination());
 
   return Map.of(
     "transactionId", c.challengeId(),

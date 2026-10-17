@@ -5,7 +5,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class TransactionService {
-    public Transaction createVerifiedTransaction(
+    public VerifiedTransaction createVerifiedTransaction(
         String challengeId,
         String deviceId,
         long amountMinor,
@@ -14,7 +14,7 @@ public class TransactionService {
     ) {
         Instant now = Instant.now();
 
-        return new Transaction(
+        return new VerifiedTransaction(
             challengeId,
             deviceId,
             amountMinor,

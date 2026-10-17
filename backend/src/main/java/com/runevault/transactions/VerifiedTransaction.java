@@ -2,7 +2,7 @@ package com.runevault.transactions;
 
 import java.time.Instant;
 
-public record Transaction(
+public record VerifiedTransaction(
     String id,
     String deviceId,
     long amountMinor,
