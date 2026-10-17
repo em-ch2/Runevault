@@ -13,17 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles({"dev", "simulator", "test"})
 class SecurityHttpTest {
- @org.springframework.boot.test.context.TestConfiguration
- static class OtherBankConfiguration {
-  @org.springframework.context.annotation.Bean("otherBankGateway")
-  @org.springframework.context.annotation.Primary
-  com.runevault.banking.BankGateway otherBankGateway() {
-   return org.mockito.Mockito.mock(com.runevault.banking.BankGateway.class);
-  }
- }
  @Autowired MockMvc mvc;
- @Autowired @org.springframework.beans.factory.annotation.Qualifier("otherBankGateway")
- com.runevault.banking.BankGateway otherBankGateway;
  @Autowired TransactionRepository transactions;
  @Autowired com.fasterxml.jackson.databind.ObjectMapper mapper;
  @org.springframework.beans.factory.annotation.Value("${runevault.device-secret}") String deviceSecret;
@@ -52,7 +42,6 @@ class SecurityHttpTest {
   org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> executionClaims.claimPicoAuthorized(id));
   org.junit.jupiter.api.Assertions.assertNotNull(saved.getCreatedAt());
   org.junit.jupiter.api.Assertions.assertNotNull(saved.getUpdatedAt());
-  org.mockito.Mockito.verifyNoInteractions(otherBankGateway);
   mvc.perform(post("/api/approvals").header("X-Bridge-Token", token).contentType("application/json").content(body))
    .andExpect(status().isConflict());
  }

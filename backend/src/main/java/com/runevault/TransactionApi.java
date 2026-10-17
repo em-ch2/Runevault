@@ -15,7 +15,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.runevault.banking.FakeBankGateway;
+import com.runevault.banking.BankGateway;
 import com.runevault.banking.BankReceipt;
 
 
@@ -24,12 +24,12 @@ import com.runevault.banking.BankReceipt;
 @RequestMapping("/api")
 public class TransactionApi {
  private final byte[] secret;
- private final FakeBankGateway bankGateway;
+ private final BankGateway bankGateway;
  private final TransactionRepository transactions;
  private final TransactionPolicy policy;
  private final AuditEventRepository auditEvents;
  private final Map<String, Challenge> pending = new ConcurrentHashMap<>();
- public TransactionApi(@Value("${runevault.device-secret}") String secret, FakeBankGateway bankGateway, TransactionRepository transactions, TransactionPolicy policy, AuditEventRepository auditEvents) {
+ public TransactionApi(@Value("${runevault.device-secret}") String secret, BankGateway bankGateway, TransactionRepository transactions, TransactionPolicy policy, AuditEventRepository auditEvents) {
   this.secret = secret.getBytes(StandardCharsets.UTF_8);
   this.bankGateway = bankGateway;
   this.transactions = transactions;
