@@ -16,7 +16,7 @@ Invoke-RestMethod -Method Get -Uri 'http://localhost:8080/api/admin/audit-events
 ```
 
 Use a non-admin token to confirm the POST returns 403, or omit the token to confirm 401. Revocation events record the JWT subject and fixed `REVOKED_BY_ADMIN` reason; denied pending creation, authorization, and execution claims use fixed reasons without credentials or signatures. There is no reactivation endpoint in this milestone.
-- Default `dev`: health and Pico bridge endpoints available; legacy challenge/approval routes unavailable.
+- Default `dev`: health and Pico bridge endpoints available; legacy challenge/approval routes unavailable. Nessie sandbox credentials and source account are required for normal application startup; the fake bank is limited to `test` or explicit hardware `simulator` profiles.
 - Explicit `dev,simulator` with `NESSIE_ENABLED=false`: replaces Pico approvals with legacy challenge/approval routes and uses only the local fake bank. Responses say `hardware-simulated` and `local-fake`; persisted `SIMULATED` records cannot be physically claimed. Combining simulator with `auth` or enabling Nessie in simulator mode fails startup. Hardware-simulator-to-Nessie is unsupported.
 - `auth`: same bridge gate plus Auth0 JWT validation for dashboard API routes. Admin status requires `admin:platform` permission. Set SPRING_PROFILES_ACTIVE=auth, AUTH0_ISSUER_URI (HTTPS issuer with trailing slash), AUTH0_AUDIENCE, RUNEVAULT_BRIDGE_TOKEN (random 32+ bytes), and RUNEVAULT_DEVICE_SECRET.
 - `prod`: deliberately refuses startup. Persistent replay and execution storage are not ready. Do not bypass this guard to deploy real transfers.

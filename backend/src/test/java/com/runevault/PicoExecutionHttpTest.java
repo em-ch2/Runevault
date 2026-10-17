@@ -29,8 +29,17 @@ class PicoExecutionHttpTest {
  @Autowired MockMvc mvc;
  @Autowired ObjectMapper mapper;
  @Autowired TransactionRepository transactions;
+ @Autowired AuditEventRepository auditEvents;
+ @org.springframework.boot.test.mock.mockito.SpyBean com.runevault.banking.FakeBankGateway fakeBank;
+ @org.springframework.boot.test.mock.mockito.MockBean com.runevault.lore.LoreAuditService lore;
 
  @Test void verifiedPicoApprovalExecutesTransferOnce() throws Exception {
+  org.mockito.Mockito.when(lore.audit(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+   org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString()))
+   .thenReturn(mapper.readTree("""
+    {"lore":{"title":"Safe passage","text":"A voyage."},"risk":{"level":"LOW","reasons":[]},
+     "translation_confidence":0.8,"risk_score":30}
+    """));
   var created = mvc.perform(post("/api/device/transactions").header("X-Bridge-Token", TOKEN)
    .contentType("application/json").content(mapper.writeValueAsString(
     Map.of("device", "slab-01", "amount", 50000, "dest", "acct-999", "glyphs", "0-1-2"))))
@@ -48,14 +57,21 @@ class PicoExecutionHttpTest {
    .andExpect(jsonPath("status").value("VERIFIED"))
    .andExpect(jsonPath("execution.status").value("EXECUTED"))
    .andExpect(jsonPath("execution.receipt.receiptId").value("fake-" + id))
-   // No Gemini key in tests, so the advisory audit fails safely without blocking the transfer.
-   .andExpect(jsonPath("execution.analysis.error").value("Lore unavailable"));
+   .andExpect(jsonPath("execution.analysis.translation_confidence").value(0.8));
   var saved = transactions.findById(id).orElseThrow();
   assertEquals(Transaction.Status.EXECUTED, saved.getStatus());
   assertEquals("fake-" + id, saved.getBankReceiptId());
+  assertEquals(com.runevault.banking.BankReceipt.Outcome.COMPLETED, saved.getBankOutcome());
+  assertEquals(AuditEvent.Reason.GEMINI_APPROVED, saved.getGeminiDecisionReason());
+  assertNotNull(saved.getGeminiDecisionAt());
+  assertEquals(1, auditEvents.findAll().stream()
+   .filter(event -> event.getEventType() == AuditEvent.Type.BANK_OUTCOME
+    && id.equals(event.getTransactionId())).count());
 
   // Replaying the same signed approval is rejected and never transfers again.
   mvc.perform(post("/api/device/authorize").header("X-Bridge-Token", TOKEN).contentType("application/json").content(body))
    .andExpect(status().isConflict());
+  org.mockito.Mockito.verify(fakeBank, org.mockito.Mockito.times(1))
+   .transfer(id, 50000, "USD", "acct-999");
  }
 }

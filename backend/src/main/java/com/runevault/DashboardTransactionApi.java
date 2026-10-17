@@ -28,14 +28,21 @@ public class DashboardTransactionApi {
 
  public record TransactionView(String transactionId, long amountMinor, String destination,
    Transaction.Status status, Instant createdAt, Instant verifiedAt, String requesterSubject,
-   String bankReceiptId, String bankStatus, String lore, String riskLevel) {
+   String bankReceiptId, String bankStatus, String bankProvider,
+   com.runevault.banking.BankReceipt.Outcome bankOutcome,
+   com.runevault.banking.BankReceipt.Reason bankReason,
+   Instant bankSubmittedAt, Instant bankOutcomeAt, String lore, String riskLevel,
+   AuditEvent.Reason geminiDecisionReason, Instant geminiDecisionAt) {
   private static final ObjectMapper JSON = new ObjectMapper();
 
   TransactionView(Transaction transaction) {
    this(transaction.getTransactionId(), transaction.getAmountMinor(), transaction.getDestination(),
     transaction.getStatus(), transaction.getCreatedAt(), transaction.getVerifiedAt(), transaction.getRequesterSubject(),
-    transaction.getBankReceiptId(), transaction.getBankStatus(),
-    audit(transaction, "lore", "text"), audit(transaction, "risk", "level"));
+    transaction.getBankReceiptId(), transaction.getBankStatus(), transaction.getBankProvider(),
+    transaction.getBankOutcome(), transaction.getBankReason(),
+    transaction.getBankSubmittedAt(), transaction.getBankOutcomeAt(),
+    audit(transaction, "lore", "text"), audit(transaction, "risk", "level"),
+    transaction.getGeminiDecisionReason(), transaction.getGeminiDecisionAt());
   }
 
   private static String audit(Transaction transaction, String section, String field) {

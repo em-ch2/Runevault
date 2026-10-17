@@ -5,7 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import com.runevault.transactions.ExecutionService;
+import com.runevault.transactions.TransactionProcessor;
 import org.springframework.beans.factory.annotation.Value;
 import java.time.Instant;
 import org.springframework.http.HttpStatus;
@@ -19,12 +19,12 @@ public class DeviceApi {
  private final DeviceAuthorizationService service;
  private final TransactionRepository transactions;
  private final DeviceStateRepository devices;
- private final ExecutionService execution;
+ private final TransactionProcessor processor;
  private final boolean autoExecute;
  public DeviceApi(DeviceAuthorizationService service, TransactionRepository transactions, DeviceStateRepository devices,
-   ExecutionService execution, @Value("${runevault.auto-execute:true}") boolean autoExecute) {
+   TransactionProcessor processor, @Value("${runevault.auto-execute:true}") boolean autoExecute) {
   this.service = service; this.transactions = transactions; this.devices = devices;
-  this.execution = execution; this.autoExecute = autoExecute;
+  this.processor = processor; this.autoExecute = autoExecute;
  }
 
  public record Authorization(
@@ -74,7 +74,7 @@ public class DeviceApi {
   // authorize() has committed, so the execution claim sees the VERIFIED row.
   Map<String, Object> body = new LinkedHashMap<>(response.getBody());
   try {
-   body.put("execution", execution.execute(request.txId()));
+   body.put("execution", processor.process(request.txId()));
   } catch (IllegalStateException e) {
    body.put("execution", Map.of("status", "INELIGIBLE"));
   }

@@ -77,17 +77,20 @@
         <div><dt>Created</dt><dd>{{ time(transaction.createdAt) }}</dd></div>
         @if (transaction.verifiedAt) { <div><dt>Verified</dt><dd>{{ time(transaction.verifiedAt) }}</dd></div> }
       </dl>
-      <p class="status" [class.status-wait]="transaction.status === 'EXECUTING' || (transaction.status === 'PENDING' && !approvalExpired(transaction))"
-        [class.status-bad]="transaction.status === 'FAILED' || (transaction.status === 'PENDING' && approvalExpired(transaction))"
-        [class.status-good]="transaction.status === 'VERIFIED' || transaction.status === 'EXECUTED'"
+      <p class="status" [class.status-wait]="(transaction.status === 'VERIFIED' && (!transaction.geminiDecisionReason || transaction.geminiDecisionReason === 'GEMINI_APPROVED')) || transaction.status === 'EXECUTING' || transaction.status === 'BANK_PENDING' || (transaction.status === 'PENDING' && !approvalExpired(transaction))"
+        [class.status-bad]="transaction.status === 'FAILED' || transaction.status === 'OUTCOME_UNKNOWN' || (transaction.status === 'VERIFIED' && transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED') || (transaction.status === 'PENDING' && approvalExpired(transaction))"
+        [class.status-good]="transaction.status === 'EXECUTED'"
         role="status">
-        {{ transaction.status === 'EXECUTED' ? 'EXECUTED · Funds transferred after physical approval'
-          : transaction.status === 'FAILED' ? 'FAILED · Bank rejected the transfer (' + transaction.bankStatus + ')'
-          : transaction.status === 'VERIFIED' ? 'VERIFIED · Physical approval verified'
-          : transaction.status === 'EXECUTING' ? 'EXECUTING · Execution claimed; processing pending'
-          : transaction.status === 'SIMULATED' ? 'SIMULATED · Legacy simulation; physical approval unverified'
-          : approvalExpired(transaction) ? 'PENDING · approval window expired' : 'PENDING · awaiting physical approval' }}
+        {{ transaction.status }} · {{ liveStatus(transaction) }}
       </p>
+      @if (transaction.bankProvider) {
+        <p class="muted small">Provider {{ transaction.bankProvider }} · {{ transaction.bankStatus }}
+          @if (transaction.bankOutcomeAt) { · updated {{ time(transaction.bankOutcomeAt) }} }
+        </p>
+      }
+      @if (transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED') {
+        <p class="muted small">Gemini policy: {{ transaction.geminiDecisionReason }}</p>
+      }
       @if (transaction.bankReceiptId) {
         <p class="muted small">Bank receipt <span class="mono">{{ transaction.bankReceiptId }}</span> · {{ transaction.bankStatus }}</p>
       }
@@ -95,7 +98,7 @@
         <blockquote class="lore-text">{{ transaction.lore }}</blockquote>
         @if (transaction.riskLevel) {
           <p class="muted small">
-            Gemini risk note (advisory only):
+            Gemini risk assessment:
             <span [class]="'risk risk-' + transaction.riskLevel.toLowerCase()">{{ transaction.riskLevel }}</span>
           </p>
         }
@@ -112,7 +115,7 @@
     <button class="btn btn-ghost" type="button" (click)="refresh()" [disabled]="loadingRecords()">
       {{ loadingRecords() ? 'Loading…' : 'Refresh status' }}
     </button>
-    <p class="muted small">Pending transactions refresh every three seconds. VERIFIED records physical approval; EXECUTING means processing was claimed. Neither confirms a funds transfer.</p>
+    <p class="muted small">Pending, physically verified, executing, and bank-pending transactions refresh every three seconds. Physical approval and a bank receipt alone do not confirm completion.</p>
   </section>
 
   <section class="slab activity live-list" aria-labelledby="live-list-title">
@@ -124,7 +127,7 @@
         @for (transaction of records(); track transaction.transactionId) {
           <li>
             <button class="btn-link mono" type="button" (click)="select(transaction.transactionId)">{{ transaction.transactionId }}</button>
-            <span> · {{ transaction.status === 'EXECUTED' ? 'Funds transferred' : transaction.status === 'FAILED' ? 'Bank rejected' : transaction.status === 'EXECUTING' ? 'Execution claimed; processing pending' : transaction.status === 'VERIFIED' ? 'Physical approval verified' : transaction.status === 'SIMULATED' ? 'Legacy simulation' : 'Pending' }} · {{ money(transaction.amountMinor) }} · {{ transaction.destination }}</span>
+            <span> · {{ liveStatus(transaction) }} · {{ money(transaction.amountMinor) }} · {{ transaction.destination }}</span>
           </li>
         }
       </ul>

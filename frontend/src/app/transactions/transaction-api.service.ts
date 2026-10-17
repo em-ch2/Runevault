@@ -21,14 +21,21 @@ export interface TransactionRecord {
   transactionId: string;
   amountMinor: number;
   destination: string;
-  status: 'PENDING' | 'SIMULATED' | 'VERIFIED' | 'EXECUTING' | 'EXECUTED' | 'FAILED';
+  status: 'PENDING' | 'SIMULATED' | 'VERIFIED' | 'EXECUTING' | 'BANK_PENDING' | 'EXECUTED' | 'FAILED' | 'OUTCOME_UNKNOWN';
   createdAt: string;
   verifiedAt: string | null;
   requesterSubject: string | null;
   bankReceiptId?: string | null;
   bankStatus?: string | null;
+  bankProvider?: string | null;
+  bankOutcome?: 'ACCEPTED_PENDING' | 'COMPLETED' | 'FAILED' | 'UNKNOWN' | null;
+  bankReason?: string | null;
+  bankSubmittedAt?: string | null;
+  bankOutcomeAt?: string | null;
   lore?: string | null;
   riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+  geminiDecisionReason?: 'GEMINI_APPROVED' | 'GEMINI_UNAVAILABLE' | 'GEMINI_INVALID_RESPONSE' | 'GEMINI_LOW_CONFIDENCE' | 'GEMINI_HIGH_RISK' | null;
+  geminiDecisionAt?: string | null;
 }
 
 interface TransactionPage {
