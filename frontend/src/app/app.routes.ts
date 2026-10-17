@@ -4,9 +4,9 @@ import { Login } from './auth/login';
 import { Signup } from './auth/signup';
 
 export const routes: Routes = [
-  { path: 'login', component: Login, canActivate: [signedOutGuard], title: 'Sign in · Poneglyph' },
-  { path: 'signup', component: Signup, canActivate: [signedOutGuard], title: 'Create account · Poneglyph' },
+  { path: 'login', component: Login, canActivate: [signedOutGuard], title: 'Sign in · Runevault' },
+  { path: 'signup', component: Signup, canActivate: [signedOutGuard], title: 'Create account · Runevault' },
   { path: '', loadComponent: () => import('./dashboard/dashboard').then((module) => module.Dashboard),
-    canActivate: [signedInGuard], title: 'Poneglyph' },
+    canActivate: [signedInGuard], title: 'Runevault' },
   { path: '**', redirectTo: '' },
 ];

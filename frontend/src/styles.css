@@ -155,9 +155,6 @@ code, .mono { font-family: var(--mono); font-size: 0.92em; }
 .mock-bar .btn { padding: 0.3rem 0.8rem; font-size: 0.9rem; }
 .mode-switch { display: flex; gap: 0.5rem; padding: 0.75rem 24px 0; }
 .mode-switch [aria-pressed="true"] { border-color: var(--gold); color: var(--gold); }
-.live-grid { grid-template-areas: 'pending status' 'list list'; }
-.live-grid > :nth-child(2) { grid-area: status; }
-.live-list { grid-area: list; }
 .live-form { margin-top: 1rem; }
 .live-list .log { max-height: 20rem; }
 
@@ -174,6 +171,11 @@ code, .mono { font-family: var(--mono); font-size: 0.92em; }
 .lore { grid-area: lore; }
 .receipt { grid-area: receipt; }
 .activity { grid-area: activity; }
+
+/* Keep the live layout after the shared grid and panel rules so its areas win. */
+.live-grid { grid-template-areas: 'pending status' 'list list'; }
+.live-grid > :nth-child(2) { grid-area: status; }
+.live-grid > .live-list { grid-area: list; }
 
 .empty { color: var(--ink-muted); margin: 0.5rem 0; }
 
