@@ -41,7 +41,7 @@ class RateLimitHttpTest {
  @Autowired MockMvc mvc;
  @Autowired ObjectMapper mapper;
  @MockBean JwtDecoder decoder;
- @MockBean com.runevault.lore.GeminiGlyphGenerator glyphGenerator;
+ @MockBean com.runevault.ApprovalCodeGenerator glyphGenerator;
 
  private void token(String value, String subject, String... permissions) {
   when(decoder.decode(value)).thenReturn(Jwt.withTokenValue(value).header("alg", "RS256")

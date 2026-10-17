@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.runevault.banking.BankReceipt;
 import com.runevault.events.PipelineEventWriter;
 import com.runevault.events.PipelineEvents;
-import com.runevault.lore.GeminiGlyphGenerator;
+import com.runevault.ApprovalCodeGenerator;
 import com.runevault.lore.LoreAuditService;
 import com.runevault.ws.TransferEventPublisher;
 import com.runevault.ws.TransferEventPublisher.ErrorState;
@@ -61,7 +61,7 @@ class PipelineEventsHttpTest {
  @Autowired PipelineEvents events;
  @MockBean JwtDecoder jwtDecoder;
  @MockBean LoreAuditService lore;
- @MockBean GeminiGlyphGenerator glyphs;
+ @MockBean ApprovalCodeGenerator glyphs;
  @MockBean TransferEventPublisher publisher;
  @SpyBean PipelineEventWriter writer;
  @SpyBean com.runevault.banking.FakeBankGateway bank;

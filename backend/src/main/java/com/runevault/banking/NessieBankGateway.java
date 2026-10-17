@@ -92,17 +92,17 @@ public class NessieBankGateway implements BankGateway {
                         BankReceipt.Reason.PRE_SUBMISSION_FAILURE, null);
             }
 
+            // prod-api.nessieisreal.com rejects extra fields ("medium", "payee_id") with HTTP 400,
+            // so the payee is carried in the description instead.
             body = mapper.createObjectNode();
             body.put("status", "pending");
-            body.put("medium", "balance");
-            body.put("payee_id", payeeId);
             if (amount.stripTrailingZeros().scale() <= 0) {
                 body.put("amount", amount.longValueExact()); // whole dollars as an integer
             } else {
                 body.put("amount", amount);
             }
             body.put("transaction_date", LocalDate.now().toString());
-            body.put("description", "runevault:" + transactionId);
+            body.put("description", description(transactionId, payeeId));
 
         } catch (NessieException e) {
             log.warn("Nessie preflight rejected transaction {} with HTTP {}", transactionId, e.status);
@@ -132,7 +132,7 @@ public class NessieBankGateway implements BankGateway {
             if (created.hasNonNull("payee_id") && !payeeId.equals(created.path("payee_id").asText()))
                 return unknown(transactionId, amountMinor, currency, destination,
                         "PAYEE_MISMATCH", BankReceipt.Reason.MALFORMED_RESPONSE, submittedAt);
-            String receiptId = created.path("_id").isTextual() ? created.path("_id").asText() : null;
+            String receiptId = transferId(created);
             if (receiptId != null && receiptId.isBlank()) receiptId = null;
             if (receiptId != null && (receiptId.length() > 64 || !receiptId.matches("[A-Za-z0-9_-]+")))
                 return unknown(transactionId, amountMinor, currency, destination,
@@ -184,9 +184,13 @@ public class NessieBankGateway implements BankGateway {
             return Optional.empty();
         try {
             JsonNode detail = get("/transfers/" + previous.receiptId());
-            if (!detail.isObject() || !previous.receiptId().equals(detail.path("_id").asText())
-                    || !sourceAccountId.equals(detail.path("payer_id").asText())
-                    || !previous.destination().equals(detail.path("payee_id").asText())
+            // Classic Nessie returns payer/payee ids; this provider returns neither, only our description.
+            boolean accountsMatch = detail.has("payer_id") || detail.has("payee_id")
+                    ? sourceAccountId.equals(detail.path("payer_id").asText())
+                        && previous.destination().equals(detail.path("payee_id").asText())
+                    : description(previous.transactionId(), previous.destination())
+                        .equals(detail.path("description").asText());
+            if (!detail.isObject() || !previous.receiptId().equals(transferId(detail)) || !accountsMatch
                     || !detail.path("amount").isNumber()
                     || detail.path("amount").decimalValue().compareTo(BigDecimal.valueOf(previous.amountMinor(), 2)) != 0)
                 return Optional.empty();
@@ -260,6 +264,16 @@ public class NessieBankGateway implements BankGateway {
     private JsonNode unwrap(JsonNode root) {
         if (root == null || !root.isObject()) throw new IllegalArgumentException("Malformed Nessie response");
         return root.has("objectCreated") ? root.get("objectCreated") : root;
+    }
+
+    // Create responses carry "_id"; transfer lookups on prod-api.nessieisreal.com carry "id".
+    private static String transferId(JsonNode transfer) {
+        JsonNode id = transfer.hasNonNull("_id") ? transfer.get("_id") : transfer.path("id");
+        return id.isTextual() ? id.asText() : null;
+    }
+
+    private static String description(String transactionId, String payeeId) {
+        return "runevault:" + transactionId + " to " + payeeId;
     }
 
     private JsonNode get(String path) throws IOException, InterruptedException {

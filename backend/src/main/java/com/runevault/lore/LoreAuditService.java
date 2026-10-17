@@ -12,9 +12,9 @@ public class LoreAuditService {
 
  // Matches the dashboard's glyph artwork (frontend/src/app/dashboard/glyph.ts).
  public static final String DICTIONARY = """
-   0 = Dawn (a sun on the horizon: freedom, new beginnings, the dawn of the world)
-   1 = Will (a spiral fruit: unique dreams, individuality, inherited will, the power to change the world)
-   2 = Freedom (three joined spirals: the will of the seas, living without limits)
+   0 = Will (a spiral fruit: unique dreams, individuality, inherited will, the power to change the world)
+   1 = Crew (a horizon-crossed circle over crossbones: friendship, nakama, the bonds that carry you forward)
+   2 = Sea (a curling wave: the ocean, adventure, the Grand Line)
    """;
 
  private static final String SYSTEM = """

@@ -57,8 +57,10 @@ class NessieBankGatewayOutcomeTest {
   ArgumentCaptor<HttpRequest> requests = ArgumentCaptor.forClass(HttpRequest.class);
   verify(http, times(3)).send(requests.capture(), any(HttpResponse.BodyHandler.class));
   var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(body(requests.getAllValues().get(1)));
-  assertEquals(DEST, json.path("payee_id").asText());
-  assertEquals("balance", json.path("medium").asText());
+  // The provider rejects unknown fields with HTTP 400, so the payee travels in the description.
+  assertFalse(json.has("payee_id"));
+  assertFalse(json.has("medium"));
+  assertEquals("runevault:tx-1 to " + DEST, json.path("description").asText());
   assertEquals("500.01", json.path("amount").decimalValue().toPlainString());
  }
 
@@ -188,5 +190,21 @@ class NessieBankGatewayOutcomeTest {
    "{\"_id\":\"receipt-1\",\"payer_id\":\"" + SOURCE + "\",\"payee_id\":\"other\",\"amount\":500,\"status\":\"completed\"}");
   when(mismatched.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(mismatchedResponse);
   assertTrue(gateway(mismatched).lookup(prior).isEmpty());
+ }
+
+ @Test void lookupMatchesProviderTransfersWithoutAccountFieldsByDescription() throws Exception {
+  var prior = new BankReceipt("receipt-1", "tx-lookup", "nessie", "pending", 50000, "USD", DEST,
+   BankReceipt.Outcome.ACCEPTED_PENDING, BankReceipt.Reason.ACCEPTED_PENDING, java.time.Instant.now(), null);
+  HttpClient matching = mock(HttpClient.class);
+  var matchingResponse = response(200,
+   "{\"id\":\"receipt-1\",\"amount\":500,\"status\":\"completed\",\"description\":\"runevault:tx-lookup to " + DEST + "\"}");
+  when(matching.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(matchingResponse);
+  assertEquals(BankReceipt.Outcome.COMPLETED, gateway(matching).lookup(prior).orElseThrow().outcome());
+
+  HttpClient otherTransfer = mock(HttpClient.class);
+  var otherResponse = response(200,
+   "{\"id\":\"receipt-1\",\"amount\":500,\"status\":\"completed\",\"description\":\"runevault:tx-other to " + DEST + "\"}");
+  when(otherTransfer.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(otherResponse);
+  assertTrue(gateway(otherTransfer).lookup(prior).isEmpty());
  }
 }

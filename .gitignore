@@ -13,3 +13,6 @@ __pycache__/
 *.log
 .idea/
 Microsoft/Windows/PowerShell/ModuleAnalysisCache
+
+# Local fake-Pico counter
+bridge/.fake-pico-counter

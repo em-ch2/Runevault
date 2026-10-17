@@ -129,7 +129,7 @@
               <div><dt>Receipt</dt><dd class="mono">{{ transaction.bankReceiptId ?? 'None issued' }}</dd></div>
               <div><dt>Submitted</dt><dd>{{ transaction.bankSubmittedAt ? time(transaction.bankSubmittedAt) : 'Not recorded' }}</dd></div>
               <div><dt>Outcome recorded</dt><dd>{{ transaction.bankOutcomeAt ? time(transaction.bankOutcomeAt) : 'Not recorded' }}</dd></div>
-              <div><dt>New balance</dt><dd>{{ transaction.newBalanceMinor != null ? money(transaction.newBalanceMinor) : 'Unavailable' }}</dd></div>
+              <div><dt>New balance</dt><dd>{{ balanceText(transaction) }}</dd></div>
             </dl>
           } @else { <p class="muted">No bank outcome is recorded. A request or review decision alone does not confirm a transfer.</p> }
         }
@@ -206,24 +206,11 @@
         role="status">
         {{ transaction.status }} · {{ liveStatus(transaction) }}
       </p>
-      @if (transaction.geminiDecisionReason || transaction.securityMessage) {
-        <div class="decision" [class.decision-blocked]="transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED'">
-          @if (transaction.geminiDecisionReason) { <p class="decision-title">{{ decisionLabel(transaction.geminiDecisionReason) }}</p> }
-          @if (transaction.geminiDecisionExplanation) { <p class="small">{{ transaction.geminiDecisionExplanation }}</p> }
-          @if (transaction.securityMessage) { <p class="small muted">Gemini: {{ transaction.securityMessage }}</p> }
-          @if (transaction.riskFlags?.length) { <p class="small muted">Flags: {{ transaction.riskFlags!.join(' · ') }}</p> }
-        </div>
-      }
-      @if (transaction.riskScore != null || transaction.translationConfidence != null) {
-        <div class="gauges">
-          @if (transaction.riskScore != null) {
-            <app-gauge label="Gemini risk score" [value]="transaction.riskScore" [max]="100" kind="max"
-              [limit]="metrics()?.policy?.maxRiskScore ?? 30" />
-          }
-          @if (transaction.translationConfidence != null) {
-            <app-gauge label="Translation confidence" [value]="transaction.translationConfidence" [max]="1" kind="min"
-              [percent]="true" [limit]="metrics()?.policy?.minTranslationConfidence ?? 0.8" />
-          }
+      <!-- Customer view: the review outcome in plain words. Scores, flags and thresholds stay in the History trace. -->
+      @if (transaction.geminiDecisionReason; as reason) {
+        <div class="decision" [class.decision-blocked]="reason !== 'GEMINI_APPROVED'">
+          <p class="decision-title">{{ customerDecision(reason) }}</p>
+          @if (reason !== 'GEMINI_APPROVED') { <p class="small">{{ customerBlockDetail(transaction) }}</p> }
         </div>
       }
       @if (transaction.bankProvider) {
@@ -234,10 +221,10 @@
             <div><dt>Receipt</dt><dd class="mono">{{ transaction.bankReceiptId ?? 'None issued' }}</dd></div>
             <div><dt>Submitted</dt><dd>{{ transaction.bankSubmittedAt ? time(transaction.bankSubmittedAt) : 'Not submitted' }}</dd></div>
             @if (transaction.bankOutcomeAt) { <div><dt>Recorded</dt><dd>{{ time(transaction.bankOutcomeAt) }}</dd></div> }
-            <div><dt>New balance</dt><dd>{{ transaction.newBalanceMinor != null ? money(transaction.newBalanceMinor) : 'Unavailable' }}</dd></div>
+            <div><dt>New balance</dt><dd>{{ balanceText(transaction) }}</dd></div>
           </dl>
-          @if (transaction.newBalanceMinor == null && transaction.bankOutcome !== 'FAILED') {
-            <p class="muted small">Shown only when the bank confirms the source account dropped by exactly this amount.</p>
+          @if (transaction.newBalanceMinor == null && transaction.bankOutcome === 'ACCEPTED_PENDING') {
+            <p class="muted small">The bank deducts the amount from your balance once the transfer settles.</p>
           }
         </div>
       }

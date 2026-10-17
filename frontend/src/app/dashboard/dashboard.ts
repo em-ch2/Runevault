@@ -6,7 +6,6 @@ import { AuthService } from '../auth/auth.service';
 import { PendingTransactionResponse, PipelineMetrics, TransactionApiService, TransactionRecord, transactionError } from '../transactions/transaction-api.service';
 import { TransferTransportEvent } from '../feed/feed-event';
 import { ApprovalsChart } from './approvals-chart';
-import { Gauge } from './gauge';
 import { FolderPanel } from './folder-panel';
 import { mergeLiveEvent } from './live-merge';
 import { FeedService } from '../feed/feed.service';
@@ -20,7 +19,7 @@ type NavSection = 'dashboard' | 'transactions' | 'approvals' | 'history' | 'anal
 
 @Component({
   selector: 'app-dashboard',
-  imports: [ApprovalsChart, Gauge, Glyph, FolderPanel, ReactiveFormsModule],
+  imports: [ApprovalsChart, Glyph, FolderPanel, ReactiveFormsModule],
   templateUrl: './dashboard.html',
 })
 export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
@@ -431,6 +430,31 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
       case 'GEMINI_UNAVAILABLE': return 'Blocked: Gemini unavailable';
       default: return 'Awaiting Gemini review';
     }
+  }
+
+  // Customer-facing wording; the operator wording above (decisionLabel) stays in History and Activity.
+  customerDecision(code: string): string {
+    switch (code) {
+      case 'GEMINI_APPROVED': return 'Passed our security review';
+      case 'GEMINI_HIGH_RISK': return 'Stopped by our security review';
+      case 'GEMINI_LOW_CONFIDENCE': return 'We could not confirm your approval seal';
+      default: return 'Our security review could not finish';
+    }
+  }
+
+  customerBlockDetail(transaction: TransactionRecord): string {
+    const reason = transaction.geminiDecisionReason === 'GEMINI_HIGH_RISK' && transaction.riskExplanation
+      ? `${transaction.riskExplanation} ` : '';
+    return `${reason}Nothing was sent to the bank and no money moved.`;
+  }
+
+  // Nessie only lowers the balance once a transfer settles, so a pending transfer has no new balance yet.
+  balanceText(transaction: TransactionRecord): string {
+    if (transaction.newBalanceMinor != null) return this.money(transaction.newBalanceMinor);
+    if (transaction.bankOutcome === 'FAILED') return 'Unchanged, nothing moved';
+    if (transaction.bankOutcome === 'COMPLETED') return 'Not yet reported by the bank';
+    if (transaction.bankOutcome === 'UNKNOWN') return 'Unknown until the bank outcome is confirmed';
+    return 'Updates when the transfer settles';
   }
 
   bankOutcomeLabel(outcome: TransactionRecord['bankOutcome']): string {
