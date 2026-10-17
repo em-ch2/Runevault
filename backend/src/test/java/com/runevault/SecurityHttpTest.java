@@ -35,6 +35,7 @@ class SecurityHttpTest {
   org.junit.jupiter.api.Assertions.assertEquals(2500, saved.getAmountMinor());
   org.junit.jupiter.api.Assertions.assertEquals("harbor", saved.getDestination());
   org.junit.jupiter.api.Assertions.assertEquals(Transaction.Status.SIMULATED, saved.getStatus());
+  org.junit.jupiter.api.Assertions.assertNull(saved.getVerifiedAt());
   org.junit.jupiter.api.Assertions.assertNotNull(saved.getCreatedAt());
   org.junit.jupiter.api.Assertions.assertNotNull(saved.getUpdatedAt());
   mvc.perform(post("/api/approvals").header("X-Bridge-Token", token).contentType("application/json").content(body))

@@ -119,8 +119,9 @@ public class DeviceAuthorizationService {
     locked ? AuditEvent.Reason.DEVICE_LOCKED : AuditEvent.Reason.INCORRECT_GLYPHS);
   }
   device.resetAttempts();
-  transaction.authorizeSimulation();
+  transaction.verifyPhysicalApproval(Instant.now());
   auditEvents.save(new AuditEvent(request.device(), request.txId(), AuditEvent.Outcome.APPROVED, AuditEvent.Reason.APPROVED));
-  return ResponseEntity.ok(Map.of("transactionId", transaction.getTransactionId(), "status", "SIMULATED", "signatureVerified", true));
+  return ResponseEntity.ok(Map.of("transactionId", transaction.getTransactionId(), "status", "VERIFIED",
+   "verifiedAt", transaction.getVerifiedAt(), "signatureVerified", true));
  }
 }

@@ -5,7 +5,7 @@
   </div>
   <div class="topbar-status">
     @if (mode() === 'live') {
-      <span class="pill pill-quiet">Live backend · simulated transactions</span>
+      <span class="pill pill-quiet">Live backend · physical approval only</span>
     } @else if (tablet(); as tab) {
       <span class="pill" [class.pill-good]="tab.state === 'connected'" [class.pill-bad]="tab.state !== 'connected'">
         <span class="dot"></span>
@@ -71,11 +71,13 @@
         <div><dt>Transaction</dt><dd class="mono">{{ transaction.transactionId }}</dd></div>
         <div><dt>Destination</dt><dd class="mono">{{ transaction.destination }}</dd></div>
         <div><dt>Created</dt><dd>{{ time(transaction.createdAt) }}</dd></div>
+        @if (transaction.verifiedAt) { <div><dt>Verified</dt><dd>{{ time(transaction.verifiedAt) }}</dd></div> }
       </dl>
       <p class="status" [class.status-wait]="transaction.status === 'PENDING' && !approvalExpired(transaction)"
         [class.status-bad]="transaction.status === 'PENDING' && approvalExpired(transaction)"
-        [class.status-good]="transaction.status === 'SIMULATED'" role="status">
-        {{ transaction.status === 'SIMULATED' ? 'SIMULATED · Pico authorization recorded'
+        [class.status-good]="transaction.status === 'VERIFIED'" role="status">
+        {{ transaction.status === 'VERIFIED' ? 'VERIFIED · Physical approval verified'
+          : transaction.status === 'SIMULATED' ? 'SIMULATED · Legacy simulation; physical approval unverified'
           : approvalExpired(transaction) ? 'PENDING · approval window expired' : 'PENDING · awaiting physical approval' }}
       </p>
     } @else if (createdForSelection(); as pending) {
@@ -90,7 +92,7 @@
     <button class="btn btn-ghost" type="button" (click)="refresh()" [disabled]="loadingRecords()">
       {{ loadingRecords() ? 'Loading…' : 'Refresh status' }}
     </button>
-    <p class="muted small">Pending transactions refresh every three seconds. SIMULATED means authorization succeeded; it is not a bank receipt.</p>
+    <p class="muted small">Pending transactions refresh every three seconds. VERIFIED means physical approval was recorded; no funds were transferred.</p>
   </section>
 
   <section class="slab activity live-list" aria-labelledby="live-list-title">
@@ -102,7 +104,7 @@
         @for (transaction of records(); track transaction.transactionId) {
           <li>
             <button class="btn-link mono" type="button" (click)="select(transaction.transactionId)">{{ transaction.transactionId }}</button>
-            <span> · {{ transaction.status }} · {{ money(transaction.amountMinor) }} · {{ transaction.destination }}</span>
+            <span> · {{ transaction.status === 'VERIFIED' ? 'Physical approval verified' : transaction.status === 'SIMULATED' ? 'Legacy simulation' : 'Pending' }} · {{ money(transaction.amountMinor) }} · {{ transaction.destination }}</span>
           </li>
         }
       </ul>

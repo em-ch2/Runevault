@@ -100,8 +100,12 @@ class DeviceAuthorizationTest {
   String id = pending();
   authorize(signed(id, 2, 50000, "acct-999", GLYPHS))
    .andExpect(status().isOk()).andExpect(jsonPath("transactionId").value(id))
-   .andExpect(jsonPath("status").value("SIMULATED"));
-  assertEquals(Transaction.Status.SIMULATED, transactions.findById(id).orElseThrow().getStatus());
+   .andExpect(jsonPath("status").value("VERIFIED"))
+   .andExpect(jsonPath("verifiedAt").isNotEmpty());
+  var saved = transactions.findById(id).orElseThrow();
+  assertEquals(Transaction.Status.VERIFIED, saved.getStatus());
+  assertNotNull(saved.getVerifiedAt());
+  assertFalse(saved.getVerifiedAt().isBefore(saved.getCreatedAt()));
   assertEquals(2, devices.findById("slab-01").orElseThrow().getLastCounter());
   var event = auditEvents.findAll().get(0);
   assertEquals(AuditEvent.Outcome.APPROVED, event.getOutcome());
@@ -150,15 +154,12 @@ class DeviceAuthorizationTest {
   assertTrue(auditEvents.findAll().stream().anyMatch(event -> event.getReason() == AuditEvent.Reason.INVALID_SIGNATURE));
  }
 
- @Test void onlyCommittedPicoApprovalCanBeClaimedOnceForExecution() throws Exception {
+ @Test void verifiedApprovalIsNotYetEligibleForExecution() throws Exception {
   String id = pending();
   assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(id));
   authorize(signed(id, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
-  var verified = transactionService.claimPicoAuthorized(id);
-  assertEquals(id, verified.id());
-  assertEquals(50000, verified.amountMinor());
   assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(id));
-  assertNotNull(transactions.findById(id).orElseThrow().getExecutionClaimedAt());
+  assertNull(transactions.findById(id).orElseThrow().getExecutionClaimedAt());
  }
 
  @Test void concurrentDuplicateApprovalsHaveOneWinner() throws Exception {
@@ -174,7 +175,7 @@ class DeviceAuthorizationTest {
   assertEquals(1, auditEvents.findAll().stream().filter(e -> e.getOutcome() == AuditEvent.Outcome.APPROVED).count());
  }
 
- @Test void concurrentExecutionClaimsHaveOneWinner() throws Exception {
+ @Test void concurrentExecutionClaimsRemainIneligible() throws Exception {
   String id = pending();
   authorize(signed(id, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
   var start = new CountDownLatch(1);
@@ -187,9 +188,10 @@ class DeviceAuthorizationTest {
    var first = workers.submit(claim);
    var second = workers.submit(claim);
    start.countDown();
-   assertNotEquals(first.get(), second.get());
+   assertFalse(first.get());
+   assertFalse(second.get());
   }
-  assertNotNull(transactions.findById(id).orElseThrow().getExecutionClaimedAt());
+  assertNull(transactions.findById(id).orElseThrow().getExecutionClaimedAt());
  }
 
  @Test void invalidSignatureDoesNotChangeDeviceOrTransaction() throws Exception {

@@ -8,7 +8,7 @@ Compose binds the backend to localhost; a remote bridge needs a separately confi
 
 Configure `RUNEVAULT_PICO_DEVICE_ID=slab-01` and `RUNEVAULT_PICO_KEY` with the UTF-8 key provisioned on the device. There is no default key; Pico endpoints return 503 when it is absent. The existing demo signing key is separate and is not used for Pico authorization. This minimal implementation supports one configured device/key, with durable device state in PostgreSQL.
 
-On startup, Hibernate adds the new nullable transaction fields and device table. The PostgreSQL initialization script widens the existing status CHECK constraint to allow `PENDING` without deleting receipts. This retains the demo schema-update approach; production migrations remain outside this hackathon change.
+On startup, Hibernate adds nullable transaction fields without deleting existing rows. The PostgreSQL initialization script allows `PENDING`, `SIMULATED`, and `VERIFIED` and adds nullable `verified_at`. Historical `SIMULATED` records keep that status and do not gain a verification timestamp. Production migrations remain outside this hackathon change.
 
 Before authorization, the trusted backend client creates a pending transaction using `POST /api/device/transactions`, with the same bridge header:
 
@@ -34,9 +34,9 @@ v1|<device>|<counter>|<tx_id>|<amount>|<dest>|<glyphs>
 
 That sample is a signing test vector; `abc123` must actually exist as a matching pending transaction to authorize it. The supplied firmware development key was verified against this vector. To run the optional golden-vector JUnit test, supply that key through `PICO_TEST_VECTOR_KEY`; normal tests generate an ephemeral key and need no secrets.
 
-Successful authorization returns HTTP 200 with `transactionId`, `status: SIMULATED`, and `signatureVerified: true`. It updates the existing transaction; no money moves. A database transaction and row locks serialize device counters and transaction consumption.
+Successful authorization returns HTTP 200 with `transactionId`, `status: VERIFIED`, `verifiedAt`, and `signatureVerified: true`. It updates the existing transaction; no money moves. A database transaction and row locks commit the verification timestamp, consumed device counter, and approval audit event together.
 
-Person C's execution pipeline can call `TransactionService.claimPicoAuthorized(id)` only after the authorization request commits. This method locks the persisted row, requires a Pico-authorized `SIMULATED` transaction, writes a durable one-time execution claim, and returns a `VerifiedTransaction`. A second claim, including after restart, fails. The claim is at-most-once: if execution fails after claiming, investigate rather than automatically retry. This handoff does not itself invoke the bank gateway.
+Milestone 2 must define execution eligibility and connect the verified handoff. The existing `TransactionService.claimPicoAuthorized(id)` still requires `SIMULATED` and is intentionally unchanged in milestone 1; new `VERIFIED` transactions cannot be claimed by it. No bank gateway is called by Pico authorization.
 
 - 400: malformed/unsupported fields.
 - 401: missing/wrong bridge token, unknown configured device, or invalid signature.

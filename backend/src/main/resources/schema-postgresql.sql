@@ -1,8 +1,9 @@
 -- Hibernate's update mode does not widen an existing enum CHECK constraint.
--- Keep existing simulation receipts while allowing the new pending state.
+-- Preserve historical SIMULATED rows; only new Pico approvals become VERIFIED.
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS verified_at timestamp(6) with time zone;
 ALTER TABLE transactions
  DROP CONSTRAINT IF EXISTS transactions_status_check,
- ADD CONSTRAINT transactions_status_check CHECK (status IN ('PENDING', 'SIMULATED'));
+ ADD CONSTRAINT transactions_status_check CHECK (status IN ('PENDING', 'SIMULATED', 'VERIFIED'));
 
 -- Existing databases may have enum CHECK constraints created before policy audits existed.
 ALTER TABLE audit_events

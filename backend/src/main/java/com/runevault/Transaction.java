@@ -29,6 +29,7 @@ public class Transaction {
  @Column(length = 255)
  private String requesterSubject;
  private Instant executionClaimedAt;
+ private Instant verifiedAt;
  @Column(columnDefinition = "text")
  private String auditJson;
  @Column(length = 64)
@@ -37,7 +38,7 @@ public class Transaction {
  private String promptVersion;
  private Instant auditedAt;
 
- public enum Status { PENDING, SIMULATED }
+ public enum Status { PENDING, SIMULATED, VERIFIED }
 
  public static Transaction pending(String id, long amount, String destination, String device, String glyphs) {
   return pending(id, amount, destination, device, glyphs, null);
@@ -60,7 +61,12 @@ public class Transaction {
  public String getRequesterSubject() { return requesterSubject; }
  public Instant getExecutionClaimedAt() { return executionClaimedAt; }
  public void claimForExecution() { executionClaimedAt = Instant.now(); }
- public void authorizeSimulation() { status = Status.SIMULATED; }
+ public Instant getVerifiedAt() { return verifiedAt; }
+ public void verifyPhysicalApproval(Instant verifiedAt) {
+  if (status != Status.PENDING || verifiedAt == null) throw new IllegalStateException("Transaction is not pending");
+  status = Status.VERIFIED;
+  this.verifiedAt = verifiedAt;
+ }
  public String getAuditJson() { return auditJson; }
  public String getAuditSource() { return auditSource; }
  public String getPromptVersion() { return promptVersion; }
