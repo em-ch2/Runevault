@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, HostListener, Injector, OnDestroy, OnInit, ViewChild, afterNextRender, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subscription, interval } from 'rxjs';
@@ -13,15 +13,20 @@ import { FeedService } from '../feed/feed.service';
 import { MockScenario } from '../feed/mock-feed';
 import { GLYPH_NAMES, Glyph } from './glyph';
 import { Stage, TransferStore } from './transfer-store';
+import { glideTo, slideUp } from './motion';
 
 const STAGE_ORDER: Stage[] = ['received', 'sealed', 'verified', 'executed'];
+type NavSection = 'dashboard' | 'transactions' | 'approvals' | 'history' | 'analytics';
 
 @Component({
   selector: 'app-dashboard',
   imports: [ApprovalsChart, Gauge, Glyph, FolderPanel, ReactiveFormsModule],
   templateUrl: './dashboard.html',
 })
-export class Dashboard implements OnInit, OnDestroy {
+export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
+  private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
+  private readonly injector = inject(Injector);
+  @ViewChild('navIndicator') private navIndicator?: ElementRef<HTMLElement>;
   readonly auth = inject(AuthService);
   readonly feed = inject(FeedService);
   readonly store = inject(TransferStore);
@@ -146,6 +151,60 @@ export class Dashboard implements OnInit, OnDestroy {
     this.selectedId();
     this.syncPolling();
   });
+
+  // Slides the visible panel up whenever it changes; a mode switch also staggers in the bars above it.
+  private lastMode: 'live' | 'demo' | null = null;
+  private readonly panelMotion = effect(() => {
+    const mode = this.mode();
+    if (mode === 'live') this.currentPanel(); else this.demoPanel();
+    const modeChanged = this.lastMode !== null && this.lastMode !== mode;
+    this.lastMode = mode;
+    afterNextRender(() => {
+      const root = this.host.nativeElement;
+      const panel = root.querySelector('.guided-flow > app-folder-panel:not([hidden])');
+      const bars = modeChanged ? [...root.querySelectorAll('.mock-bar, .flow-navigation')] : [];
+      slideUp([...bars, ...(panel ? [panel] : [])], { distance: modeChanged ? 20 : 28 });
+    }, { injector: this.injector });
+  });
+
+  // History and Analytics follow the visible view, so the "Back" buttons also return the highlight.
+  private readonly navChoice = signal<NavSection>('dashboard');
+  readonly activeNav = computed<NavSection>(() => {
+    if (this.mode() === 'demo') return 'dashboard';
+    const view = this.secondaryView();
+    if (view === 'live-list-title' || this.historyStep() !== null) return 'history';
+    if (view === 'metrics-title') return 'analytics';
+    const choice = this.navChoice();
+    return choice === 'transactions' || choice === 'approvals' ? choice : 'dashboard';
+  });
+  private readonly navMotion = effect(() => {
+    this.activeNav();
+    afterNextRender(() => this.restNavIndicator(), { injector: this.injector });
+  });
+
+  navTo(section: NavSection, panelId?: string): void {
+    this.navChoice.set(section);
+    if (panelId) this.openLiveFolder(panelId);
+    else { this.switchMode('live'); this.historyStep.set(null); this.secondaryView.set(null); }
+  }
+
+  ngAfterViewInit(): void {
+    this.restNavIndicator(true);
+  }
+
+  @HostListener('window:resize')
+  onResize(): void {
+    this.restNavIndicator(true);
+  }
+
+  hoverNav(event: Event): void {
+    if (this.navIndicator) glideTo(this.navIndicator.nativeElement, event.currentTarget as HTMLElement);
+  }
+
+  restNavIndicator(instant = false): void {
+    const current = this.host.nativeElement.querySelector<HTMLElement>('.sidebar nav .nav-current');
+    if (this.navIndicator) glideTo(this.navIndicator.nativeElement, current, instant);
+  }
 
   readonly glyphNames = GLYPH_NAMES;
   readonly stages: { key: Stage; label: string }[] = [

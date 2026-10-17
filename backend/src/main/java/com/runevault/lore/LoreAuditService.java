@@ -10,11 +10,11 @@ import org.springframework.stereotype.Service;
 public class LoreAuditService {
  public static final String PROMPT_VERSION = "lore-risk-v2";
 
- // Placeholder meanings: replace with your real glyph lore.
+ // Matches the dashboard's glyph artwork (frontend/src/app/dashboard/glyph.ts).
  public static final String DICTIONARY = """
-   0 = the Ember (beginnings, fire, a forge lit)
-   1 = the Tide (trade, exchange, journeys)
-   2 = the Seal (oaths, protection, closed vaults)
+   0 = Dawn (a sun on the horizon: freedom, new beginnings, the dawn of the world)
+   1 = Will (a spiral fruit: unique dreams, individuality, inherited will, the power to change the world)
+   2 = Freedom (three joined spirals: the will of the seas, living without limits)
    """;
 
  private static final String SYSTEM = """

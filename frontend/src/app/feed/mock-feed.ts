@@ -38,7 +38,7 @@ export const MOCK_SCRIPTS: Record<MockScenario, MockStep[]> = {
         tx_id: 'rea433',
         glyphs: '0-1-2-1-2-2',
         lore:
-          'The Key turned beneath a watchful Eye, opening the Gate to a safe passage. The Eye kept vigil as the final Gates secured the exchange.',
+          'At Dawn a lone Will set out across the open sea, and Freedom answered its call. That Will held steady as Freedom twice carried the exchange safely to harbor.',
         risk_level: 'LOW',
         bank_ref: 'nessie-tr-5f2a91',
       },

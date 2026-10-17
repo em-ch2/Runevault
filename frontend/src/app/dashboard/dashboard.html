@@ -1,12 +1,13 @@
 <div class="vault-shell" id="dashboard-top">
 <aside class="sidebar" aria-label="Main navigation">
   <a class="compass-logo" href="#dashboard-top" aria-label="Runevault dashboard"><img src="compass.svg" width="90" height="90" alt="" /></a>
-  <nav>
-    <a href="#dashboard-top" class="nav-current"><span aria-hidden="true">&#9638;</span> Dashboard</a>
-    <a href="#live-create-title" (click)="openLiveFolder('live-create-title')"><span aria-hidden="true">&#8644;</span> Transactions</a>
-    <a href="#authorize-title" (click)="openLiveFolder('authorize-title')"><span aria-hidden="true">&#9671;</span> Approvals</a>
-    <a href="#live-list-title" (click)="openLiveFolder('live-list-title')"><span aria-hidden="true">&#9636;</span> History</a>
-    <a href="#metrics-title" (click)="openLiveFolder('metrics-title')"><span aria-hidden="true">&#9637;</span> Analytics</a>
+  <nav (mouseleave)="restNavIndicator()" (focusout)="restNavIndicator()">
+    <span #navIndicator class="nav-indicator" aria-hidden="true"></span>
+    <a href="#dashboard-top" [class.nav-current]="activeNav() === 'dashboard'" [attr.aria-current]="activeNav() === 'dashboard' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('dashboard')"><span aria-hidden="true">&#9638;</span> Dashboard</a>
+    <a href="#live-create-title" [class.nav-current]="activeNav() === 'transactions'" [attr.aria-current]="activeNav() === 'transactions' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('transactions', 'live-create-title')"><span aria-hidden="true">&#8644;</span> Transactions</a>
+    <a href="#authorize-title" [class.nav-current]="activeNav() === 'approvals'" [attr.aria-current]="activeNav() === 'approvals' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('approvals', 'authorize-title')"><span aria-hidden="true">&#9671;</span> Approvals</a>
+    <a href="#live-list-title" [class.nav-current]="activeNav() === 'history'" [attr.aria-current]="activeNav() === 'history' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('history', 'live-list-title')"><span aria-hidden="true">&#9636;</span> History</a>
+    <a href="#metrics-title" [class.nav-current]="activeNav() === 'analytics'" [attr.aria-current]="activeNav() === 'analytics' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('analytics', 'metrics-title')"><span aria-hidden="true">&#9637;</span> Analytics</a>
   </nav>
   <div class="sidebar-seal" aria-hidden="true">&#10023;</div>
   <span class="sidebar-foot">SEALED IN TRUST</span>
@@ -78,9 +79,9 @@
   @if (secondaryView()) { <button class="btn btn-ghost" type="button" (click)="secondaryView.set(null)">{{ historyStep() !== null ? 'Back to receipt timeline' : 'Back to current transfer' }}</button> }
   @else if (historyStep() !== null) { <p class="muted">Receipt history &middot; Select a step above to inspect its saved details.</p> }
   @else { <p class="muted">Step {{ flowStep() + 1 }} of 4 &middot; {{ workflowSteps[flowStep()].title }}</p> }
-  <div><button class="btn btn-ghost" type="button" (click)="secondaryView.set('live-list-title')">History</button>
-  <button class="btn btn-ghost" type="button" (click)="secondaryView.set('metrics-title')">Analytics</button>
-  <button class="btn btn-ghost" type="button" (click)="secondaryView.set('live-events-title')">Activity</button></div>
+  <div><button class="btn btn-ghost" type="button" [attr.aria-pressed]="secondaryView() === 'live-list-title'" (click)="secondaryView.set('live-list-title')">History</button>
+  <button class="btn btn-ghost" type="button" [attr.aria-pressed]="secondaryView() === 'metrics-title'" (click)="secondaryView.set('metrics-title')">Analytics</button>
+  <button class="btn btn-ghost" type="button" [attr.aria-pressed]="secondaryView() === 'live-events-title'" (click)="secondaryView.set('live-events-title')">Activity</button></div>
 </div>
 <main class="grid live-grid guided-flow">
   <app-folder-panel class="slab folder-light" panelId="history-trace-title" [title]="historyStepTitles[historyStep() ?? 3]"
