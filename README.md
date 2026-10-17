@@ -8,9 +8,16 @@ Three-person hackathon starter. Read docs/protocol.md before changing messages.
 | B: security/platform | backend/, infra/ |
 | C: AI/transactions/UI | backend integrations, frontend/ |
 
-Start: install Docker Desktop, copy .env.example to .env, then run `docker compose up --build`.
+Start in PowerShell: install Docker Desktop, copy `.env.example` to `.env`, fill in the required backend credentials, then run:
+
+```powershell
+docker compose build frontend
+docker compose up -d --build
+```
+
+Compose builds Angular with `npm ci` inside the frontend image; a local `frontend/dist` folder is not needed. To view startup logs, run `docker compose logs -f frontend backend`. Do not use `docker compose down -v` when stopping services, because it deletes the PostgreSQL volume.
 Backend: http://localhost:8080/api/health
-Dashboard: build it first with `cd frontend && npm install && npm run build`, then http://localhost:4200. For development run `npm start` in frontend/ instead. See frontend/README.md.
+Dashboard: http://localhost:4200. For Angular development outside Docker, run `npm start` in `frontend/`. See frontend/README.md.
 To run the legacy simulator, stop the normal backend and explicitly start `dev,simulator`:
 
 ```powershell
