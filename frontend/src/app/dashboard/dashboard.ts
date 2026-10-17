@@ -26,6 +26,24 @@ export class Dashboard implements OnInit, OnDestroy {
   readonly store = inject(TransferStore);
   readonly api = inject(TransactionApiService);
   readonly mode = signal<'live' | 'demo'>('live');
+  readonly workflowSteps = [
+    { title: 'Pending approval', detail: 'Request received' },
+    { title: 'Glyph verified', detail: 'Physical authorization' },
+    { title: 'Policy approved', detail: 'Review & execution' },
+    { title: 'Transferred', detail: 'Bank confirmed' },
+  ];
+  readonly workflowProgress = computed(() => {
+    if (this.mode() === 'demo') {
+      const transfer = this.transfer();
+      return transfer ? Math.max(0, STAGE_ORDER.indexOf(transfer.stage)) + (transfer.stage === 'executed' ? 1 : 0) : 0;
+    }
+    const transaction = this.selected();
+    if (transaction?.status === 'EXECUTED') return 4;
+    if (transaction?.status === 'EXECUTING' || transaction?.status === 'BANK_PENDING'
+      || transaction?.geminiDecisionReason === 'GEMINI_APPROVED') return 2;
+    if (transaction?.verifiedAt) return 1;
+    return 0;
+  });
   readonly records = signal<TransactionRecord[]>([]);
   readonly selectedId = signal<string | null>(null);
   readonly created = signal<PendingTransactionResponse | null>(null);

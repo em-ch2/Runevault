@@ -1,7 +1,21 @@
+<div class="vault-shell" id="dashboard-top">
+<aside class="sidebar" aria-label="Main navigation">
+  <a class="compass-logo" href="#dashboard-top" aria-label="Runevault dashboard"><span aria-hidden="true">&#10037;</span></a>
+  <nav>
+    <a href="#dashboard-top" class="nav-current"><span aria-hidden="true">&#9638;</span> Dashboard</a>
+    <a href="#live-create-title" (click)="switchMode('live')"><span aria-hidden="true">&#8644;</span> Transactions</a>
+    <a href="#authorize-title" (click)="switchMode('live')"><span aria-hidden="true">&#9671;</span> Approvals</a>
+    <a href="#live-list-title" (click)="switchMode('live')"><span aria-hidden="true">&#9636;</span> History</a>
+    <a href="#metrics-title" (click)="switchMode('live')"><span aria-hidden="true">&#9637;</span> Analytics</a>
+  </nav>
+  <div class="sidebar-seal" aria-hidden="true">&#10023;</div>
+  <span class="sidebar-foot">SEALED IN TRUST</span>
+</aside>
+<div class="vault-content">
 <header class="topbar">
   <div class="brand">
     <app-glyph [id]="2" [size]="30" aria-hidden="true" />
-    <span class="wordmark">Runevault</span>
+    <span class="wordmark">Runevault</span><span class="brand-caption">Financial operations dashboard</span>
   </div>
   <div class="topbar-status">
     @if (mode() === 'live') {
@@ -38,6 +52,18 @@
   <button class="btn btn-ghost" type="button" [attr.aria-pressed]="mode() === 'demo'" (click)="switchMode('demo')">Demo preview</button>
 </div>
 
+<section class="workflow" aria-labelledby="workflow-title">
+  <div class="section-heading"><h2 id="workflow-title">Transfer workflow</h2><span class="small">{{ mode() === 'demo' ? 'Demo preview' : 'Physical approval / verified execution' }}</span></div>
+  <ol class="workflow-track">
+    @for (step of workflowSteps; track $index) {
+      <li [class.workflow-done]="workflowProgress() > $index" [class.workflow-current]="workflowProgress() === $index" [attr.aria-current]="workflowProgress() === $index ? 'step' : null">
+        <span class="workflow-number">{{ workflowProgress() > $index ? '✓' : $index + 1 }}</span>
+        <strong>{{ step.title }}</strong><span>{{ step.detail }}</span>
+      </li>
+    }
+  </ol>
+</section>
+
 @if (mode() === 'demo') {
 <div class="mock-bar">
   Demo preview uses scripted data only. It does not create backend transactions.
@@ -50,8 +76,8 @@
 } @else {
 <main class="grid live-grid">
   <section class="slab pending" aria-labelledby="live-create-title">
-    <h2 id="live-create-title">Create pending transaction</h2>
-    <p class="muted">The backend records this request. A Pico approval is still required; no money moves here.</p>
+    <h2 id="live-create-title">1. Create pending transaction</h2>
+    <p class="muted">Set the destination and amount to begin your transfer.</p>
     <form class="live-form" [formGroup]="pendingForm" (ngSubmit)="createPending()">
       <label for="tx-device">Device</label>
       <input id="tx-device" formControlName="device" autocomplete="off" />
@@ -59,15 +85,33 @@
       <input id="tx-amount" type="number" min="1" max="100000000" step="1" formControlName="amount" />
       <label for="tx-dest">Destination</label>
       <input id="tx-dest" formControlName="dest" autocomplete="off" placeholder="acct-999" />
-      <p class="muted small">Gemini generates the approval glyphs automatically. A running hardware bridge picks the transaction up and sends it to the Pico.</p>
+      <p class="muted small">Your request stays pending until you approve it on the physical authenticator.</p>
       @if (apiError()) { <p class="form-error" role="alert">{{ apiError() }}</p> }
       <button class="btn btn-primary" type="submit" [disabled]="creating()">
-        {{ creating() ? 'Creating…' : 'Create transaction' }}
+        {{ creating() ? 'Creating…' : 'Confirm transaction' }}
       </button>
     </form>
   </section>
 
-  <section class="slab activity" aria-labelledby="live-status-title">
+  <section class="slab authorization" aria-labelledby="authorize-title">
+    <h2 id="authorize-title">2. Authorize with glyphs</h2>
+    <p class="panel-kicker">Your generated authorization sequence</p>
+    @if (pendingGlyphs().length) {
+      <div class="glyph-row authorization-glyphs" aria-label="Generated approval glyphs">
+        @for (g of pendingGlyphs(); track $index) {
+          <figure><span class="glyph-index">{{ $index + 1 }}</span><app-glyph [id]="g" [size]="54" /><figcaption>{{ glyphNames[g] }}</figcaption></figure>
+        }
+      </div>
+      <p class="authorization-note">Press these glyphs in order on your Pico, then tap Enter.</p>
+      @if (createdForSelection(); as pending) { <p class="small muted">Approval expires {{ expiry(pending.expires_at) }}</p> }
+    } @else {
+      <div class="glyph-placeholder" aria-hidden="true"><span>&#9671;</span><span>&#9671;</span><span>&#9671;</span><span>&#9671;</span></div>
+      <p class="empty">{{ selected()?.status === 'PENDING' && approvalExpired(selected()) ? 'This approval window has expired. Create a new request to generate glyphs.' : selected()?.verifiedAt ? 'Physical approval received. Follow the transfer status alongside.' : 'Create a transaction to reveal its unique glyph sequence.' }}</p>
+    }
+    <div class="physical-note"><span aria-hidden="true">&#9671;</span><div><strong>Sealed on your device</strong><p>Authorization happens on the physical authenticator.</p></div></div>
+  </section>
+
+  <section class="slab activity backend-status" aria-labelledby="live-status-title">
     <h2 id="live-status-title">Backend status</h2>
     @if (selected(); as transaction) {
       <p class="amount">{{ money(transaction.amountMinor) }}</p>
@@ -130,21 +174,10 @@
     } @else {
       <p class="empty">No backend transaction selected.</p>
     }
-    @if (pendingGlyphs().length) {
-      <p class="muted small">Press these glyphs on the tablet, then tap Enter:</p>
-      <div class="glyph-row">
-        @for (g of pendingGlyphs(); track $index) {
-          <figure>
-            <app-glyph [id]="g" [size]="50" />
-            <figcaption>{{ glyphNames[g] }}</figcaption>
-          </figure>
-        }
-      </div>
-    }
     <button class="btn btn-ghost" type="button" (click)="refresh()" [disabled]="loadingRecords()">
       {{ loadingRecords() ? 'Loading…' : 'Refresh status' }}
     </button>
-    <p class="muted small">Status updates arrive live. If the live connection drops, in-flight transfers are checked every three seconds until it returns. Only a completed bank receipt confirms money moved.</p>
+    <p class="muted small">Updates arrive automatically. Only a completed bank receipt confirms the transfer.</p>
   </section>
 
   <section class="slab activity live-list" aria-labelledby="live-list-title">
@@ -152,11 +185,14 @@
     @if (loadingRecords() && records().length === 0) { <p role="status">Loading transactions…</p> }
     @else if (records().length === 0) { <p class="empty">No transactions returned by the backend.</p> }
     @else {
-      <ul class="log">
+      <ul class="log transaction-list">
         @for (transaction of records(); track transaction.transactionId) {
-          <li>
-            <button class="btn-link mono" type="button" (click)="select(transaction.transactionId)">{{ transaction.transactionId }}</button>
-            <span> · {{ liveStatus(transaction) }} · {{ money(transaction.amountMinor) }} · {{ transaction.destination }}</span>
+          <li [class.selected-transaction]="selectedId() === transaction.transactionId">
+            <button class="transaction-row" type="button" (click)="select(transaction.transactionId)" [attr.aria-pressed]="selectedId() === transaction.transactionId">
+              <span class="transaction-symbol" aria-hidden="true">{{ transaction.status === 'EXECUTED' ? '✓' : '⇄' }}</span>
+              <span class="transaction-description"><strong>{{ liveStatus(transaction) }}</strong><span class="mono">{{ shortId(transaction.transactionId) }} &middot; {{ transaction.destination }}</span></span>
+              <span class="transaction-value">{{ money(transaction.amountMinor) }}<small>{{ time(transaction.createdAt) }}</small></span>
+            </button>
           </li>
         }
       </ul>
@@ -184,7 +220,7 @@
     <h2 id="metrics-title">Approvals vs blocks</h2>
     @if (metrics(); as m) {
       <app-approvals-chart [points]="m.minutes" />
-      <p class="muted small">From the Tiger Data pipeline_events table ({{ m.source === 'timescale-continuous-aggregate' ? 'one-minute continuous aggregate' : 'raw events' }}). Blocked includes rejected tablet approvals.</p>
+      <p class="muted small">Last 30 minutes &middot; Includes rejected physical approvals.</p>
     } @else if (metricsError()) {
       <p class="form-error" role="alert">{{ metricsError() }}</p>
     } @else {
@@ -298,3 +334,6 @@
   </section>
 </main>
 }
+
+</div>
+</div>
