@@ -6,6 +6,10 @@ services:
       POSTGRES_DB: runevault
       POSTGRES_USER: runevault
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-postgres-only-change-before-deploy}
+      NESSIE_ENABLED: "true"
+      NESSIE_API_KEY: ${NESSIE_API_KEY}
+      NESSIE_SOURCE_ACCOUNT_ID: ${NESSIE_SOURCE_ACCOUNT_ID}
+      RUNEVAULT_DEVICE_SECRET: ${RUNEVAULT_DEVICE_SECRET}
     ports: ["127.0.0.1:5433:5432"]
     volumes: ["postgres-data:/var/lib/postgresql/data"]
     healthcheck:

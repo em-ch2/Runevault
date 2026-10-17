@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 @Service
-@ConditionalOnProperty(name = "runevault.mode", havingValue = "local")
+@ConditionalOnProperty(name = "nessie.enabled", havingValue = "false", matchIfMissing = true)
 public class FakeBankGateway implements BankGateway {
     
     private final ConcurrentMap<String, BankReceipt> receipts = 

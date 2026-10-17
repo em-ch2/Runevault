@@ -21,7 +21,7 @@ class SecurityHttpTest {
   String token = "test-bridge-token-with-enough-characters";
   var result = mvc.perform(post("/api/challenges").header("X-Bridge-Token", token)
    .contentType("application/json").content("""
-    {"deviceId":"pico-demo-1","amountMinor":2500,"destination":"harbor","glyphs":"ABCD"}
+    {"deviceId":"pico-demo-1","amountMinor":2500,"destination":"5a1b0e4e4f52360490000002","glyphs":"0-1-2"}
     """)).andExpect(status().isOk()).andReturn();
   var challenge = mapper.readTree(result.getResponse().getContentAsString());
   String id = challenge.get("challengeId").asText();
@@ -33,7 +33,7 @@ class SecurityHttpTest {
    .andExpect(status().isOk()).andExpect(jsonPath("transactionId").value(id));
   var saved = transactions.findById(id).orElseThrow();
   org.junit.jupiter.api.Assertions.assertEquals(2500, saved.getAmountMinor());
-  org.junit.jupiter.api.Assertions.assertEquals("harbor", saved.getDestination());
+  org.junit.jupiter.api.Assertions.assertEquals("5a1b0e4e4f52360490000002", saved.getDestination());
   org.junit.jupiter.api.Assertions.assertEquals(Transaction.Status.SIMULATED, saved.getStatus());
   org.junit.jupiter.api.Assertions.assertNotNull(saved.getCreatedAt());
   org.junit.jupiter.api.Assertions.assertNotNull(saved.getUpdatedAt());
@@ -55,7 +55,7 @@ class SecurityHttpTest {
  @Test void bridgeCanCreateChallenge() throws Exception {
   mvc.perform(post("/api/challenges").header("X-Bridge-Token","test-bridge-token-with-enough-characters")
    .contentType("application/json").content("""
-    {"deviceId":"pico-demo-1","amountMinor":2500,"destination":"harbor","glyphs":"ABCD"}
+    {"deviceId":"pico-demo-1","amountMinor":2500,"destination":"5a1b0e4e4f52360490000002","glyphs":"0-1-2"}
     """))
    .andExpect(status().isOk()).andExpect(jsonPath("challengeId").isNotEmpty());
  }

@@ -43,8 +43,8 @@ public class TransactionApi {
 
  public record Intent(@NotNull @Pattern(regexp="pico-demo-1") String deviceId,
   @Min(1) @Max(100000000) long amountMinor,
-  @NotNull @Pattern(regexp="[A-Za-z0-9_-]{1,64}") String destination,
-  @NotNull @Pattern(regexp="[A-D]{1,16}") String glyphs) {}
+  @NotNull @Pattern(regexp="[0-9a-f]{24}") String destination,
+  @NotNull @Pattern(regexp="[0-2](-[0-2]){0,63}") String glyphs) {}
  public record Challenge(String challengeId, long expiresAt, Intent intent, String signingText) {}
  public record Approval(@NotNull String challengeId, @NotNull @Pattern(regexp="[0-9a-f]{64}") String signature) {}
  @GetMapping("/health") public Map<String,String> health() { return Map.of("status","ok","mode","simulation"); }
