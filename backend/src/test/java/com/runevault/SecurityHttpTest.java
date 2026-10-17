@@ -9,7 +9,7 @@ import org.springframework.test.context.ActiveProfiles;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties={"runevault.bridge-token=test-bridge-token-with-enough-characters", "runevault.requests-per-minute=1000"})
+@SpringBootTest(properties={"runevault.bridge-token=test-bridge-token-with-enough-characters"})
 @AutoConfigureMockMvc
 @ActiveProfiles({"dev", "simulator", "test"})
 class SecurityHttpTest {

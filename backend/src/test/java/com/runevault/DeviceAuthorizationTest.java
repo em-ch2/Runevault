@@ -26,7 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties = {"runevault.bridge-token=test-bridge-token-with-enough-characters", "runevault.requests-per-minute=10000"})
+@SpringBootTest(properties = {"runevault.bridge-token=test-bridge-token-with-enough-characters"})
 @AutoConfigureMockMvc
 @ActiveProfiles({"dev", "test"})
 class DeviceAuthorizationTest {

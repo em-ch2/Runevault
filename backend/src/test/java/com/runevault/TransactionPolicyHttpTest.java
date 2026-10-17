@@ -27,7 +27,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = {
  "runevault.bridge-token=test-bridge-token-with-enough-characters",
- "runevault.requests-per-minute=10000",
  "runevault.pico-key=test-policy-pico-key",
  "runevault.transaction-policy.max-amount-minor=50000",
  "runevault.transaction-policy.allowed-destinations=acct-999,harbor",
