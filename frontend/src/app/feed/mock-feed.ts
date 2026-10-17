@@ -16,8 +16,8 @@ export const MOCK_SCRIPTS: Record<MockScenario, MockStep[]> = {
         tx_id: 'rea433',
         amount: 444222,
         dest: 'acc_0020',
-        recipient: 'Saltstone Archive Society',
-        requester: 'Mara Quill',
+        recipient: 'East Blue Relief Fund',
+        requester: 'Nami',
       },
     },
     {
@@ -53,8 +53,8 @@ export const MOCK_SCRIPTS: Record<MockScenario, MockStep[]> = {
         tx_id: 'rea434',
         amount: 990000,
         dest: 'acc_0666',
-        recipient: 'Unknown Harbor Co.',
-        requester: 'Mara Quill',
+        recipient: 'East Blue Harbor',
+        requester: 'Nami',
       },
     },
     {

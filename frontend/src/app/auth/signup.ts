@@ -12,7 +12,7 @@ import { AuthService } from './auth.service';
         <div class="auth-glyphs" aria-hidden="true">
           <app-glyph [id]="2" [size]="40" /><app-glyph [id]="1" [size]="40" /><app-glyph [id]="0" [size]="40" />
         </div>
-        <p class="eyebrow">Poneglyph</p>
+        <p class="eyebrow">Runevault</p>
         <h1 id="signup-title">Create account</h1>
         <p class="muted">Create your account securely with Auth0.</p>
 

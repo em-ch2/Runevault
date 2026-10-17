@@ -1,10 +1,12 @@
 <header class="topbar">
   <div class="brand">
     <app-glyph [id]="2" [size]="30" aria-hidden="true" />
-    <span class="wordmark">Poneglyph</span>
+    <span class="wordmark">Runevault</span>
   </div>
   <div class="topbar-status">
-    @if (tablet(); as tab) {
+    @if (mode() === 'live') {
+      <span class="pill pill-quiet">Live backend · simulated transactions</span>
+    } @else if (tablet(); as tab) {
       <span class="pill" [class.pill-good]="tab.state === 'connected'" [class.pill-bad]="tab.state !== 'connected'">
         <span class="dot"></span>
         {{ tab.device }}
@@ -15,7 +17,7 @@
     } @else {
       <span class="pill"><span class="dot"></span>Waiting for tablet</span>
     }
-    <span class="pill pill-quiet">{{ feedLabel() }}</span>
+    @if (mode() === 'demo') { <span class="pill pill-quiet">{{ feedLabel() }}</span> }
   </div>
   <div class="topbar-user">
     <span class="muted">{{ auth.user()?.name }}</span>
@@ -23,6 +25,15 @@
   </div>
 </header>
 
+<div class="mode-switch" role="group" aria-label="Dashboard mode">
+  <button class="btn btn-ghost" type="button" [attr.aria-pressed]="mode() === 'live'" (click)="switchMode('live')">Live API</button>
+  <button class="btn btn-ghost" type="button" [attr.aria-pressed]="mode() === 'demo'" [disabled]="!feed.isMock" (click)="switchMode('demo')">Demo preview</button>
+</div>
+
+@if (mode() === 'demo') {
+<div class="mock-bar">
+  Demo preview uses scripted data only. It does not create backend transactions.
+</div>
 @if (feed.isMock) {
   <div class="mock-bar">
     <span>Demo mode: playing a scripted transfer.</span>
@@ -30,7 +41,77 @@
     <button class="btn btn-ghost" type="button" (click)="replay('rejected')">Replay rejected</button>
   </div>
 }
+} @else {
+<main class="grid live-grid">
+  <section class="slab pending" aria-labelledby="live-create-title">
+    <h2 id="live-create-title">Create pending transaction</h2>
+    <p class="muted">The backend records this request. A Pico approval is still required; no money moves here.</p>
+    <form class="live-form" [formGroup]="pendingForm" (ngSubmit)="createPending()">
+      <label for="tx-device">Device</label>
+      <input id="tx-device" formControlName="device" autocomplete="off" />
+      <label for="tx-amount">Amount (cents)</label>
+      <input id="tx-amount" type="number" min="1" max="100000000" step="1" formControlName="amount" />
+      <label for="tx-dest">Destination</label>
+      <input id="tx-dest" formControlName="dest" autocomplete="off" placeholder="acct-999" />
+      <label for="tx-glyphs">Approval glyphs</label>
+      <input id="tx-glyphs" formControlName="glyphs" autocomplete="off" placeholder="0-2-1-2-1" />
+      <p class="muted small">Enter 0, 1, or 2 separated by dashes. Share the transaction ID with the bridge operator.</p>
+      @if (apiError()) { <p class="form-error" role="alert">{{ apiError() }}</p> }
+      <button class="btn btn-primary" type="submit" [disabled]="creating()">
+        {{ creating() ? 'Creating…' : 'Create transaction' }}
+      </button>
+    </form>
+  </section>
 
+  <section class="slab activity" aria-labelledby="live-status-title">
+    <h2 id="live-status-title">Backend status</h2>
+    @if (selected(); as transaction) {
+      <p class="amount">{{ money(transaction.amountMinor) }}</p>
+      <dl class="facts">
+        <div><dt>Transaction</dt><dd class="mono">{{ transaction.transactionId }}</dd></div>
+        <div><dt>Destination</dt><dd class="mono">{{ transaction.destination }}</dd></div>
+        <div><dt>Created</dt><dd>{{ time(transaction.createdAt) }}</dd></div>
+      </dl>
+      <p class="status" [class.status-wait]="transaction.status === 'PENDING' && !approvalExpired(transaction)"
+        [class.status-bad]="transaction.status === 'PENDING' && approvalExpired(transaction)"
+        [class.status-good]="transaction.status === 'SIMULATED'" role="status">
+        {{ transaction.status === 'SIMULATED' ? 'SIMULATED · Pico authorization recorded'
+          : approvalExpired(transaction) ? 'PENDING · approval window expired' : 'PENDING · awaiting physical approval' }}
+      </p>
+    } @else if (createdForSelection(); as pending) {
+      <p class="mono">{{ pending.tx_id }}</p>
+      <p class="status" [class.status-wait]="!approvalExpired(null)" [class.status-bad]="approvalExpired(null)" role="status">
+        {{ approvalExpired(null) ? 'PENDING · approval window expired' : 'PENDING · awaiting physical approval' }}
+      </p>
+      <p class="muted">Expires at {{ expiry(pending.expires_at) }}</p>
+    } @else {
+      <p class="empty">No backend transaction selected.</p>
+    }
+    <button class="btn btn-ghost" type="button" (click)="refresh()" [disabled]="loadingRecords()">
+      {{ loadingRecords() ? 'Loading…' : 'Refresh status' }}
+    </button>
+    <p class="muted small">Pending transactions refresh every three seconds. SIMULATED means authorization succeeded; it is not a bank receipt.</p>
+  </section>
+
+  <section class="slab activity live-list" aria-labelledby="live-list-title">
+    <h2 id="live-list-title">Recent transactions</h2>
+    @if (loadingRecords() && records().length === 0) { <p role="status">Loading transactions…</p> }
+    @else if (records().length === 0) { <p class="empty">No transactions returned by the backend.</p> }
+    @else {
+      <ul class="log">
+        @for (transaction of records(); track transaction.transactionId) {
+          <li>
+            <button class="btn-link mono" type="button" (click)="select(transaction.transactionId)">{{ transaction.transactionId }}</button>
+            <span> · {{ transaction.status }} · {{ money(transaction.amountMinor) }} · {{ transaction.destination }}</span>
+          </li>
+        }
+      </ul>
+    }
+  </section>
+</main>
+}
+
+@if (mode() === 'demo') {
 <main class="grid">
   <section class="slab pending" aria-labelledby="pending-title">
     <h2 id="pending-title">Pending transfer</h2>
@@ -132,3 +213,4 @@
     }
   </section>
 </main>
+}
