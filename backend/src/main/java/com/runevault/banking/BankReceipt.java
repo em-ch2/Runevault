@@ -7,5 +7,14 @@ public record BankReceipt(
     String status,
     long amountMinor,
     String currency,
-    String destination
-) {}
+    String destination,
+    Outcome outcome,
+    Reason reason,
+    java.time.Instant submittedAt
+) {
+    public enum Outcome { ACCEPTED_PENDING, COMPLETED, FAILED, UNKNOWN }
+    public enum Reason {
+        ACCEPTED_PENDING, CONFIRMED_COMPLETED, DEFINITE_REJECTION,
+        PRE_SUBMISSION_FAILURE, SUBMISSION_UNCERTAIN, MALFORMED_RESPONSE, PROVIDER_STATUS_UNKNOWN
+    }
+}

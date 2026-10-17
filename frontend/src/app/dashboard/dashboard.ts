@@ -164,7 +164,8 @@ export class Dashboard implements OnInit, OnDestroy {
   private awaitingApproval(): boolean {
     const transaction = this.selected();
     // Keep polling while the bank transfer and Gemini audit run.
-    if (transaction?.status === 'EXECUTING') return true;
+    if (transaction?.status === 'VERIFIED' || transaction?.status === 'EXECUTING'
+      || transaction?.status === 'BANK_PENDING') return true;
     return (transaction?.status === 'PENDING' || (transaction === null && this.createdForSelection() !== null))
       && !this.approvalExpired(transaction);
   }
@@ -205,6 +206,19 @@ export class Dashboard implements OnInit, OnDestroy {
 
   money(cents: number): string {
     return (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  }
+
+  liveStatus(transaction: TransactionRecord): string {
+    switch (transaction.status) {
+      case 'EXECUTED': return 'Completed';
+      case 'BANK_PENDING': return 'Accepted by Nessie — pending';
+      case 'FAILED': return 'Failed';
+      case 'OUTCOME_UNKNOWN': return 'Outcome unknown — review required';
+      case 'EXECUTING': return 'Execution claimed; processing pending';
+      case 'VERIFIED': return 'Physical approval verified';
+      case 'SIMULATED': return 'Legacy simulation; physical approval unverified';
+      case 'PENDING': return this.approvalExpired(transaction) ? 'Approval window expired' : 'Awaiting physical approval';
+    }
   }
 
   expiry(seconds: number): string {

@@ -18,4 +18,11 @@ class SimulationModeConfigTest {
   assertThrows(IllegalStateException.class, () -> new SecurityConfig().security(null, nessie,
    "test-bridge-token-with-enough-characters", null));
  }
+ @Test void normalModeCannotSelectFakeBanking() {
+  var normal = new MockEnvironment();
+  normal.setActiveProfiles("dev");
+  normal.setProperty("nessie.enabled", "false");
+  assertThrows(IllegalStateException.class, () -> new SecurityConfig().security(null, normal,
+   "test-bridge-token-with-enough-characters", null));
+ }
 }

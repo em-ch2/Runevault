@@ -29,6 +29,8 @@ class PicoExecutionHttpTest {
  @Autowired MockMvc mvc;
  @Autowired ObjectMapper mapper;
  @Autowired TransactionRepository transactions;
+ @Autowired AuditEventRepository auditEvents;
+ @org.springframework.boot.test.mock.mockito.SpyBean com.runevault.banking.FakeBankGateway fakeBank;
 
  @Test void verifiedPicoApprovalExecutesTransferOnce() throws Exception {
   var created = mvc.perform(post("/api/device/transactions").header("X-Bridge-Token", TOKEN)
@@ -53,9 +55,15 @@ class PicoExecutionHttpTest {
   var saved = transactions.findById(id).orElseThrow();
   assertEquals(Transaction.Status.EXECUTED, saved.getStatus());
   assertEquals("fake-" + id, saved.getBankReceiptId());
+  assertEquals(com.runevault.banking.BankReceipt.Outcome.COMPLETED, saved.getBankOutcome());
+  assertEquals(1, auditEvents.findAll().stream()
+   .filter(event -> event.getEventType() == AuditEvent.Type.BANK_OUTCOME
+    && id.equals(event.getTransactionId())).count());
 
   // Replaying the same signed approval is rejected and never transfers again.
   mvc.perform(post("/api/device/authorize").header("X-Bridge-Token", TOKEN).contentType("application/json").content(body))
    .andExpect(status().isConflict());
+  org.mockito.Mockito.verify(fakeBank, org.mockito.Mockito.times(1))
+   .transfer(id, 50000, "USD", "acct-999");
  }
 }

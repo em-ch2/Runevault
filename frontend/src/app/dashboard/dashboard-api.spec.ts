@@ -45,11 +45,11 @@ describe('Dashboard live transactions', () => {
     fixture.destroy();
   });
 
-  it('polls pending status and stops once the backend reports authorization', () => {
+  it('keeps polling after physical verification while banking is unresolved', () => {
     vi.useFakeTimers();
     const verifiedAt = new Date().toISOString();
     api.list.mockReturnValueOnce(of({ content: [pending] }))
-      .mockReturnValueOnce(of({ content: [{ ...pending, status: 'VERIFIED', verifiedAt }] }));
+      .mockReturnValue(of({ content: [{ ...pending, status: 'VERIFIED', verifiedAt }] }));
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
     expect(api.list).toHaveBeenCalledTimes(1);
@@ -59,7 +59,7 @@ describe('Dashboard live transactions', () => {
     expect(fixture.nativeElement.textContent).toContain('Physical approval verified');
     expect(fixture.nativeElement.textContent).not.toContain('Funds transferred');
     vi.advanceTimersByTime(3000);
-    expect(api.list).toHaveBeenCalledTimes(2);
+    expect(api.list).toHaveBeenCalledTimes(3);
     fixture.destroy();
   });
 
@@ -80,13 +80,45 @@ describe('Dashboard live transactions', () => {
     fixture.destroy();
   });
 
+  it('renders each durable bank outcome accurately', () => {
+    const cases = [
+      ['BANK_PENDING', 'Accepted by Nessie — pending'],
+      ['EXECUTED', 'Completed'],
+      ['FAILED', 'Failed'],
+      ['OUTCOME_UNKNOWN', 'Outcome unknown — review required'],
+    ] as const;
+    for (const [status, label] of cases) {
+      api.list.mockReturnValue(of({ content: [{ ...pending, status, verifiedAt: new Date().toISOString(),
+        bankProvider: 'nessie', bankStatus: status, bankReceiptId: status === 'BANK_PENDING' ? 'receipt-1' : null }] }));
+      const fixture = TestBed.createComponent(Dashboard);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.textContent).toContain(label);
+      if (status === 'BANK_PENDING') expect(fixture.nativeElement.textContent).not.toContain('Completed');
+      fixture.destroy();
+    }
+  });
+
+  it('continues polling executing and bank-pending records', () => {
+    vi.useFakeTimers();
+    for (const status of ['EXECUTING', 'BANK_PENDING'] as const) {
+      api.list.mockReset().mockReturnValue(of({ content: [{ ...pending, status,
+        verifiedAt: new Date().toISOString() }] }));
+      const fixture = TestBed.createComponent(Dashboard);
+      fixture.detectChanges();
+      expect(api.list).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(3000);
+      expect(api.list).toHaveBeenCalledTimes(2);
+      fixture.destroy();
+    }
+  });
+
   it('labels an expired pending authorization window and stops polling', () => {
     vi.useFakeTimers();
     api.list.mockReturnValue(of({ content: [{ ...pending,
       createdAt: new Date(Date.now() - 180000).toISOString() }] }));
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('approval window expired');
+    expect(fixture.nativeElement.textContent).toContain('Approval window expired');
     vi.advanceTimersByTime(3000);
     expect(api.list).toHaveBeenCalledTimes(1);
     fixture.destroy();

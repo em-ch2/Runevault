@@ -2,6 +2,7 @@ package com.runevault;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import com.runevault.banking.BankReceipt;
 
 @Entity
 @Table(name = "transactions")
@@ -44,8 +45,18 @@ public class Transaction {
  private String bankReceiptId;
  @Column(length = 64)
  private String bankStatus;
+ @Column(length = 32)
+ private String bankProvider;
+ @Enumerated(EnumType.STRING)
+ @Column(length = 32)
+ private BankReceipt.Outcome bankOutcome;
+ @Enumerated(EnumType.STRING)
+ @Column(length = 40)
+ private BankReceipt.Reason bankReason;
+ private Instant bankSubmittedAt;
+ private Instant bankOutcomeAt;
 
- public enum Status { PENDING, SIMULATED, VERIFIED, EXECUTING, EXECUTED, FAILED }
+ public enum Status { PENDING, SIMULATED, VERIFIED, EXECUTING, BANK_PENDING, EXECUTED, FAILED, OUTCOME_UNKNOWN }
 
 
  public static Transaction pending(String id, long amount, String destination, String device, String glyphs) {
@@ -86,11 +97,30 @@ public class Transaction {
  public Instant getAuditedAt() { return auditedAt; }
  public String getBankReceiptId() { return bankReceiptId; }
  public String getBankStatus() { return bankStatus; }
- public void recordExecution(String receiptId, String bankStatus) {
+ public String getBankProvider() { return bankProvider; }
+ public BankReceipt.Outcome getBankOutcome() { return bankOutcome; }
+ public BankReceipt.Reason getBankReason() { return bankReason; }
+ public Instant getBankSubmittedAt() { return bankSubmittedAt; }
+ public Instant getBankOutcomeAt() { return bankOutcomeAt; }
+ public void recordExecution(BankReceipt receipt, Instant recordedAt) {
   if (status != Status.EXECUTING) throw new IllegalStateException("Transaction is not executing");
-  this.bankReceiptId = receiptId;
-  this.bankStatus = bankStatus;
-  status = receiptId != null ? Status.EXECUTED : Status.FAILED;
+  if (receipt == null || receipt.outcome() == null || receipt.reason() == null || recordedAt == null
+   || !transactionId.equals(receipt.transactionId()) || amountMinor != receipt.amountMinor()
+   || !currency.equals(receipt.currency()) || !destination.equals(receipt.destination()))
+   throw new IllegalArgumentException("Invalid bank result for transaction");
+  bankReceiptId = receipt.receiptId();
+  bankStatus = receipt.status();
+  bankProvider = receipt.provider();
+  bankOutcome = receipt.outcome();
+  bankReason = receipt.reason();
+  bankSubmittedAt = receipt.submittedAt();
+  bankOutcomeAt = recordedAt;
+  status = switch (receipt.outcome()) {
+   case ACCEPTED_PENDING -> Status.BANK_PENDING;
+   case COMPLETED -> Status.EXECUTED;
+   case FAILED -> Status.FAILED;
+   case UNKNOWN -> Status.OUTCOME_UNKNOWN;
+  };
  }
 
 
