@@ -4,6 +4,6 @@ export const environment = {
     clientId: 'VXOx3TrDK15L7XPejXwXYFQEtpRqXYlH',
     audience: 'https://api.runevault',
   },
-  // Empty = play the mock feed. Set to Person B's endpoint, e.g. 'ws://localhost:8080/ws/transfers'.
+  // Empty = mock feed. For live transport use the same-origin proxy, e.g. ws://localhost:4200/ws/transfers.
   feedUrl: '',
 };

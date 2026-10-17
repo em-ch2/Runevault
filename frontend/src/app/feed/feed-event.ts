@@ -1,6 +1,59 @@
 export type TabletState = 'connected' | 'locked' | 'disconnected';
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 
+export interface TransferTransportEvent {
+  eventId: string;
+  transactionId: string;
+  stage: 'PENDING' | 'VERIFIED' | 'GEMINI' | 'EXECUTING' | 'BANK_PENDING' | 'EXECUTED' | 'FAILED' | 'OUTCOME_UNKNOWN';
+  outcome: 'PENDING' | 'APPROVED' | 'REJECTED' | 'ACCEPTED_PENDING' | 'COMPLETED' | 'FAILED' | 'UNKNOWN';
+  timestamp: string;
+  payload: {
+    translationConfidence: number | null;
+    riskScore: number | null;
+    securityCode: string | null;
+    receiptId: string | null;
+    providerStatus: string | null;
+  };
+}
+
+export function parseTransportEvent(raw: unknown): TransferTransportEvent | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  const e = raw as Record<string, unknown>;
+  const stages = ['PENDING', 'VERIFIED', 'GEMINI', 'EXECUTING', 'BANK_PENDING', 'EXECUTED', 'FAILED', 'OUTCOME_UNKNOWN'];
+  const outcomes = ['PENDING', 'APPROVED', 'REJECTED', 'ACCEPTED_PENDING', 'COMPLETED', 'FAILED', 'UNKNOWN'];
+  if (typeof e['eventId'] !== 'string' || !/^[0-9a-f-]{36}$/.test(e['eventId']) ||
+      typeof e['transactionId'] !== 'string' || !/^[A-Za-z0-9-]{1,63}$/.test(e['transactionId']) ||
+      !stages.includes(e['stage'] as string) || !outcomes.includes(e['outcome'] as string) ||
+      typeof e['timestamp'] !== 'string' || Number.isNaN(Date.parse(e['timestamp']))) return null;
+  const p = e['payload'];
+  if (typeof p !== 'object' || p === null || Array.isArray(p)) return null;
+  const payload = p as Record<string, unknown>;
+  const confidence = payload['translationConfidence'];
+  const risk = payload['riskScore'];
+  if (confidence !== null && (typeof confidence !== 'number' || !Number.isFinite(confidence) || confidence < 0 || confidence > 1)) return null;
+  if (risk !== null && (typeof risk !== 'number' || !Number.isFinite(risk) || risk < 0 || risk > 100)) return null;
+  const code = payload['securityCode'];
+  const receipt = payload['receiptId'];
+  const status = payload['providerStatus'];
+  if (code !== null && (typeof code !== 'string' || !/^[A-Z0-9_]{1,64}$/.test(code))) return null;
+  if (receipt !== null && (typeof receipt !== 'string' || receipt.length > 64)) return null;
+  if (status !== null && (typeof status !== 'string' || status.length > 64)) return null;
+  return {
+    eventId: e['eventId'] as string,
+    transactionId: e['transactionId'] as string,
+    stage: e['stage'] as TransferTransportEvent['stage'],
+    outcome: e['outcome'] as TransferTransportEvent['outcome'],
+    timestamp: e['timestamp'] as string,
+    payload: {
+      translationConfidence: confidence as number | null,
+      riskScore: risk as number | null,
+      securityCode: code as string | null,
+      receiptId: receipt as string | null,
+      providerStatus: status as string | null,
+    },
+  };
+}
+
 export interface TabletStatusEvent {
   type: 'tablet_status';
   device: string;

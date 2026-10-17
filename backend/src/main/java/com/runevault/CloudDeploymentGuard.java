@@ -35,6 +35,12 @@ public class CloudDeploymentGuard implements EnvironmentPostProcessor, Ordered {
   String domain = required(env, "RUNEVAULT_DOMAIN", 4);
   if (!domain.matches("(?i)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\\.[a-z]{2,}"))
    fail("RUNEVAULT_DOMAIN must be a public hostname");
+  if (!required(env, "RUNEVAULT_WS_ALLOWED_ORIGINS", 10).equals("https://" + domain))
+   fail("RUNEVAULT_WS_ALLOWED_ORIGINS must match the HTTPS frontend origin");
+  positiveLong(env, "RUNEVAULT_WS_TICKET_SECONDS");
+  positiveLong(env, "RUNEVAULT_WS_MAX_TICKETS");
+  positiveLong(env, "RUNEVAULT_WS_MAX_CONNECTIONS_PER_USER");
+  positiveLong(env, "RUNEVAULT_WS_TICKET_ISSUANCE_PER_WINDOW");
 
   String issuer = required(env, "AUTH0_ISSUER_URI", 12);
   if (!issuer.startsWith("https://") || !issuer.endsWith("/")) fail("AUTH0_ISSUER_URI must be an HTTPS issuer ending in /");

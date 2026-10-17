@@ -14,6 +14,11 @@ class CloudDeploymentGuardTest {
   env.setProperty("spring.jpa.hibernate.ddl-auto", "validate");
   env.setProperty("spring.sql.init.mode", "never");
   env.setProperty("RUNEVAULT_DOMAIN", "runevault.testdomain.com");
+  env.setProperty("RUNEVAULT_WS_ALLOWED_ORIGINS", "https://runevault.testdomain.com");
+  env.setProperty("RUNEVAULT_WS_TICKET_SECONDS", "30");
+  env.setProperty("RUNEVAULT_WS_MAX_TICKETS", "10000");
+  env.setProperty("RUNEVAULT_WS_MAX_CONNECTIONS_PER_USER", "3");
+  env.setProperty("RUNEVAULT_WS_TICKET_ISSUANCE_PER_WINDOW", "30");
   env.setProperty("AUTH0_ISSUER_URI", "https://tenant.auth0.com/");
   env.setProperty("AUTH0_AUDIENCE", "https://api.runevault");
   env.setProperty("SPRING_DATASOURCE_USERNAME", "runevault");

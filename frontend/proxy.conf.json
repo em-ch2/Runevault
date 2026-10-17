@@ -3,5 +3,11 @@
     "target": "http://localhost:8080",
     "secure": false,
     "changeOrigin": false
+  },
+  "/ws/transfers": {
+    "target": "http://localhost:8080",
+    "secure": false,
+    "changeOrigin": false,
+    "ws": true
   }
 }

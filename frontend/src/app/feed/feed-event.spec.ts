@@ -1,4 +1,20 @@
-import { parseFeedEvent } from './feed-event';
+import { parseFeedEvent, parseTransportEvent } from './feed-event';
+
+describe('parseTransportEvent', () => {
+  const event = {
+    eventId: '11111111-1111-1111-1111-111111111111', transactionId: 'tx-1',
+    stage: 'VERIFIED', outcome: 'APPROVED', timestamp: '2026-10-17T12:00:00Z',
+    payload: { translationConfidence: null, riskScore: null, securityCode: null,
+      receiptId: null, providerStatus: null },
+  };
+  it('accepts a safe envelope and discards extra fields', () => {
+    expect(parseTransportEvent({ ...event, sig: 'secret' })).toEqual(event);
+  });
+  it('rejects malformed status and numeric fields', () => {
+    expect(parseTransportEvent({ ...event, stage: 'TRANSFERRED' })).toBeNull();
+    expect(parseTransportEvent({ ...event, payload: { ...event.payload, riskScore: 101 } })).toBeNull();
+  });
+});
 
 describe('parseFeedEvent', () => {
   const at = '2026-10-17T12:00:00.000Z';

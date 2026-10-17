@@ -1,7 +1,9 @@
-import { Injectable, signal } from '@angular/core';
-import { Subject } from 'rxjs';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { inject, Injectable, signal } from '@angular/core';
+import { AuthService as Auth0Service } from '@auth0/auth0-angular';
+import { firstValueFrom, Subject } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { FeedEvent, parseFeedEvent } from './feed-event';
+import { FeedEvent, parseFeedEvent, parseTransportEvent, TransferTransportEvent } from './feed-event';
 import { MOCK_SCRIPTS, MockScenario } from './mock-feed';
 
 export type FeedConnection = 'idle' | 'mock' | 'connecting' | 'open' | 'closed';
@@ -10,6 +12,7 @@ export type FeedConnection = 'idle' | 'mock' | 'connecting' | 'open' | 'closed';
 @Injectable({ providedIn: 'root' })
 export class FeedService {
   readonly events = new Subject<FeedEvent>();
+  readonly transportEvents = new Subject<TransferTransportEvent>();
   readonly connection = signal<FeedConnection>('idle');
   readonly isMock = environment.feedUrl === '';
 
@@ -18,6 +21,8 @@ export class FeedService {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private mockTimers: ReturnType<typeof setTimeout>[] = [];
   private stopped = true;
+  private readonly http = inject(HttpClient);
+  private readonly auth0 = inject(Auth0Service);
 
   start(): void {
     if (!this.stopped) return;
@@ -60,9 +65,29 @@ export class FeedService {
     }
   }
 
-  private connect(): void {
+  private async connect(): Promise<void> {
     this.connection.set('connecting');
-    const socket = new WebSocket(environment.feedUrl);
+    let ticket: string;
+    try {
+      const token = await firstValueFrom(this.auth0.getAccessTokenSilently({
+        authorizationParams: { audience: environment.auth0.audience },
+      }));
+      const issued = await firstValueFrom(this.http.post<{ ticket: string; expiresAt: string }>(
+        '/api/ws-ticket', {}, { headers: new HttpHeaders({ Authorization: `Bearer ${token}` }) },
+      ));
+      ticket = issued.ticket;
+      if (this.stopped) return;
+    } catch {
+      this.retry();
+      return;
+    }
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(environment.feedUrl, [`runevault.ticket.${ticket}`]);
+    } catch {
+      this.retry();
+      return;
+    }
     this.socket = socket;
     socket.onopen = () => {
       this.reconnectDelayMs = 1000;
@@ -76,6 +101,8 @@ export class FeedService {
       } catch {
         return;
       }
+      const transport = parseTransportEvent(raw);
+      if (transport !== null) { this.transportEvents.next(transport); return; }
       const event = parseFeedEvent(raw);
       if (event !== null) this.events.next(event);
     };
@@ -83,8 +110,14 @@ export class FeedService {
       this.socket = null;
       this.connection.set('closed');
       if (this.stopped) return;
-      this.reconnectTimer = setTimeout(() => this.connect(), this.reconnectDelayMs);
-      this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, 15000);
+      this.retry();
     };
+  }
+
+  private retry(): void {
+    if (this.stopped) return;
+    this.connection.set('closed');
+    this.reconnectTimer = setTimeout(() => { void this.connect(); }, this.reconnectDelayMs);
+    this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, 15000);
   }
 }
