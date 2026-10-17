@@ -14,14 +14,25 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.runevault.banking.BankGateway;
+import com.runevault.banking.BankReceipt;
+
+
 @RestController
 @RequestMapping("/api")
 public class TransactionApi {
  private final byte[] secret;
+ private final BankGateway bankGateway;
  private final Map<String, Challenge> pending = new ConcurrentHashMap<>();
- public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode) {
-  if (!"local".equals(mode)) throw new IllegalStateException("Production security is not implemented");
+ public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode, BankGateway bankGateway) {
+  if (!"local".equals(mode)) {
+    throw new IllegalStateException(
+      "Production security is not implemented."
+    );
+  }
+
   this.secret = secret.getBytes(StandardCharsets.UTF_8);
+  this.bankGateway = bankGateway;
  }
  public record Intent(@NotNull @Pattern(regexp="pico-demo-1") String deviceId,
   @Min(1) @Max(100000000) long amountMinor,
@@ -48,8 +59,18 @@ public class TransactionApi {
   mac.init(new SecretKeySpec(secret,"HmacSHA256"));
   if (!MessageDigest.isEqual(mac.doFinal(c.signingText().getBytes(StandardCharsets.UTF_8)), HexFormat.of().parseHex(approval.signature()))) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid signature");
   if (!pending.remove(c.challengeId(), c)) throw new ResponseStatusException(HttpStatus.CONFLICT,"Already consumed");
-  return Map.of("transactionId",c.challengeId(),"status","SIMULATED","signatureVerified",true,
-   "analysis",Map.of("lore","The stone records a passage across the sea.","riskLevel","LOW","source","mock"),
-   "receipt",Map.of("provider","mock","amountMinor",c.intent().amountMinor(),"currency","USD","destination",c.intent().destination()));
+  BankReceipt receipt = bankGateway.transfer(c.challengeId(), c.intent().amountMinor(), "USD", c.intent().destination());
+
+  return Map.of(
+    "transactionId", c.challengeId(),
+    "status", receipt.status(),
+    "signatureVerified", true,
+    "analysis", Map.of(
+      "lore", "The stone records a passage across the sea.",
+      "riskLevel", "LOW",
+      "source", "mock"
+    ),
+    "receipt", receipt
+  );
  }
 }
