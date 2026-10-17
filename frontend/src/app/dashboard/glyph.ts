@@ -1,6 +1,6 @@
 import { Component, computed, input } from '@angular/core';
 
-export const GLYPH_NAMES = ['Key', 'Eye', 'Gate'];
+export const GLYPH_NAMES = ['Dawn', 'Will', 'Freedom'];
 
 @Component({
   selector: 'app-glyph',
@@ -16,16 +16,28 @@ export const GLYPH_NAMES = ['Key', 'Eye', 'Gate'];
       <path class="cartouche" d="M8 2 H52 L58 8 V36 H55 V44 H58 V72 L52 78 H8 L2 72 V44 H5 V36 H2 V8 Z" />
       <path class="cartouche-inner" d="M11 7 H49 L53 11 V69 L49 73 H11 L7 69 V11 Z" />
       @if (id() === 0) {
-        <path class="stroke" d="M30 16 L38 24 L30 32 L22 24 Z M27 24 H33 M30 32 V62 M30 52 H38 M30 60 H36" />
-      }
-      @if (id() === 1) {
+        <!-- Dawn: a sun on the horizon with five rays. -->
         <path
           class="stroke"
-          d="M14 40 L22 32 H38 L46 40 L38 48 H22 Z M30 35 L35 40 L30 45 L25 40 Z M30 19 V26 M20 23 L23 28 M40 23 L37 28 M30 54 V61"
+          d="M20 42 A10 10 0 1 1 40 42 A10 10 0 1 1 20 42 Z M11 44 H49 M30 22 V28 M17 29 L20.5 32.5 M43 29 L39.5 32.5 M17 55 L20.5 51.5 M43 55 L39.5 51.5"
+        />
+      }
+      @if (id() === 1) {
+        <!-- Will: a spiral fruit whose stem curls into a small loop. -->
+        <path
+          class="stroke"
+          d="M30 35 A13 13 0 0 1 30 61 A10.5 10.5 0 0 1 30 40 A8 8 0 0 1 30 56 A5.5 5.5 0 0 1 30 45 M30 35 C30 28 32 24 35.5 22.5 M41.5 21.5 A3 3 0 1 1 35.5 21.5 A3 3 0 1 1 41.5 21.5 Z"
         />
       }
       @if (id() === 2) {
-        <path class="stroke" d="M14 21 H46 M18 27 H42 M21 27 V62 M39 27 V62 M14 62 H46 M26 62 V40 H34 V62" />
+        <!-- Freedom: a triskelion, one spiral arm drawn three times around the centre. -->
+        @for (turn of [0, 120, 240]; track turn) {
+          <path
+            class="stroke"
+            [attr.transform]="'rotate(' + turn + ' 30 44)'"
+            d="M30 44 C24.5 39 23 34.5 24.5 29.5 A6 6 0 0 1 36.5 29.5 A4 4 0 0 1 28.5 29.5"
+          />
+        }
       }
     </svg>
   `,
