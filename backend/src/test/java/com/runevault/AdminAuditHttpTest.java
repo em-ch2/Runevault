@@ -80,8 +80,9 @@ class AdminAuditHttpTest {
   mvc.perform(admin("/api/admin/audit-events?deviceId=slab-01&size=1&page=1"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2))
    .andExpect(jsonPath("$.content[0].transactionId").value("tx-one"));
+  // Events saved back-to-back can share a timestamp, so tx-two may also match; only inclusion matters here.
   mvc.perform(admin("/api/admin/audit-events").param("from", at).param("to", at))
-   .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].transactionId").value("tx-one"));
+   .andExpect(status().isOk()).andExpect(jsonPath("$.content[*].transactionId", org.hamcrest.Matchers.hasItem("tx-one")));
   mvc.perform(admin("/api/admin/audit-events").param("from", "2099-01-01T00:00:00Z"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
   assertEquals(AuditEvent.Reason.COUNTER_REPLAY, auditEvents.findById(second.getId()).orElseThrow().getReason());

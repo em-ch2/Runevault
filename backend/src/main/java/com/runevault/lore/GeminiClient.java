@@ -33,10 +33,19 @@ public class GeminiClient {
 
  /** Sends a system prompt and user prompt, returns the model's JSON text. */
  public String generateJson(String system, String user) {
+  return generateJson(system, user, null);
+ }
+
+ /** Same as above, but Gemini must return JSON matching responseSchema (OpenAPI subset). */
+ public String generateJson(String system, String user, Map<String, Object> responseSchema) {
+  Map<String, Object> config = new java.util.LinkedHashMap<>();
+  config.put("responseMimeType", "application/json");
+  config.put("temperature", 0.2);
+  if (responseSchema != null) config.put("responseSchema", responseSchema);
   Map<String, Object> body = Map.of(
     "systemInstruction", Map.of("parts", List.of(Map.of("text", system))),
     "contents", List.of(Map.of("role", "user", "parts", List.of(Map.of("text", user)))),
-    "generationConfig", Map.of("responseMimeType", "application/json", "temperature", 0.2));
+    "generationConfig", config);
   JsonNode response = http.post()
     .uri("/models/{model}:generateContent", model)
     .body(body)
