@@ -60,7 +60,7 @@ Set `POSTGRES_PASSWORD` in `.env` before the first startup. For a backend runnin
 
 Hibernate updates the local demo schema automatically. Tests use an isolated H2 database in PostgreSQL compatibility mode and do not require a running database. Simulator challenges remain in memory and are available only under `dev,simulator`; persisting simulation receipts does not implement durable challenge/replay storage or production schema migrations.
 
-Local Java builds require Java 21 and Maven 3.9+: `mvn -f backend/pom.xml verify`. Your installed Java 8 cannot build this project. Docker builds use Java 21.
+Local Java builds require Java 25 and Maven 3.9+: `mvn -f backend/pom.xml verify`. Your installed Java 8 cannot build this project. Docker builds use Java 25.
 
 Use small branches such as codex/a-firmware, codex/b-auth0, codex/c-gemini. Keep secrets out of Git. See docs/roadmap.md.
 

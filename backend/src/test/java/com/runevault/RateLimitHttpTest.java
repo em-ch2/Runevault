@@ -41,6 +41,7 @@ class RateLimitHttpTest {
  @Autowired MockMvc mvc;
  @Autowired ObjectMapper mapper;
  @MockBean JwtDecoder decoder;
+ @MockBean com.runevault.lore.GeminiGlyphGenerator glyphGenerator;
 
  private void token(String value, String subject, String... permissions) {
   when(decoder.decode(value)).thenReturn(Jwt.withTokenValue(value).header("alg", "RS256")
@@ -50,6 +51,7 @@ class RateLimitHttpTest {
  }
 
  @Test void dashboardPollingAndUsersCannotExhaustBridgeApprovalQuota() throws Exception {
+  when(glyphGenerator.generate()).thenReturn("0-2-1-2-1");
   token("reader-a", "auth0|a", "read:transactions", "create:transactions");
   token("reader-b", "auth0|b", "read:transactions");
   token("admin-a", "auth0|admin", "admin:platform");
@@ -64,7 +66,7 @@ class RateLimitHttpTest {
   mvc.perform(get("/api/health")).andExpect(status().isOk());
   mvc.perform(post("/api/transactions").header("Authorization", "Bearer reader-a")
    .contentType("application/json").content(mapper.writeValueAsString(Map.of(
-    "device", "slab-01", "amount", 100, "dest", "acct-999", "glyphs", "0"))))
+    "device", "slab-01", "amount", 100, "dest", "acct-999"))))
    .andExpect(status().isCreated());
   mvc.perform(get("/api/transactions").header("Authorization", "Bearer reader-b"))
    .andExpect(status().isOk());

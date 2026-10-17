@@ -30,18 +30,18 @@ describe('Dashboard live transactions', () => {
     });
   });
 
-  it('creates a pending backend request and displays its transaction ID', () => {
+  it('creates a pending request without client-supplied glyphs and displays Gemini glyphs', () => {
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
     const dashboard = fixture.componentInstance;
-    dashboard.pendingForm.patchValue({ device: 'slab-01', amount: 50000,
-      dest: 'acct-999', glyphs: '0-2-1-2-1' });
-    api.create.mockReturnValue(of({ tx_id: 'abc123', status: 'PENDING', expires_at: 9999999999 }));
+    dashboard.pendingForm.patchValue({ device: 'slab-01', amount: 50000, dest: 'acct-999' });
+    api.create.mockReturnValue(of({ tx_id: 'abc123', status: 'PENDING', expires_at: 9999999999,
+      glyphs: '0-2-1-2-1' }));
     dashboard.createPending();
     fixture.detectChanges();
-    expect(api.create).toHaveBeenCalledWith({ device: 'slab-01', amount: 50000,
-      dest: 'acct-999', glyphs: '0-2-1-2-1' });
+    expect(api.create).toHaveBeenCalledWith({ device: 'slab-01', amount: 50000, dest: 'acct-999' });
     expect(fixture.nativeElement.textContent).toContain('abc123');
+    expect(dashboard.pendingGlyphs()).toEqual([0, 2, 1, 2, 1]);
     fixture.destroy();
   });
 

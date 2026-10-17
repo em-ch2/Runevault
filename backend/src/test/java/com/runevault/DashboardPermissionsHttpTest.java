@@ -33,7 +33,10 @@ import static org.junit.jupiter.api.Assertions.*;
 @ActiveProfiles({"auth", "test"})
 class DashboardPermissionsHttpTest {
  private static final String BODY = """
-  {"device":"slab-01","amount":50000,"dest":"acct-999","glyphs":"0-2-1-2-1","requesterSubject":"spoofed"}
+  {"device":"slab-01","amount":50000,"dest":"acct-999","requesterSubject":"spoofed"}
+  """;
+ private static final String BRIDGE_BODY = """
+  {"device":"slab-01","amount":50000,"dest":"acct-999","glyphs":"0-2-1-2-1"}
   """;
  @Autowired MockMvc mvc;
  @Autowired TransactionRepository transactions;
@@ -41,11 +44,13 @@ class DashboardPermissionsHttpTest {
  @Autowired AuditEventRepository auditEvents;
  @Autowired ObjectMapper mapper;
  @MockBean JwtDecoder decoder;
+ @MockBean com.runevault.lore.GeminiGlyphGenerator glyphGenerator;
 
  @BeforeEach void prepare() {
   auditEvents.deleteAll();
   transactions.deleteAll();
   devices.deleteAll();
+  when(glyphGenerator.generate()).thenReturn("0-2-1-2-1");
   token("employee", "auth0|employee", "create:transactions", "read:transactions");
   token("viewer", "auth0|viewer", "read:transactions");
   token("creator", "auth0|creator", "create:transactions");
@@ -87,7 +92,8 @@ class DashboardPermissionsHttpTest {
    .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
   mvc.perform(post("/api/transactions").header("Authorization", "Bearer employee")
     .contentType("application/json").content(BODY))
-   .andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("PENDING"));
+   .andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("PENDING"))
+   .andExpect(jsonPath("$.glyphs").value("0-2-1-2-1"));
   assertEquals("auth0|employee", transactions.findAll().get(0).getRequesterSubject());
   mvc.perform(get("/api/transactions").header("Authorization", "Bearer viewer"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].requesterSubject").value("auth0|employee"))
@@ -98,12 +104,23 @@ class DashboardPermissionsHttpTest {
    .andExpect(status().isOk());
  }
 
+ @Test void dashboardDoesNotCreateTransactionsWhenGeminiCannotGenerateGlyphs() throws Exception {
+  token("gemini-test", "auth0|employee", "create:transactions");
+  when(glyphGenerator.generate()).thenThrow(new com.runevault.lore.GeminiGlyphGenerator.Unavailable("offline"));
+
+  mvc.perform(post("/api/transactions").header("Authorization", "Bearer gemini-test")
+    .contentType("application/json").content(BODY))
+   .andExpect(status().isServiceUnavailable())
+   .andExpect(jsonPath("$.error").value("Gemini approval code generation is unavailable"));
+  assertEquals(0, transactions.count());
+ }
+
  @Test void bridgeEndpointsStillRequireBridgeToken() throws Exception {
   mvc.perform(post("/api/device/transactions").header("Authorization", "Bearer admin")
     .contentType("application/json").content(BODY))
    .andExpect(status().isUnauthorized());
   mvc.perform(post("/api/device/transactions").header("X-Bridge-Token", "test-bridge-token-with-enough-characters")
-    .contentType("application/json").content(BODY))
+    .contentType("application/json").content(BRIDGE_BODY))
    .andExpect(status().isCreated());
   assertNull(transactions.findAll().get(0).getRequesterSubject());
  }

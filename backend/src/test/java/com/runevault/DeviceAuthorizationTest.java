@@ -161,6 +161,27 @@ class DeviceAuthorizationTest {
   mvc.perform(get(path).header("X-Bridge-Token", TOKEN)).andExpect(status().isConflict());
  }
 
+ @Test void bridgePollReturnsOldestLivePendingTransaction() throws Exception {
+  String path = "/api/device/pending?device=slab-01";
+  mvc.perform(get(path)).andExpect(status().isUnauthorized());
+  mvc.perform(get(path).header("X-Bridge-Token", TOKEN)).andExpect(status().isNoContent());
+  String first = pending();
+  mvc.perform(get(path).header("X-Bridge-Token", TOKEN))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.tx_id").value(first))
+   .andExpect(jsonPath("$.amount").value(50000)).andExpect(jsonPath("$.dest").value("acct-999"))
+   .andExpect(jsonPath("$.expires_at").isNumber())
+   .andExpect(jsonPath("$.expectedGlyphs").doesNotExist());
+  mvc.perform(get("/api/device/pending?device=other").header("X-Bridge-Token", TOKEN))
+   .andExpect(status().isNoContent());
+  authorize(signed(first, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  mvc.perform(get(path).header("X-Bridge-Token", TOKEN)).andExpect(status().isNoContent());
+  String second = pending();
+  mvc.perform(get(path).header("X-Bridge-Token", TOKEN))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.tx_id").value(second));
+  revocations.revoke("slab-01", "auth0|admin");
+  mvc.perform(get(path).header("X-Bridge-Token", TOKEN)).andExpect(status().is(423));
+ }
+
  @Test void expiredLookupAndTamperedPayloadAreRejectedAndAudited() throws Exception {
   String id = pending();
   var transaction = transactions.findById(id).orElseThrow();

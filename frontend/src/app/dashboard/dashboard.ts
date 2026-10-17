@@ -30,11 +30,17 @@ export class Dashboard implements OnInit, OnDestroy {
   readonly apiError = signal<string | null>(null);
   readonly selected = computed(() => this.records().find((record) => record.transactionId === this.selectedId()) ?? null);
   readonly createdForSelection = computed(() => this.created()?.tx_id === this.selectedId() ? this.created() : null);
+  readonly pendingGlyphs = computed(() => {
+    const created = this.createdForSelection();
+    const transaction = this.selected();
+    if (created === null || (transaction !== null && transaction.status !== 'PENDING')) return [];
+    if (this.approvalExpired(transaction)) return [];
+    return created.glyphs.split('-').map((g) => Number(g));
+  });
   readonly pendingForm = new FormGroup({
     device: new FormControl('slab-01', { nonNullable: true, validators: [Validators.required, Validators.pattern('[A-Za-z0-9_-]{1,64}')] }),
     amount: new FormControl(50000, { nonNullable: true, validators: [Validators.required, Validators.min(1), Validators.max(100000000)] }),
     dest: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern('[A-Za-z0-9_-]{1,64}')] }),
-    glyphs: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern('[0-2](-[0-2]){0,63}')] }),
   });
   private poll: Subscription | null = null;
   private listRequest: Subscription | null = null;
@@ -129,12 +135,13 @@ export class Dashboard implements OnInit, OnDestroy {
     this.pendingForm.markAllAsTouched();
     const amount = this.pendingForm.controls.amount.value;
     if (this.pendingForm.invalid || !Number.isInteger(amount)) {
-      this.apiError.set('Enter a whole-cent amount, destination, device, and glyph sequence using 0-2.');
+      this.apiError.set('Enter a whole-cent amount, destination, and device.');
       return;
     }
     this.creating.set(true);
     this.apiError.set(null);
-    this.api.create(this.pendingForm.getRawValue()).subscribe({
+    const request = this.pendingForm.getRawValue();
+    this.api.create(request).subscribe({
       next: (created) => {
         this.created.set(created);
         this.selectedId.set(created.tx_id);

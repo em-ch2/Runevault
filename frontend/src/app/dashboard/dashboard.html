@@ -57,9 +57,7 @@
       <input id="tx-amount" type="number" min="1" max="100000000" step="1" formControlName="amount" />
       <label for="tx-dest">Destination</label>
       <input id="tx-dest" formControlName="dest" autocomplete="off" placeholder="acct-999" />
-      <label for="tx-glyphs">Approval glyphs</label>
-      <input id="tx-glyphs" formControlName="glyphs" autocomplete="off" placeholder="0-2-1-2-1" />
-      <p class="muted small">Enter 0, 1, or 2 separated by dashes. Share the transaction ID with the bridge operator.</p>
+      <p class="muted small">Gemini generates the approval glyphs automatically. A running hardware bridge picks the transaction up and sends it to the Pico.</p>
       @if (apiError()) { <p class="form-error" role="alert">{{ apiError() }}</p> }
       <button class="btn btn-primary" type="submit" [disabled]="creating()">
         {{ creating() ? 'Creating…' : 'Create transaction' }}
@@ -111,6 +109,17 @@
       <p class="muted">Expires at {{ expiry(pending.expires_at) }}</p>
     } @else {
       <p class="empty">No backend transaction selected.</p>
+    }
+    @if (pendingGlyphs().length) {
+      <p class="muted small">Press these glyphs on the tablet, then tap Enter:</p>
+      <div class="glyph-row">
+        @for (g of pendingGlyphs(); track $index) {
+          <figure>
+            <app-glyph [id]="g" [size]="50" />
+            <figcaption>{{ glyphNames[g] }}</figcaption>
+          </figure>
+        }
+      </div>
     }
     <button class="btn btn-ghost" type="button" (click)="refresh()" [disabled]="loadingRecords()">
       {{ loadingRecords() ? 'Loading…' : 'Refresh status' }}
