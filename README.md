@@ -18,6 +18,7 @@ docker compose up -d --build
 Compose builds Angular with `npm ci` inside the frontend image; a local `frontend/dist` folder is not needed. To view startup logs, run `docker compose logs -f frontend backend`. Do not use `docker compose down -v` when stopping services, because it deletes the PostgreSQL volume.
 Backend: http://localhost:8080/api/health
 Dashboard: http://localhost:4200. For Angular development outside Docker, run `npm start` in `frontend/`. See frontend/README.md.
+For a temporary public HTTPS URL used by a USB bridge on another computer, see [the bridge tunnel instructions](bridge/README.md#temporary-public-https-access-for-a-bridge-on-another-computer). Keep the Auth0 audience unchanged.
 To run the legacy simulator, stop the normal backend and explicitly start `dev,simulator`:
 
 ```powershell
