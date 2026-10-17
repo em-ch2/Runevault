@@ -21,9 +21,13 @@
   </div>
   <div class="topbar-user">
     <span class="muted">{{ auth.user()?.name }}</span>
-    <button class="btn btn-ghost" type="button" (click)="signOut()">Sign out</button>
+    <button class="btn btn-ghost" type="button" (click)="signOut()" [disabled]="auth.busy()">Sign out</button>
   </div>
 </header>
+
+@if (auth.error()) {
+  <p class="form-error" role="alert">{{ auth.error() }}</p>
+}
 
 <div class="mode-switch" role="group" aria-label="Dashboard mode">
   <button class="btn btn-ghost" type="button" [attr.aria-pressed]="mode() === 'live'" (click)="switchMode('live')">Live API</button>

@@ -1,7 +1,7 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { AuthService as Auth0Service } from '@auth0/auth0-angular';
-import { map } from 'rxjs';
+import { finalize, map } from 'rxjs';
 
 export interface AuthUser {
   name: string;
@@ -28,9 +28,15 @@ export class AuthService {
   readonly error = computed(() => this.redirectError() ?? this.sdkError()?.message ?? null);
 
   signIn(): void {
+    if (this.busy() || this.loading()) return;
     this.redirectError.set(null);
     this.busy.set(true);
-    this.auth0.loginWithRedirect({ appState: { target: '/' } }).subscribe({
+    this.auth0.loginWithRedirect({
+      appState: { target: '/' },
+      authorizationParams: { prompt: 'login', max_age: 0 },
+    }).pipe(
+      finalize(() => this.busy.set(false)),
+    ).subscribe({
       error: () => {
         this.busy.set(false);
         this.redirectError.set('Could not open sign in. Please try again.');
@@ -39,12 +45,13 @@ export class AuthService {
   }
 
   signUp(): void {
+    if (this.busy() || this.loading()) return;
     this.redirectError.set(null);
     this.busy.set(true);
     this.auth0.loginWithRedirect({
       appState: { target: '/' },
-      authorizationParams: { screen_hint: 'signup' },
-    }).subscribe({
+      authorizationParams: { screen_hint: 'signup', prompt: 'login', max_age: 0 },
+    }).pipe(finalize(() => this.busy.set(false))).subscribe({
       error: () => {
         this.busy.set(false);
         this.redirectError.set('Could not open account creation. Please try again.');
@@ -53,9 +60,14 @@ export class AuthService {
   }
 
   signOut(): void {
+    if (this.busy() || this.loading()) return;
     this.redirectError.set(null);
     this.busy.set(true);
-    this.auth0.logout({ logoutParams: { returnTo: window.location.origin + '/login' } }).subscribe({
+    // Return to the same root URL used by the Auth0 quickstart allowlist.
+    // The signed-in guard sends the now signed-out user to /login.
+    this.auth0.logout({ logoutParams: { returnTo: window.location.origin } }).pipe(
+      finalize(() => this.busy.set(false)),
+    ).subscribe({
       error: () => {
         this.busy.set(false);
         this.redirectError.set('Could not sign out. Please try again.');

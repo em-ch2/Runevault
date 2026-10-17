@@ -16,11 +16,11 @@ The dashboard uses the Auth0 Angular SDK with hosted Universal Login and authori
 In Auth0, configure client `VXOx3TrDK15L7XPejXwXYFQEtpRqXYlH` as a **Single Page Application**. For local development and the Compose frontend, set:
 
 - Allowed Callback URLs: `http://localhost:4200`
-- Allowed Logout URLs: `http://localhost:4200/login`
+- Allowed Logout URLs: `http://localhost:4200`
 - Allowed Web Origins: `http://localhost:4200`
 - Allowed Origins (CORS), if used: `http://localhost:4200`
 
-The SDK requests an access token for audience `https://api.runevault`. The API must exist in the same tenant and be authorized for this SPA client. For another deployed frontend origin, add that exact origin to the Auth0 settings above; its logout URL is `<origin>/login`. Route guards wait for SDK initialization before deciding whether to show the dashboard or sign-in screen. Browser authentication alone does not send API requests or replace backend permission checks.
+The SDK requests an access token for audience `https://api.runevault`. The API must exist in the same tenant and be authorized for this SPA client. For another deployed frontend origin, add that exact origin to the Auth0 settings above; its logout URL is `<origin>`. Route guards wait for SDK initialization before deciding whether to show the dashboard or sign-in screen. Browser authentication alone does not send API requests or replace backend permission checks.
 
 ## Live transactions
 
@@ -44,3 +44,13 @@ All feed wiring is in `src/app/feed/feed.service.ts`. Set `feedUrl` in `src/envi
 ```
 
 `state` is `connected`, `locked` or `disconnected`. `amount` is integer cents. Glyphs are sent only with `transfer_executed`, never for rejected attempts. Browsers cannot set headers on a WebSocket, so an authenticated feed needs a token in the query string or a cookie.
+
+### Login and logout troubleshooting
+
+The Runevault sign-in and signup screens intentionally open Auth0 Universal Login. Passwords, signup, password reset and MFA are handled by Auth0, not by Angular. Use an application test user; signing into the Auth0 management dashboard does not create a Runevault user. New users need their API permissions assigned before Live API requests will succeed; signup never grants administrator privileges.
+
+Logout returns to the current site root. Under Applications > Runevault Dashboard > Settings, add the exact frontend origin to Allowed Logout URLs and save. For localhost use http://localhost:4200. For an HTTPS frontend tunnel or deployment add its exact origin too; a backend-only tunnel does not change frontend Auth0 URLs. Keep Allowed Callback URLs and Allowed Web Origins aligned with the frontend origin. Different hosts (localhost vs 127.0.0.1) and ports require their own entries.
+
+Validation: sign in as an application user, confirm your name appears on the dashboard, refresh, create/list a transaction with the required permissions, sign out, and confirm the protected dashboard returns to the sign-in screen. Retry signup using a separate test account. If Auth0 rejects a URL, compare its reported returnTo or redirect_uri to the saved application allowlist. No frontend build can change Auth0 tenant settings automatically.
+
+Explicit sign-in and signup request prompt=login and max_age=0 so an existing Auth0 session is not silently reused. Upstream Google sessions are independent: to guarantee a Google account chooser, configure the Google social connection's upstream prompt parameter to select_account in Auth0. This requires tenant configuration; the Angular request alone does not guarantee a new Google password challenge. Runevault logout does not sign the browser out of Gmail.
