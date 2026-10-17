@@ -25,3 +25,5 @@ USB proposal: one JSON object per LF-terminated line, maximum 4096 bytes. Host s
 No trusted device display means the user cannot independently verify amount/destination. USB-connected means offline signing token, not fully air-gapped. Real bridge holds no signing key. simulator.mjs is test-only and deliberately uses a public demo key.
 
 Proposed Gemini schema: {"lore":"string","riskLevel":"LOW|MEDIUM|HIGH","reasons":["string"]}. Validate output; backend rules control authorization. The unrelated empathy schema from the original brief is not applicable.
+
+Bridge requests now require X-Bridge-Token. Local default: local-bridge-only-change-before-deploy. Override via RUNEVAULT_BRIDGE_TOKEN; never share the device HMAC key with the real bridge.
