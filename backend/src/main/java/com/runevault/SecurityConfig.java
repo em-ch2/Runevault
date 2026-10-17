@@ -35,7 +35,7 @@ public class SecurityConfig {
    a.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll();
    a.requestMatchers("/api/health").permitAll();
    // Bridge requests have their own credential, checked by Gate before authorization.
-   a.requestMatchers("/api/challenges", "/api/approvals").permitAll();
+   a.requestMatchers("/api/challenges", "/api/approvals", "/api/device/authorize", "/api/device/transactions").permitAll();
    if (auth) a.requestMatchers("/api/admin/**").hasAuthority("PERM_admin:platform").anyRequest().authenticated();
    else a.anyRequest().denyAll();
   });
@@ -69,7 +69,8 @@ public class SecurityConfig {
    String path = request.getRequestURI().substring(request.getContextPath().length());
    if (path.equals("/api/health")) { chain.doFilter(request,response); return; }
    if (!allow()) { response.setHeader("Retry-After","60"); response.sendError(429); return; }
-   if (path.equals("/api/challenges") || path.equals("/api/approvals")) {
+   if (path.equals("/api/challenges") || path.equals("/api/approvals")
+     || path.equals("/api/device/authorize") || path.equals("/api/device/transactions")) {
     String supplied = request.getHeader("X-Bridge-Token");
     if (supplied == null || !MessageDigest.isEqual(token, supplied.getBytes(StandardCharsets.UTF_8))) { response.sendError(401); return; }
    }
