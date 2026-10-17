@@ -1,0 +1,89 @@
+name: runevault-cloud
+
+x-logs: &bounded-logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    logging: *bounded-logs
+    environment:
+      SPRING_PROFILES_ACTIVE: auth,cloud
+      RUNEVAULT_DOMAIN: ${RUNEVAULT_DOMAIN:?Set RUNEVAULT_DOMAIN}
+      AUTH0_ISSUER_URI: ${AUTH0_ISSUER_URI:?Set AUTH0_ISSUER_URI}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:?Set AUTH0_AUDIENCE}
+      SPRING_DATASOURCE_URL: ${TIGER_JDBC_URL:?Set TIGER_JDBC_URL}
+      SPRING_DATASOURCE_USERNAME: ${TIGER_USERNAME:?Set TIGER_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${TIGER_PASSWORD:?Set TIGER_PASSWORD}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_SQL_INIT_MODE: never
+      RUNEVAULT_BRIDGE_TOKEN: ${RUNEVAULT_BRIDGE_TOKEN:?Set RUNEVAULT_BRIDGE_TOKEN}
+      RUNEVAULT_DEVICE_SECRET: ${RUNEVAULT_DEVICE_SECRET:?Set RUNEVAULT_DEVICE_SECRET}
+      RUNEVAULT_PICO_DEVICE_ID: ${RUNEVAULT_PICO_DEVICE_ID:?Set RUNEVAULT_PICO_DEVICE_ID}
+      RUNEVAULT_PICO_KEY: ${RUNEVAULT_PICO_KEY:?Set RUNEVAULT_PICO_KEY}
+      RUNEVAULT_MAX_AMOUNT_MINOR: ${RUNEVAULT_MAX_AMOUNT_MINOR:?Set RUNEVAULT_MAX_AMOUNT_MINOR}
+      RUNEVAULT_ALLOWED_DESTINATIONS: ${RUNEVAULT_ALLOWED_DESTINATIONS:?Set RUNEVAULT_ALLOWED_DESTINATIONS}
+      RUNEVAULT_MAX_INCORRECT_GLYPH_ATTEMPTS: ${RUNEVAULT_MAX_INCORRECT_GLYPH_ATTEMPTS:?Set RUNEVAULT_MAX_INCORRECT_GLYPH_ATTEMPTS}
+      RUNEVAULT_MIN_TRANSLATION_CONFIDENCE: ${RUNEVAULT_MIN_TRANSLATION_CONFIDENCE:?Set RUNEVAULT_MIN_TRANSLATION_CONFIDENCE}
+      RUNEVAULT_MAX_RISK_SCORE: ${RUNEVAULT_MAX_RISK_SCORE:?Set RUNEVAULT_MAX_RISK_SCORE}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY}
+      NESSIE_ENABLED: ${NESSIE_ENABLED:?Set NESSIE_ENABLED}
+      NESSIE_API_KEY: ${NESSIE_API_KEY:?Set NESSIE_API_KEY}
+      NESSIE_SOURCE_ACCOUNT_ID: ${NESSIE_SOURCE_ACCOUNT_ID:?Set NESSIE_SOURCE_ACCOUNT_ID}
+      RUNEVAULT_RATE_WINDOW_SECONDS: ${RUNEVAULT_RATE_WINDOW_SECONDS:?Set RUNEVAULT_RATE_WINDOW_SECONDS}
+      RUNEVAULT_RATE_MAX_ENTRIES: ${RUNEVAULT_RATE_MAX_ENTRIES:?Set RUNEVAULT_RATE_MAX_ENTRIES}
+      RUNEVAULT_DASHBOARD_READS_PER_WINDOW: ${RUNEVAULT_DASHBOARD_READS_PER_WINDOW:?Set RUNEVAULT_DASHBOARD_READS_PER_WINDOW}
+      RUNEVAULT_TRANSACTION_CREATION_PER_WINDOW: ${RUNEVAULT_TRANSACTION_CREATION_PER_WINDOW:?Set RUNEVAULT_TRANSACTION_CREATION_PER_WINDOW}
+      RUNEVAULT_BRIDGE_AUTHORIZATIONS_PER_WINDOW: ${RUNEVAULT_BRIDGE_AUTHORIZATIONS_PER_WINDOW:?Set RUNEVAULT_BRIDGE_AUTHORIZATIONS_PER_WINDOW}
+      RUNEVAULT_BRIDGE_OTHER_PER_WINDOW: ${RUNEVAULT_BRIDGE_OTHER_PER_WINDOW:?Set RUNEVAULT_BRIDGE_OTHER_PER_WINDOW}
+      RUNEVAULT_ADMIN_OPERATIONS_PER_WINDOW: ${RUNEVAULT_ADMIN_OPERATIONS_PER_WINDOW:?Set RUNEVAULT_ADMIN_OPERATIONS_PER_WINDOW}
+      RUNEVAULT_UNAUTHENTICATED_PER_WINDOW: ${RUNEVAULT_UNAUTHENTICATED_PER_WINDOW:?Set RUNEVAULT_UNAUTHENTICATED_PER_WINDOW}
+    volumes:
+      - ./deploy/certs:/run/tiger-certs:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "http://localhost:8080/actuator/health/readiness"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    logging: *bounded-logs
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:80/login"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    logging: *bounded-logs
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      RUNEVAULT_DOMAIN: ${RUNEVAULT_DOMAIN:?Set RUNEVAULT_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+
+volumes:
+  caddy-data:
+  caddy-config:
