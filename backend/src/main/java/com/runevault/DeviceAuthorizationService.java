@@ -65,6 +65,11 @@ public class DeviceAuthorizationService {
    return error(400, "Destination is not allowed");
   }
   var device = devices.findForUpdate(request.device()).orElseGet(() -> devices.saveAndFlush(new DeviceState(request.device())));
+  if (device.isRevoked()) {
+   auditEvents.save(new AuditEvent(AuditEvent.Type.TRANSACTION_CREATION, request.device(), null,
+    AuditEvent.Outcome.REJECTED, AuditEvent.Reason.DEVICE_REVOKED));
+   return error(423, "Device revoked");
+  }
   if (device.isLocked(policy.maxIncorrectGlyphAttempts())) return error(423, "Device locked");
   var transaction = Transaction.pending(UUID.randomUUID().toString(), request.amount(), request.dest(),
    request.device(), request.glyphs(), requesterSubject);
@@ -94,6 +99,7 @@ public class DeviceAuthorizationService {
   // Lock device first, then transaction: concurrent requests cannot reuse a counter.
   var device = devices.findForUpdate(request.device()).orElse(null);
   if (device == null) return rejected(request, 409, "No pending device transaction", AuditEvent.Reason.NO_PENDING_DEVICE_TRANSACTION);
+  if (device.isRevoked()) return rejected(request, 423, "Device revoked", AuditEvent.Reason.DEVICE_REVOKED);
   if (device.isLocked(policy.maxIncorrectGlyphAttempts())) return rejected(request, 423, "Device locked", AuditEvent.Reason.DEVICE_LOCKED);
   if (request.counter() <= device.getLastCounter()) return rejected(request, 409, "Counter replay", AuditEvent.Reason.COUNTER_REPLAY);
   // Consume every authenticated fresh counter, including rejected transaction/glyph attempts.

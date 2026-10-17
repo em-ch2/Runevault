@@ -15,6 +15,27 @@ import static org.junit.jupiter.api.Assertions.*;
 class AuditRestartTest {
  @TempDir Path directory;
 
+ @Test void revocationAndAdministratorAuditSurviveRestart() {
+  String databaseUrl = "jdbc:h2:file:" + directory.resolve("revocation-db").toAbsolutePath().toString().replace('\\', '/');
+  String[] arguments = {"--server.port=0", "--spring.datasource.url=" + databaseUrl,
+   "--spring.jpa.hibernate.ddl-auto=update", "--spring.sql.init.mode=never",
+   "--runevault.bridge-token=test-bridge-token-with-enough-characters"};
+  try (var first = new SpringApplicationBuilder(RunevaultApplication.class).profiles("dev", "test").run(arguments)) {
+   var device = new DeviceState("slab-01");
+   device.consumeCounter(31);
+   first.getBean(DeviceStateRepository.class).saveAndFlush(device);
+   first.getBean(DeviceRevocationService.class).revoke("slab-01", "auth0|admin");
+  }
+  try (var second = new SpringApplicationBuilder(RunevaultApplication.class).profiles("dev", "test").run(arguments)) {
+   var device = second.getBean(DeviceStateRepository.class).findById("slab-01").orElseThrow();
+   assertNotNull(device.getRevokedAt());
+   assertEquals(31, device.getLastCounter());
+   var event = second.getBean(AuditEventRepository.class).findAll().get(0);
+   assertEquals(AuditEvent.Reason.REVOKED_BY_ADMIN, event.getReason());
+   assertEquals("auth0|admin", event.getActorSubject());
+  }
+ }
+
  @Test void rejectedAuditEventSurvivesApplicationRestart() {
   String databaseUrl = "jdbc:h2:file:" + directory.resolve("audit-db").toAbsolutePath().toString().replace('\\', '/');
   String key = UUID.randomUUID().toString();

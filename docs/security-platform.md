@@ -1,6 +1,21 @@
 # Security platform: first implementation
 
 ## Profiles
+
+## Device revocation
+
+An Auth0 access token with `admin:platform` may call `POST /api/admin/devices/{deviceId}/revoke` with no request body. The backend takes the administrator identity from the verified token's `sub` claim. The response contains `deviceId`, `revoked: true`, and `revokedAt`; repeating the call returns the original timestamp and creates no duplicate revocation event. An unregistered device returns 404. Revocation retains device counters, transactions, and audit history. It blocks new pending transactions, physical authorizations, and future execution claims, including claims on earlier `VERIFIED` transactions. It cannot undo an `EXECUTING` transfer already in progress.
+
+In PowerShell, with an administrator **access token** for audience `https://api.runevault` already obtained:
+
+```powershell
+$adminToken = '<ADMIN_ACCESS_TOKEN>'
+$headers = @{ Authorization = "Bearer $adminToken" }
+Invoke-RestMethod -Method Post -Uri 'http://localhost:8080/api/admin/devices/slab-01/revoke' -Headers $headers
+Invoke-RestMethod -Method Get -Uri 'http://localhost:8080/api/admin/audit-events?page=0&size=20' -Headers $headers
+```
+
+Use a non-admin token to confirm the POST returns 403, or omit the token to confirm 401. Revocation events record the JWT subject and fixed `REVOKED_BY_ADMIN` reason; denied pending creation, authorization, and execution claims use fixed reasons without credentials or signatures. There is no reactivation endpoint in this milestone.
 - Default `dev`: health and Pico bridge endpoints available; legacy challenge/approval routes unavailable.
 - Explicit `dev,simulator`: enables legacy challenge/approval routes with a bridge token and the fake bank adapter only. It cannot be combined with `auth`.
 - `auth`: same bridge gate plus Auth0 JWT validation for dashboard API routes. Admin status requires `admin:platform` permission. Set SPRING_PROFILES_ACTIVE=auth, AUTH0_ISSUER_URI (HTTPS issuer with trailing slash), AUTH0_AUDIENCE, RUNEVAULT_BRIDGE_TOKEN (random 32+ bytes), and RUNEVAULT_DEVICE_SECRET.

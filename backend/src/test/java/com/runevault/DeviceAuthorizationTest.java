@@ -39,6 +39,7 @@ class DeviceAuthorizationTest {
  @Autowired DeviceStateRepository devices;
  @Autowired AuditEventRepository auditEvents;
  @Autowired TransactionService transactionService;
+ @Autowired DeviceRevocationService revocations;
 
  private static String randomKey() {
   byte[] bytes = new byte[32];
@@ -114,6 +115,25 @@ class DeviceAuthorizationTest {
   assertNotNull(event.getTimestamp());
  }
 
+ @Test void revocationRejectsPendingCreationAuthorizationAndPriorVerifiedClaim() throws Exception {
+  String verifiedId = pending();
+  authorize(signed(verifiedId, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  String pendingId = pending();
+  revocations.revoke("slab-01", "auth0|admin");
+  mvc.perform(post("/api/device/transactions").header("X-Bridge-Token", TOKEN)
+   .contentType("application/json").content(mapper.writeValueAsString(
+    Map.of("device", "slab-01", "amount", 50000, "dest", "acct-999", "glyphs", GLYPHS))))
+   .andExpect(status().is(423));
+  authorize(signed(pendingId, 2, 50000, "acct-999", GLYPHS)).andExpect(status().is(423));
+  mvc.perform(get("/api/device/transactions/" + pendingId + "?device=slab-01")
+   .header("X-Bridge-Token", TOKEN)).andExpect(status().is(423));
+  assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(verifiedId));
+  assertEquals(Transaction.Status.VERIFIED, transactions.findById(verifiedId).orElseThrow().getStatus());
+  assertNull(transactions.findById(verifiedId).orElseThrow().getExecutionClaimedAt());
+  assertEquals(1, devices.findById("slab-01").orElseThrow().getLastCounter());
+  assertEquals(3, auditEvents.findAll().stream().filter(e -> e.getReason() == AuditEvent.Reason.DEVICE_REVOKED).count());
+ }
+
  @Test void bridgeCanLoadOnlyLiveAssignedPendingTransaction() throws Exception {
   String id = pending();
   String path = "/api/device/transactions/" + id + "?device=slab-01";
@@ -168,8 +188,9 @@ class DeviceAuthorizationTest {
   var saved = transactions.findById(id).orElseThrow();
   assertEquals(Transaction.Status.EXECUTING, saved.getStatus());
   assertNotNull(saved.getExecutionClaimedAt());
-  assertEquals(1, auditEvents.findAll().stream().filter(e -> e.getEventType() == AuditEvent.Type.EXECUTION_CLAIM).count());
+  assertEquals(2, auditEvents.findAll().stream().filter(e -> e.getEventType() == AuditEvent.Type.EXECUTION_CLAIM).count());
   assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(id));
+  assertEquals(3, auditEvents.findAll().stream().filter(e -> e.getEventType() == AuditEvent.Type.EXECUTION_CLAIM).count());
  }
 
  @Test void concurrentDuplicateApprovalsHaveOneWinner() throws Exception {
@@ -201,7 +222,32 @@ class DeviceAuthorizationTest {
    assertEquals(1, (first.get() ? 1 : 0) + (second.get() ? 1 : 0));
   }
   assertNotNull(transactions.findById(id).orElseThrow().getExecutionClaimedAt());
-  assertEquals(1, auditEvents.findAll().stream().filter(e -> e.getEventType() == AuditEvent.Type.EXECUTION_CLAIM).count());
+  assertEquals(2, auditEvents.findAll().stream().filter(e -> e.getEventType() == AuditEvent.Type.EXECUTION_CLAIM).count());
+ }
+
+ @Test void revocationAndClaimSerializeOnDeviceRow() throws Exception {
+  String id = pending();
+  authorize(signed(id, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  var start = new CountDownLatch(1);
+  boolean claimed;
+  try (var workers = Executors.newFixedThreadPool(2)) {
+   var claim = workers.submit(() -> {
+    start.await();
+    try { transactionService.claimPicoAuthorized(id); return true; }
+    catch (IllegalStateException rejected) { return false; }
+   });
+   var revoke = workers.submit(() -> { start.await(); revocations.revoke("slab-01", "auth0|admin"); return true; });
+   start.countDown();
+   claimed = claim.get();
+   assertTrue(revoke.get());
+  }
+  assertTrue(devices.findById("slab-01").orElseThrow().isRevoked());
+  var saved = transactions.findById(id).orElseThrow();
+  assertEquals(claimed ? Transaction.Status.EXECUTING : Transaction.Status.VERIFIED, saved.getStatus());
+  assertEquals(claimed, saved.getExecutionClaimedAt() != null);
+  if (!claimed) assertTrue(auditEvents.findAll().stream()
+   .anyMatch(e -> e.getEventType() == AuditEvent.Type.EXECUTION_CLAIM
+    && e.getReason() == AuditEvent.Reason.DEVICE_REVOKED));
  }
 
  @Test void pendingHistoricalAndMissingEvidenceCannotBeClaimed() throws Exception {
@@ -224,7 +270,7 @@ class DeviceAuthorizationTest {
   field.set(missingDevice, null);
   transactions.saveAndFlush(missingDevice);
   assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized("missing-device"));
-  assertEquals(0, auditEvents.count());
+  assertEquals(4, auditEvents.count());
  }
 
  @Test void invalidSignatureDoesNotChangeDeviceOrTransaction() throws Exception {

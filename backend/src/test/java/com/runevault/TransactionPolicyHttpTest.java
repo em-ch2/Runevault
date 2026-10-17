@@ -146,12 +146,14 @@ class TransactionPolicyHttpTest {
   var disallowed = Transaction.pending("verified-destination", 50000, "other", "slab-01", GLYPHS);
   excessive.verifyPhysicalApproval(Instant.now());
   disallowed.verifyPhysicalApproval(Instant.now());
+  devices.saveAndFlush(new DeviceState("slab-01"));
   transactions.saveAllAndFlush(List.of(excessive, disallowed));
   assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(excessive.getTransactionId()));
   assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(disallowed.getTransactionId()));
   assertTrue(transactions.findAll().stream().allMatch(t -> t.getStatus() == Transaction.Status.VERIFIED
    && t.getExecutionClaimedAt() == null));
-  assertEquals(0, auditEvents.count());
+  assertEquals(2, auditEvents.count());
+  assertTrue(auditEvents.findAll().stream().allMatch(e -> e.getReason() == AuditEvent.Reason.EXECUTION_INELIGIBLE));
  }
 
  @Test void legacyChallengeIsUnavailableInAuthProfile() throws Exception {

@@ -6,6 +6,7 @@ import com.runevault.AuditEventRepository;
 import com.runevault.Transaction;
 import com.runevault.TransactionPolicy;
 import com.runevault.TransactionRepository;
+import com.runevault.DeviceStateRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
@@ -15,29 +16,46 @@ public class TransactionService {
     private final TransactionRepository transactions;
     private final AuditEventRepository auditEvents;
     private final TransactionPolicy policy;
+    private final DeviceStateRepository devices;
+    private final ClaimRejectionAuditService rejections;
 
     public TransactionService(TransactionRepository transactions, AuditEventRepository auditEvents,
-                              TransactionPolicy policy) {
+                              TransactionPolicy policy, DeviceStateRepository devices,
+                              ClaimRejectionAuditService rejections) {
         this.transactions = transactions;
         this.auditEvents = auditEvents;
         this.policy = policy;
+        this.devices = devices;
+        this.rejections = rejections;
+    }
+
+    private IllegalStateException rejected(String deviceId, String id, AuditEvent.Reason reason) {
+        rejections.record(deviceId, id, reason);
+        return new IllegalStateException("Transaction is not eligible for execution");
     }
 
     // Call this after the Pico authorization request has committed. The DB claim is
-    // durable and serialized by the transaction row lock; never retry execution blindly.
+    // durable and serialized by device lock, then transaction lock; never retry execution blindly.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public VerifiedTransaction claimPicoAuthorized(String id) {
+        String assignedDeviceId = transactions.findAssignedDeviceId(id)
+            .orElseThrow(() -> rejected(null, id, AuditEvent.Reason.EXECUTION_INELIGIBLE));
+        if (assignedDeviceId.isBlank())
+            throw rejected(null, id, AuditEvent.Reason.EXECUTION_INELIGIBLE);
+        var device = devices.findForUpdate(assignedDeviceId)
+            .orElseThrow(() -> rejected(assignedDeviceId, id, AuditEvent.Reason.EXECUTION_INELIGIBLE));
+        if (device.isRevoked()) throw rejected(assignedDeviceId, id, AuditEvent.Reason.DEVICE_REVOKED);
         Transaction transaction = transactions.findForUpdate(id)
-            .orElseThrow(() -> new IllegalStateException("Transaction not found"));
+            .orElseThrow(() -> rejected(assignedDeviceId, id, AuditEvent.Reason.EXECUTION_INELIGIBLE));
         if (transaction.getStatus() != Transaction.Status.VERIFIED
                 || transaction.getVerifiedAt() == null
-                || transaction.getDeviceId() == null || transaction.getDeviceId().isBlank()
+                || !assignedDeviceId.equals(transaction.getDeviceId())
                 || transaction.getExpectedGlyphs() == null || transaction.getExpectedGlyphs().isBlank()
                 || transaction.getExecutionClaimedAt() != null
                 || !"USD".equals(transaction.getCurrency())
                 || !policy.allowsAmount(transaction.getAmountMinor())
                 || !policy.allowsDestination(transaction.getDestination())) {
-            throw new IllegalStateException("Transaction is not eligible for execution");
+            throw rejected(assignedDeviceId, id, AuditEvent.Reason.EXECUTION_INELIGIBLE);
         }
         Instant claimedAt = Instant.now();
         transaction.claimForExecution(claimedAt);
