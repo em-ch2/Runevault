@@ -18,10 +18,12 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequestMapping("/api")
 public class TransactionApi {
  private final byte[] secret;
+ private final TransactionRepository transactions;
  private final Map<String, Challenge> pending = new ConcurrentHashMap<>();
- public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode) {
+ public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode, TransactionRepository transactions) {
   if (!"local".equals(mode)) throw new IllegalStateException("Production security is not implemented");
   this.secret = secret.getBytes(StandardCharsets.UTF_8);
+  this.transactions = transactions;
  }
  public record Intent(@NotNull @Pattern(regexp="pico-demo-1") String deviceId,
   @Min(1) @Max(100000000) long amountMinor,
@@ -41,13 +43,15 @@ public class TransactionApi {
   pending.put(id, c);
   return c;
  }
- @PostMapping("/approvals") public Map<String,Object> approve(@Valid @RequestBody Approval approval) throws Exception {
+ @PostMapping("/approvals") public synchronized Map<String,Object> approve(@Valid @RequestBody Approval approval) throws Exception {
   Challenge c = pending.get(approval.challengeId());
   if (c == null || c.expiresAt() <= Instant.now().getEpochSecond()) throw new ResponseStatusException(HttpStatus.CONFLICT,"Unknown, expired or consumed challenge");
   Mac mac = Mac.getInstance("HmacSHA256");
   mac.init(new SecretKeySpec(secret,"HmacSHA256"));
   if (!MessageDigest.isEqual(mac.doFinal(c.signingText().getBytes(StandardCharsets.UTF_8)), HexFormat.of().parseHex(approval.signature()))) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid signature");
-  if (!pending.remove(c.challengeId(), c)) throw new ResponseStatusException(HttpStatus.CONFLICT,"Already consumed");
+  // Commit before consuming the challenge, so a failed write can be retried.
+  transactions.saveAndFlush(new Transaction(c.challengeId(), c.intent().amountMinor(), c.intent().destination()));
+  pending.remove(c.challengeId(), c);
   return Map.of("transactionId",c.challengeId(),"status","SIMULATED","signatureVerified",true,
    "analysis",Map.of("lore","The stone records a passage across the sea.","riskLevel","LOW","source","mock"),
    "receipt",Map.of("provider","mock","amountMinor",c.intent().amountMinor(),"currency","USD","destination",c.intent().destination()));
