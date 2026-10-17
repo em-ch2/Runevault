@@ -1,5 +1,6 @@
 package com.runevault;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.Map;
@@ -26,10 +27,24 @@ public class DashboardTransactionApi {
  }
 
  public record TransactionView(String transactionId, long amountMinor, String destination,
-   Transaction.Status status, Instant createdAt, Instant verifiedAt, String requesterSubject) {
+   Transaction.Status status, Instant createdAt, Instant verifiedAt, String requesterSubject,
+   String bankReceiptId, String bankStatus, String lore, String riskLevel) {
+  private static final ObjectMapper JSON = new ObjectMapper();
+
   TransactionView(Transaction transaction) {
    this(transaction.getTransactionId(), transaction.getAmountMinor(), transaction.getDestination(),
-    transaction.getStatus(), transaction.getCreatedAt(), transaction.getVerifiedAt(), transaction.getRequesterSubject());
+    transaction.getStatus(), transaction.getCreatedAt(), transaction.getVerifiedAt(), transaction.getRequesterSubject(),
+    transaction.getBankReceiptId(), transaction.getBankStatus(),
+    audit(transaction, "lore", "text"), audit(transaction, "risk", "level"));
+  }
+
+  private static String audit(Transaction transaction, String section, String field) {
+   if (transaction.getAuditJson() == null) return null;
+   try {
+    return JSON.readTree(transaction.getAuditJson()).path(section).path(field).asText(null);
+   } catch (Exception e) {
+    return null;
+   }
   }
  }
 

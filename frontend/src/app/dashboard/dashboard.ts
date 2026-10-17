@@ -163,6 +163,8 @@ export class Dashboard implements OnInit, OnDestroy {
 
   private awaitingApproval(): boolean {
     const transaction = this.selected();
+    // Keep polling while the bank transfer and Gemini audit run.
+    if (transaction?.status === 'EXECUTING') return true;
     return (transaction?.status === 'PENDING' || (transaction === null && this.createdForSelection() !== null))
       && !this.approvalExpired(transaction);
   }

@@ -3,7 +3,10 @@ package com.runevault;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import com.runevault.transactions.ExecutionService;
+import org.springframework.beans.factory.annotation.Value;
 import java.time.Instant;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,8 +19,12 @@ public class DeviceApi {
  private final DeviceAuthorizationService service;
  private final TransactionRepository transactions;
  private final DeviceStateRepository devices;
- public DeviceApi(DeviceAuthorizationService service, TransactionRepository transactions, DeviceStateRepository devices) {
+ private final ExecutionService execution;
+ private final boolean autoExecute;
+ public DeviceApi(DeviceAuthorizationService service, TransactionRepository transactions, DeviceStateRepository devices,
+   ExecutionService execution, @Value("${runevault.auto-execute:true}") boolean autoExecute) {
   this.service = service; this.transactions = transactions; this.devices = devices;
+  this.execution = execution; this.autoExecute = autoExecute;
  }
 
  public record Authorization(
@@ -62,6 +69,15 @@ public class DeviceApi {
 
  @PostMapping("/authorize")
  public ResponseEntity<Map<String, Object>> authorize(@Valid @RequestBody Authorization request) {
-  return service.authorize(request);
+  var response = service.authorize(request);
+  if (!autoExecute || !response.getStatusCode().is2xxSuccessful()) return response;
+  // authorize() has committed, so the execution claim sees the VERIFIED row.
+  Map<String, Object> body = new LinkedHashMap<>(response.getBody());
+  try {
+   body.put("execution", execution.execute(request.txId()));
+  } catch (IllegalStateException e) {
+   body.put("execution", Map.of("status", "INELIGIBLE"));
+  }
+  return ResponseEntity.ok(body);
  }
 }

@@ -8,7 +8,7 @@ ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS actor_subject varchar(255);
 UPDATE transactions SET currency = 'USD' WHERE currency IS NULL;
 ALTER TABLE transactions
  DROP CONSTRAINT IF EXISTS transactions_status_check,
- ADD CONSTRAINT transactions_status_check CHECK (status IN ('PENDING', 'SIMULATED', 'VERIFIED', 'EXECUTING'));
+ ADD CONSTRAINT transactions_status_check CHECK (status IN ('PENDING', 'SIMULATED', 'VERIFIED', 'EXECUTING', 'EXECUTED', 'FAILED'));
 
 -- Existing databases may have enum CHECK constraints created before policy audits existed.
 ALTER TABLE audit_events
