@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 const base = process.env.RUNEVAULT_API_URL || 'http://localhost:8080';
 const secret = process.env.RUNEVAULT_DEVICE_SECRET || 'local-demo-only-change-before-deploy';
 async function post(path, body) {
- const response = await fetch(`${base}/api/${path}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
+ const response = await fetch(`${base}/api/${path}`, { method: 'POST', headers: {'Content-Type':'application/json','X-Bridge-Token':process.env.RUNEVAULT_BRIDGE_TOKEN || 'local-bridge-only-change-before-deploy'}, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
  if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
  return response.json();
 }
