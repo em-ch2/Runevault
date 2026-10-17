@@ -23,8 +23,9 @@ import com.runevault.banking.BankReceipt;
 public class TransactionApi {
  private final byte[] secret;
  private final BankGateway bankGateway;
+ private final TransactionRepository transactions;
  private final Map<String, Challenge> pending = new ConcurrentHashMap<>();
- public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode, BankGateway bankGateway) {
+ public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode, BankGateway bankGateway, TransactionRepository transactions) {
   if (!"local".equals(mode)) {
     throw new IllegalStateException(
       "Production security is not implemented."
@@ -33,6 +34,7 @@ public class TransactionApi {
 
   this.secret = secret.getBytes(StandardCharsets.UTF_8);
   this.bankGateway = bankGateway;
+  this.transactions = transactions;
  }
  public record Intent(@NotNull @Pattern(regexp="pico-demo-1") String deviceId,
   @Min(1) @Max(100000000) long amountMinor,
@@ -52,12 +54,14 @@ public class TransactionApi {
   pending.put(id, c);
   return c;
  }
- @PostMapping("/approvals") public Map<String,Object> approve(@Valid @RequestBody Approval approval) throws Exception {
+ @PostMapping("/approvals") public synchronized Map<String,Object> approve(@Valid @RequestBody Approval approval) throws Exception {
   Challenge c = pending.get(approval.challengeId());
   if (c == null || c.expiresAt() <= Instant.now().getEpochSecond()) throw new ResponseStatusException(HttpStatus.CONFLICT,"Unknown, expired or consumed challenge");
   Mac mac = Mac.getInstance("HmacSHA256");
   mac.init(new SecretKeySpec(secret,"HmacSHA256"));
   if (!MessageDigest.isEqual(mac.doFinal(c.signingText().getBytes(StandardCharsets.UTF_8)), HexFormat.of().parseHex(approval.signature()))) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid signature");
+  // Save before consuming the challenge or transferring, so a failed write can be retried.
+  transactions.saveAndFlush(new Transaction(c.challengeId(), c.intent().amountMinor(), c.intent().destination()));
   if (!pending.remove(c.challengeId(), c)) throw new ResponseStatusException(HttpStatus.CONFLICT,"Already consumed");
   BankReceipt receipt = bankGateway.transfer(c.challengeId(), c.intent().amountMinor(), "USD", c.intent().destination());
 
