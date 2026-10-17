@@ -18,6 +18,8 @@ Before authorization, the trusted backend client creates a pending transaction u
 
 The server returns HTTP 201 with `tx_id`, `status: PENDING`, and `expires_at` (Unix seconds). Pass that generated transaction ID to the device. Pending transactions expire after 120 seconds. The glyph sequence on file comes from this trusted setup request, never from the authorization request. Keep the bridge credential with trusted software; it grants pending-transaction creation as well as access to the existing challenge flow.
 
+For a dashboard-created pending transaction, the bridge may read `GET /api/device/transactions/<tx_id>?device=<device>` with the same `X-Bridge-Token`. A live assignment returns only `tx_id`, `amount`, `dest`, `device`, `status`, and `expires_at`. Missing, expired, consumed, or wrongly assigned transactions are rejected. The bridge sends the returned amount and destination to the Pico; no caller override is accepted in existing-transaction mode.
+
 The device signs the following UTF-8 string with HMAC-SHA256, with literal pipe separators and no trailing newline:
 
 ```text
@@ -33,6 +35,8 @@ v1|<device>|<counter>|<tx_id>|<amount>|<dest>|<glyphs>
 That sample is a signing test vector; `abc123` must actually exist as a matching pending transaction to authorize it. The supplied firmware development key was verified against this vector. To run the optional golden-vector JUnit test, supply that key through `PICO_TEST_VECTOR_KEY`; normal tests generate an ephemeral key and need no secrets.
 
 Successful authorization atomically consumes the hardware counter and changes the matching transaction to `VERIFIED`. After that database transaction commits, the shared processor audits and applies backend review rules. HTTP 200 returns `transactionId`, `signatureVerified: true`, and the actual processing status: `SIMULATED` only after a fake bank receipt, `APPROVAL_PENDING` for review, `REJECTED` for HIGH risk, or a failure/unknown state. AI and bank requests run outside database locks. No money moves.
+
+Person C's execution pipeline can call `TransactionService.claimPicoAuthorized(id)` only after the authorization request commits. This method locks the persisted row, requires a Pico-authorized `SIMULATED` transaction, writes a durable one-time execution claim, and returns a `VerifiedTransaction`. A second claim, including after restart, fails. The claim is at-most-once: if execution fails after claiming, investigate rather than automatically retry. This handoff does not itself invoke the bank gateway.
 
 - 400: malformed/unsupported fields.
 - 401: missing/wrong bridge token, unknown configured device, or invalid signature.

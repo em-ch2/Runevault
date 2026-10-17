@@ -5,6 +5,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.HexFormat;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import com.runevault.transactions.TransactionService;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties = {"runevault.bridge-token=test-bridge-token-with-enough-characters", "runevault.requests-per-minute=10000"})
@@ -52,6 +56,7 @@ class DeviceAuthorizationTest {
  }
 
  @BeforeEach void reset() {
+  auditEvents.deleteAll();
   transactions.deleteAll();
   devices.deleteAll();
  }
@@ -115,6 +120,7 @@ class DeviceAuthorizationTest {
   assertEquals(com.runevault.transactions.TransactionStatus.PENDING, transactions.findById(id).orElseThrow().getStatus());
   org.mockito.Mockito.verifyNoInteractions(bank, auditor);
   authorize(signed(id, 2, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  assertEquals(AuditEvent.Reason.INVALID_SIGNATURE, auditEvents.findAll().get(0).getReason());
  }
 
  @Test void counterReplayAndConsumedTransactionsAreRejected() throws Exception {
@@ -126,6 +132,9 @@ class DeviceAuthorizationTest {
   authorize(signed(id, 3, 50000, "acct-999", GLYPHS)).andExpect(status().isConflict());
   org.mockito.Mockito.verify(bank,org.mockito.Mockito.times(1)).transfer(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString());
   authorize(signed(next, 4, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  assertEquals(5, auditEvents.count());
+  assertEquals(2, auditEvents.findAll().stream()
+   .filter(event -> event.getReason() == AuditEvent.Reason.COUNTER_REPLAY).count());
  }
 
  @Test void fifthWrongGlyphLocksDeviceAcrossTransactions() throws Exception {

@@ -1,0 +1,134 @@
+<header class="topbar">
+  <div class="brand">
+    <app-glyph [id]="2" [size]="30" aria-hidden="true" />
+    <span class="wordmark">Poneglyph</span>
+  </div>
+  <div class="topbar-status">
+    @if (tablet(); as tab) {
+      <span class="pill" [class.pill-good]="tab.state === 'connected'" [class.pill-bad]="tab.state !== 'connected'">
+        <span class="dot"></span>
+        {{ tab.device }}
+        @if (tab.state === 'connected') { connected }
+        @if (tab.state === 'locked') { locked }
+        @if (tab.state === 'disconnected') { disconnected }
+      </span>
+    } @else {
+      <span class="pill"><span class="dot"></span>Waiting for tablet</span>
+    }
+    <span class="pill pill-quiet">{{ feedLabel() }}</span>
+  </div>
+  <div class="topbar-user">
+    <span class="muted">{{ auth.user()?.name }}</span>
+    <button class="btn btn-ghost" type="button" (click)="signOut()">Sign out</button>
+  </div>
+</header>
+
+@if (feed.isMock) {
+  <div class="mock-bar">
+    <span>Demo mode: playing a scripted transfer.</span>
+    <button class="btn btn-ghost" type="button" (click)="replay('approved')">Replay transfer</button>
+    <button class="btn btn-ghost" type="button" (click)="replay('rejected')">Replay rejected</button>
+  </div>
+}
+
+<main class="grid">
+  <section class="slab pending" aria-labelledby="pending-title">
+    <h2 id="pending-title">Pending transfer</h2>
+    @if (transfer(); as t) {
+      <p class="amount">{{ money(t.amount) }}</p>
+      <dl class="facts">
+        <div><dt>Recipient</dt><dd>{{ t.recipient }} <span class="muted mono">{{ t.dest }}</span></dd></div>
+        <div><dt>Requester</dt><dd>{{ t.requester }}</dd></div>
+        <div><dt>Transaction</dt><dd class="mono">{{ t.tx_id }}</dd></div>
+        <div><dt>Requested</dt><dd>{{ time(t.requested_at) }}</dd></div>
+      </dl>
+      <p
+        class="status"
+        [class.status-wait]="t.stage === 'received'"
+        [class.status-good]="t.stage === 'executed'"
+        [class.status-bad]="t.stage === 'rejected'"
+        role="status"
+      >
+        {{ statusText() }}
+      </p>
+    } @else {
+      <p class="empty">No pending transfer. Requests appear here the moment the bank saves them.</p>
+    }
+
+    <ol class="stages" aria-label="Transfer stages">
+      @for (s of stages; track s.key) {
+        <li [class]="'stage stage-' + stepState(s.key)">
+          <span class="stage-mark" aria-hidden="true"></span>
+          <span class="stage-label">
+            @if (stepState(s.key) === 'failed') { Rejected } @else { {{ s.label }} }
+          </span>
+        </li>
+      }
+    </ol>
+    @if (transfer()?.rejected; as r) {
+      <p class="reject-reason" role="alert">{{ r.reason }}</p>
+    }
+  </section>
+
+  <section class="slab lore" aria-labelledby="lore-title">
+    <h2 id="lore-title">Lore of the seal</h2>
+    @if (transfer()?.executed; as ex) {
+      <div class="glyph-row">
+        @for (g of glyphIds(); track $index) {
+          <figure>
+            <app-glyph [id]="g" [size]="50" />
+            <figcaption>{{ glyphNames[g] }}</figcaption>
+          </figure>
+        }
+      </div>
+      <blockquote class="lore-text">{{ ex.lore }}</blockquote>
+      <p class="muted small">
+        Gemini risk note (advisory only):
+        <span [class]="'risk risk-' + ex.risk_level.toLowerCase()">{{ ex.risk_level }}</span>
+      </p>
+    } @else if (transfer()?.stage === 'rejected') {
+      <p class="empty">No lore is written for a rejected seal.</p>
+    } @else if (transfer()?.sealed) {
+      <p class="empty">The tablet has sealed this transfer. The lore is carved once the bank executes it.</p>
+    } @else {
+      <p class="empty">The glyphs and their lore appear after the transfer executes.</p>
+    }
+  </section>
+
+  <section class="slab receipt" aria-labelledby="receipt-title">
+    <h2 id="receipt-title">Receipt</h2>
+    @if (transfer(); as t) {
+      @if (t.executed && t.sealed) {
+        <dl class="receipt-list">
+          <div><dt>Amount</dt><dd>{{ money(t.amount) }}</dd></div>
+          <div><dt>Recipient</dt><dd>{{ t.recipient }} <span class="muted mono">{{ t.dest }}</span></dd></div>
+          <div><dt>Time</dt><dd>{{ time(t.executed.at) }}</dd></div>
+          <div><dt>Transaction</dt><dd class="mono">{{ t.tx_id }}</dd></div>
+          <div><dt>Device</dt><dd class="mono">{{ t.sealed.device }}</dd></div>
+          <div><dt>Counter</dt><dd class="mono">{{ t.sealed.counter }}</dd></div>
+          <div><dt>Signature</dt><dd class="mono">{{ t.sealed.sig.slice(0, 12) }}…</dd></div>
+          <div><dt>Bank ref</dt><dd class="mono">{{ t.executed.bank_ref }}</dd></div>
+        </dl>
+      } @else if (t.stage === 'rejected') {
+        <p class="empty">No receipt. The transfer was rejected and no money moved.</p>
+      } @else {
+        <p class="empty">A receipt is issued after the bank executes the transfer.</p>
+      }
+    } @else {
+      <p class="empty">No receipts yet.</p>
+    }
+  </section>
+
+  <section class="slab activity" aria-labelledby="activity-title">
+    <h2 id="activity-title">Activity</h2>
+    @if (log().length === 0) {
+      <p class="empty">Listening…</p>
+    } @else {
+      <ul class="log">
+        @for (entry of log(); track $index) {
+          <li [class]="'log-' + entry.tone"><span class="mono muted">{{ time(entry.at) }}</span> {{ entry.text }}</li>
+        }
+      </ul>
+    }
+  </section>
+</main>

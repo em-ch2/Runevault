@@ -17,10 +17,13 @@ services:
     build: ./backend
     ports: ["127.0.0.1:8081:8080"]
     environment:
+      SPRING_PROFILES_ACTIVE: auth
+      AUTH0_ISSUER_URI: ${AUTH0_ISSUER_URI:?Set the Auth0 tenant issuer URI in .env}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:-https://api.runevault}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/runevault
       SPRING_DATASOURCE_USERNAME: runevault
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-local-postgres-only-change-before-deploy}
-      RUNEVAULT_BRIDGE_TOKEN: ${RUNEVAULT_BRIDGE_TOKEN:?Set bridge token in .env}
+      RUNEVAULT_BRIDGE_TOKEN: ${RUNEVAULT_BRIDGE_TOKEN:?Set a strong bridge token in .env}
       RUNEVAULT_DEVICE_SECRET: ${RUNEVAULT_DEVICE_SECRET:?Copy .env.example to .env first}
       RUNEVAULT_PICO_DEVICE_ID: ${RUNEVAULT_PICO_DEVICE_ID:-slab-01}
       RUNEVAULT_PICO_KEY: ${RUNEVAULT_PICO_KEY:-}
@@ -33,6 +36,8 @@ services:
   frontend:
     image: nginx:stable-alpine
     ports: ["127.0.0.1:4200:80"]
-    volumes: ["./frontend:/usr/share/nginx/html:ro"]
+    volumes:
+      - "./frontend/dist/poneglyph/browser:/usr/share/nginx/html:ro"
+      - "./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro"
 volumes:
   postgres-data:
