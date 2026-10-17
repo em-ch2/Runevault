@@ -18,6 +18,8 @@ import com.runevault.banking.BankGateway;
 import com.runevault.banking.BankReceipt;
 import com.runevault.transactions.TransactionService;
 import com.runevault.transactions.VerifiedTransaction;
+import com.runevault.ai.AiAuditor;
+import com.runevault.ai.AuditResult;
 
 
 @RestController
@@ -27,8 +29,9 @@ public class TransactionApi {
  private final BankGateway bankGateway;
  private final TransactionRepository transactions;
  private final TransactionService transactionService;
+ private final AiAuditor aiAuditor;
  private final Map<String, Challenge> pending = new ConcurrentHashMap<>();
- public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode, BankGateway bankGateway, TransactionRepository transactions, TransactionService transactionService) {
+ public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode, BankGateway bankGateway, TransactionRepository transactions, TransactionService transactionService, AiAuditor aiAuditor) {
   if (!"local".equals(mode)) {
     throw new IllegalStateException(
       "Production security is not implemented."
@@ -39,6 +42,7 @@ public class TransactionApi {
   this.bankGateway = bankGateway;
   this.transactions = transactions;
   this.transactionService = transactionService;
+  this.aiAuditor = aiAuditor;
  }
 
  public record Intent(@NotNull @Pattern(regexp="pico-demo-1") String deviceId,
@@ -59,28 +63,78 @@ public class TransactionApi {
   pending.put(id, c);
   return c;
  }
- @PostMapping("/approvals") public synchronized Map<String,Object> approve(@Valid @RequestBody Approval approval) throws Exception {
-  Challenge c = pending.get(approval.challengeId());
-  if (c == null || c.expiresAt() <= Instant.now().getEpochSecond()) throw new ResponseStatusException(HttpStatus.CONFLICT,"Unknown, expired or consumed challenge");
-  Mac mac = Mac.getInstance("HmacSHA256");
-  mac.init(new SecretKeySpec(secret,"HmacSHA256"));
-  if (!MessageDigest.isEqual(mac.doFinal(c.signingText().getBytes(StandardCharsets.UTF_8)), HexFormat.of().parseHex(approval.signature()))) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid signature");
-  // Save before consuming the challenge or transferring, so a failed write can be retried.
-  transactions.saveAndFlush(new Transaction(c.challengeId(), c.intent().amountMinor(), c.intent().destination()));
-  if (!pending.remove(c.challengeId(), c)) throw new ResponseStatusException(HttpStatus.CONFLICT,"Already consumed");
-  VerifiedTransaction verified = transactionService.createVerifiedTransaction(c.challengeId(), c.intent().deviceId(), c.intent().amountMinor(), c.intent().destination(), c.intent().glyphs());
-  BankReceipt receipt = bankGateway.transfer(verified.id(), verified.amountMinor(), verified.currency(), verified.destination());
 
-  return Map.of(
-    "transactionId", c.challengeId(),
-    "status", receipt.status(),
-    "signatureVerified", true,
-    "analysis", Map.of(
-      "lore", "The stone records a passage across the sea.",
-      "riskLevel", "LOW",
-      "source", "mock"
-    ),
-    "receipt", receipt
-  );
- }
+@PostMapping("/approvals")
+public synchronized Map<String, Object> approve(
+    @Valid @RequestBody Approval approval
+) throws Exception {
+    Challenge c = pending.get(approval.challengeId());
+
+    if (c == null || c.expiresAt() <= Instant.now().getEpochSecond()) {
+        throw new ResponseStatusException(
+            HttpStatus.CONFLICT,
+            "Unknown, expired or consumed challenge"
+        );
+    }
+
+    Mac mac = Mac.getInstance("HmacSHA256");
+    mac.init(new SecretKeySpec(secret, "HmacSHA256"));
+
+    byte[] expectedSignature = mac.doFinal(
+        c.signingText().getBytes(StandardCharsets.UTF_8)
+    );
+
+    byte[] suppliedSignature =
+        HexFormat.of().parseHex(approval.signature());
+
+    if (!MessageDigest.isEqual(expectedSignature, suppliedSignature)) {
+        throw new ResponseStatusException(
+            HttpStatus.UNAUTHORIZED,
+            "Invalid signature"
+        );
+    }
+
+    // Preserve the existing database save before consuming the challenge.
+    transactions.saveAndFlush(
+        new Transaction(
+            c.challengeId(),
+            c.intent().amountMinor(),
+            c.intent().destination()
+        )
+    );
+
+    if (!pending.remove(c.challengeId(), c)) {
+        throw new ResponseStatusException(
+            HttpStatus.CONFLICT,
+            "Already consumed"
+        );
+    }
+
+    VerifiedTransaction verified =
+        transactionService.createVerifiedTransaction(
+            c.challengeId(),
+            c.intent().deviceId(),
+            c.intent().amountMinor(),
+            c.intent().destination(),
+            c.intent().glyphs()
+        );
+
+    AuditResult analysis = aiAuditor.audit(verified);
+
+    BankReceipt receipt = bankGateway.transfer(
+        verified.id(),
+        verified.amountMinor(),
+        verified.currency(),
+        verified.destination()
+    );
+
+    return Map.of(
+        "transactionId", verified.id(),
+        "status", receipt.status(),
+        "signatureVerified", true,
+        "analysis", analysis,
+        "receipt", receipt
+    );
+}
+
 }

@@ -10,8 +10,9 @@ import java.util.Objects;
 
 @Service
 @ConditionalOnProperty(
-    name = "runevault.mode",
-    havingValue = "local"
+    name = "runevault.ai.provider",
+    havingValue = "mock",
+    matchIfMissing = true
 )
 
 public class FakeAiAuditor implements AiAuditor {
