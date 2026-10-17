@@ -29,6 +29,13 @@ public class Transaction {
  @Column(length = 255)
  private String requesterSubject;
  private Instant executionClaimedAt;
+ @Column(columnDefinition = "text")
+ private String auditJson;
+ @Column(length = 64)
+ private String auditSource;
+ @Column(length = 64)
+ private String promptVersion;
+ private Instant auditedAt;
 
  public enum Status { PENDING, SIMULATED }
 
@@ -54,6 +61,10 @@ public class Transaction {
  public Instant getExecutionClaimedAt() { return executionClaimedAt; }
  public void claimForExecution() { executionClaimedAt = Instant.now(); }
  public void authorizeSimulation() { status = Status.SIMULATED; }
+ public String getAuditJson() { return auditJson; }
+ public String getAuditSource() { return auditSource; }
+ public String getPromptVersion() { return promptVersion; }
+ public Instant getAuditedAt() { return auditedAt; }
 
  protected Transaction() {}
 
