@@ -1,5 +1,4 @@
 import { Component, OnDestroy, OnInit, computed, inject } from '@angular/core';
-import { Router } from '@angular/router';
 import { AuthService } from '../auth/auth.service';
 import { FeedService } from '../feed/feed.service';
 import { MockScenario } from '../feed/mock-feed';
@@ -14,7 +13,6 @@ const STAGE_ORDER: Stage[] = ['received', 'sealed', 'verified', 'executed'];
   templateUrl: './dashboard.html',
 })
 export class Dashboard implements OnInit, OnDestroy {
-  private readonly router = inject(Router);
   readonly auth = inject(AuthService);
   readonly feed = inject(FeedService);
   readonly store = inject(TransferStore);
@@ -68,9 +66,8 @@ export class Dashboard implements OnInit, OnDestroy {
     this.feed.playMock(scenario);
   }
 
-  async signOut(): Promise<void> {
+  signOut(): void {
     this.auth.signOut();
-    await this.router.navigateByUrl('/login');
   }
 
   stepState(key: Stage): 'done' | 'active' | 'waiting' | 'failed' {
