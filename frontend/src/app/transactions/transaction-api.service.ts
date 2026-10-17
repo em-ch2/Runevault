@@ -21,10 +21,14 @@ export interface TransactionRecord {
   transactionId: string;
   amountMinor: number;
   destination: string;
-  status: 'PENDING' | 'SIMULATED' | 'VERIFIED' | 'EXECUTING';
+  status: 'PENDING' | 'SIMULATED' | 'VERIFIED' | 'EXECUTING' | 'EXECUTED' | 'FAILED';
   createdAt: string;
   verifiedAt: string | null;
   requesterSubject: string | null;
+  bankReceiptId?: string | null;
+  bankStatus?: string | null;
+  lore?: string | null;
+  riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | null;
 }
 
 interface TransactionPage {

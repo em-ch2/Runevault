@@ -14,13 +14,6 @@ import org.springframework.web.server.ResponseStatusException;
 public class LoreController {
  private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(LoreController.class);
 
- // Placeholder meanings: replace with your real glyph lore.
- private static final String DICTIONARY = """
-   0 = the Ember (beginnings, fire, a forge lit)
-   1 = the Tide (trade, exchange, journeys)
-   2 = the Seal (oaths, protection, closed vaults)
-   """;
-
  private final TransactionRepository transactions;
  private final LoreAuditService lore;
  private final ObjectMapper mapper;
@@ -42,7 +35,7 @@ public class LoreController {
     return Map.of("tx_id", id, "ai_generated", true, "cached", true,
       "result", mapper.readTree(tx.getAuditJson()));
    }
-   JsonNode result = lore.audit(tx.getExpectedGlyphs(), DICTIONARY, tx.getAmountMinor(), tx.getDestination());
+   JsonNode result = lore.audit(tx.getExpectedGlyphs(), LoreAuditService.DICTIONARY, tx.getAmountMinor(), tx.getDestination());
    transactions.storeAudit(id, result.toString(), "gemini", LoreAuditService.PROMPT_VERSION, Instant.now());
    return Map.of("tx_id", id, "ai_generated", true, "cached", false, "result", result);
   } catch (Exception e) {

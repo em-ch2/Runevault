@@ -40,7 +40,13 @@ public class Transaction {
  private String promptVersion;
  private Instant auditedAt;
 
- public enum Status { PENDING, SIMULATED, VERIFIED, EXECUTING }
+ @Column(length = 64)
+ private String bankReceiptId;
+ @Column(length = 64)
+ private String bankStatus;
+
+ public enum Status { PENDING, SIMULATED, VERIFIED, EXECUTING, EXECUTED, FAILED }
+
 
  public static Transaction pending(String id, long amount, String destination, String device, String glyphs) {
   return pending(id, amount, destination, device, glyphs, null);
@@ -78,6 +84,15 @@ public class Transaction {
  public String getAuditSource() { return auditSource; }
  public String getPromptVersion() { return promptVersion; }
  public Instant getAuditedAt() { return auditedAt; }
+ public String getBankReceiptId() { return bankReceiptId; }
+ public String getBankStatus() { return bankStatus; }
+ public void recordExecution(String receiptId, String bankStatus) {
+  if (status != Status.EXECUTING) throw new IllegalStateException("Transaction is not executing");
+  this.bankReceiptId = receiptId;
+  this.bankStatus = bankStatus;
+  status = receiptId != null ? Status.EXECUTED : Status.FAILED;
+ }
+
 
  protected Transaction() {}
 
