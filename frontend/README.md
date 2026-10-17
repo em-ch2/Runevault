@@ -36,7 +36,7 @@ All feed wiring is in `src/app/feed/feed.service.ts`. Set `feedUrl` in `src/envi
 
 ```json
 {"type":"tablet_status","device":"slab-01","state":"connected"}
-{"type":"transfer_pending","tx_id":"rea433","amount":444222,"dest":"acc_0020","recipient":"Saltstone Archive Society","requester":"Mara Quill","at":"2026-10-17T12:00:00Z"}
+{"type":"transfer_pending","tx_id":"rea433","amount":444222,"dest":"acc_0020","recipient":"East Blue Relief Fund","requester":"Nami","at":"2026-10-17T12:00:00Z"}
 {"type":"transfer_sealed","tx_id":"rea433","device":"slab-01","counter":5,"sig":"<64 hex>","at":"..."}
 {"type":"transfer_verified","tx_id":"rea433","at":"..."}
 {"type":"transfer_executed","tx_id":"rea433","glyphs":"0-1-2-1-2-0-1-2","lore":"...","risk_level":"LOW","bank_ref":"...","at":"..."}
