@@ -2,17 +2,21 @@ package com.runevault;
 
 import com.runevault.events.PipelineEvents;
 import com.runevault.lore.SafeAssessment;
+import com.runevault.transactions.TransactionProcessor;
+import com.runevault.transactions.TransactionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,14 +33,22 @@ public class DashboardTransactionApi {
  private final ApprovalCodeGenerator glyphGenerator;
  private final PipelineEvents events;
  private final DeviceApi device;
+ private final TransactionProcessor processor;
+ private final ApprovalPolicy approvals;
+
+ // OIDC's multi-factor policy URI: Auth0 enforces MFA when a token request carries it (see the step-up Action).
+ static final String MFA_ACR = "http://schemas.openid.net/pape/policies/2007/06/multi-factor";
 
  public DashboardTransactionApi(DeviceAuthorizationService authorization, TransactionRepository transactions,
-   ApprovalCodeGenerator glyphGenerator, PipelineEvents events, DeviceApi device) {
+   ApprovalCodeGenerator glyphGenerator, PipelineEvents events, DeviceApi device, TransactionProcessor processor,
+   ApprovalPolicy approvals) {
   this.authorization = authorization;
   this.transactions = transactions;
   this.glyphGenerator = glyphGenerator;
   this.events = events;
   this.device = device;
+  this.processor = processor;
+  this.approvals = approvals;
  }
 
  public record CreatePending(
@@ -52,14 +64,15 @@ public class DashboardTransactionApi {
    Instant bankSubmittedAt, Instant bankOutcomeAt, Long newBalanceMinor,
    String lore, Double translationConfidence, Double riskScore, List<String> riskFlags,
    String riskExplanation, String securityMessage,
-   AuditEvent.Reason geminiDecisionReason, String geminiDecisionExplanation, Instant geminiDecisionAt) {
+   AuditEvent.Reason geminiDecisionReason, String geminiDecisionExplanation, Instant geminiDecisionAt,
+   String approverSubject, Instant approvedAt, boolean awaitingApproval, boolean stepUpRequired) {
 
-  TransactionView(Transaction transaction) {
-   this(transaction, SafeAssessment.of(transaction));
+  TransactionView(Transaction transaction, ApprovalPolicy approvals) {
+   this(transaction, SafeAssessment.of(transaction), approvals);
   }
 
   // Gemini text goes through SafeAssessment: plain, capped, and never the approval glyphs.
-  private TransactionView(Transaction transaction, SafeAssessment audit) {
+  private TransactionView(Transaction transaction, SafeAssessment audit, ApprovalPolicy approvals) {
    this(transaction.getTransactionId(), transaction.getAmountMinor(), transaction.getDestination(),
     transaction.getStatus(), transaction.getCreatedAt(), transaction.getExpiresAt(),
     transaction.getVerifiedAt(), transaction.getRequesterSubject(),
@@ -68,7 +81,12 @@ public class DashboardTransactionApi {
     transaction.getBankSubmittedAt(), transaction.getBankOutcomeAt(), transaction.getNewBalanceMinor(),
     audit.lore(), audit.translationConfidence(), audit.riskScore(), audit.riskFlags(),
     audit.riskExplanation(), audit.securityMessage(),
-    transaction.getGeminiDecisionReason(), transaction.getGeminiDecisionExplanation(), transaction.getGeminiDecisionAt());
+    transaction.getGeminiDecisionReason(), transaction.getGeminiDecisionExplanation(), transaction.getGeminiDecisionAt(),
+    transaction.getApproverSubject(), transaction.getApprovedAt(),
+    approvals.required() && transaction.getStatus() == Transaction.Status.VERIFIED
+     && transaction.getGeminiDecisionReason() == AuditEvent.Reason.GEMINI_APPROVED
+     && transaction.getExecutionClaimedAt() == null,
+    approvals.requiresStepUp(transaction.getAmountMinor()));
   }
  }
 
@@ -103,6 +121,50 @@ public class DashboardTransactionApi {
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "page must be nonnegative and size must be 1-100");
   return transactions.findByRequesterSubject(jwt.getSubject(), PageRequest.of(page, size,
     Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("transactionId"))))
-   .map(TransactionView::new);
+   .map(t -> new TransactionView(t, approvals));
+ }
+
+ // Transfers waiting for a checker, including the caller's own so the dashboard can explain why it is locked.
+ @GetMapping("/approvals")
+ @PreAuthorize("hasAuthority('PERM_approve:transactions')")
+ public Page<TransactionView> pendingApprovals(@RequestParam(defaultValue = "0") int page,
+   @RequestParam(defaultValue = "20") int size) {
+  if (page < 0 || size < 1 || size > 100)
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "page must be nonnegative and size must be 1-100");
+  return transactions.findByStatusAndGeminiDecisionReasonAndExecutionClaimedAtIsNull(
+    Transaction.Status.VERIFIED, AuditEvent.Reason.GEMINI_APPROVED,
+    PageRequest.of(page, size, Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("transactionId"))))
+   .map(t -> new TransactionView(t, approvals));
+ }
+
+ // Maker-checker release. Step-up follows RFC 9470: a token without MFA gets 401 insufficient_user_authentication.
+ // The claim re-checks self-approval and step-up under the transaction lock; these early answers are only for the UI.
+ @PostMapping("/{id}/approve")
+ @PreAuthorize("hasAuthority('PERM_approve:transactions')")
+ public ResponseEntity<Map<String, Object>> approve(@PathVariable String id, @AuthenticationPrincipal Jwt jwt) {
+  if (!approvals.required()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  Transaction transaction = transactions.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+  boolean stepUp = mfa(jwt);
+  if (approvals.requiresStepUp(transaction.getAmountMinor()) && !stepUp)
+   return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+    .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer error=\"insufficient_user_authentication\", "
+     + "error_description=\"MFA is required to approve this amount\", acr_values=\"" + MFA_ACR + "\"")
+    .body(Map.of("error", "step_up_required"));
+  try {
+   return ResponseEntity.ok(processor.approve(id, jwt.getSubject(), stepUp));
+  } catch (TransactionService.ClaimRejected e) {
+   return switch (e.reason()) {
+    case SELF_APPROVAL -> ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "self_approval"));
+    case STEP_UP_REQUIRED -> ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "step_up_required"));
+    default -> ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "not_eligible"));
+   };
+  }
+ }
+
+ // Auth0 access tokens carry no amr by default; the step-up Action adds it once MFA has been performed.
+ static boolean mfa(Jwt jwt) {
+  for (String claim : new String[] {"amr", "https://runevault/amr"})
+   if (jwt.getClaims().get(claim) instanceof Collection<?> methods && methods.contains("mfa")) return true;
+  return false;
  }
 }

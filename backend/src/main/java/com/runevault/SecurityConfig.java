@@ -57,6 +57,8 @@ public class SecurityConfig {
     a.requestMatchers(HttpMethod.POST, "/api/transactions").hasAuthority("PERM_create:transactions");
     a.requestMatchers(HttpMethod.POST, "/api/transactions/*/authorize").hasAuthority("PERM_create:transactions");
     a.requestMatchers(HttpMethod.GET, "/api/transactions").hasAuthority("PERM_read:transactions");
+    a.requestMatchers(HttpMethod.GET, "/api/transactions/approvals").hasAuthority("PERM_approve:transactions");
+    a.requestMatchers(HttpMethod.POST, "/api/transactions/*/approve").hasAuthority("PERM_approve:transactions");
     a.requestMatchers(HttpMethod.POST, "/api/ws-ticket").hasAuthority("PERM_read:transactions");
     a.requestMatchers(HttpMethod.GET, "/api/metrics/pipeline").hasAuthority("PERM_read:transactions");
    }
@@ -138,9 +140,11 @@ public class SecurityConfig {
      ? RequestQuotaLimiter.Category.ADMIN
      : path.equals("/api/ws-ticket") && request.getMethod().equals("POST")
      ? RequestQuotaLimiter.Category.WS_TICKET
-     : (path.equals("/api/transactions") || path.equals("/api/metrics/pipeline")) && request.getMethod().equals("GET")
+     : (path.equals("/api/transactions") || path.equals("/api/transactions/approvals")
+       || path.equals("/api/metrics/pipeline")) && request.getMethod().equals("GET")
      ? RequestQuotaLimiter.Category.DASHBOARD_READ
-     : path.equals("/api/transactions") && request.getMethod().equals("POST")
+     : (path.equals("/api/transactions") || path.startsWith("/api/transactions/") && path.endsWith("/approve"))
+       && request.getMethod().equals("POST")
      ? RequestQuotaLimiter.Category.TRANSACTION_CREATION
      : path.startsWith("/api/transactions/") && path.endsWith("/authorize") && request.getMethod().equals("POST")
      ? RequestQuotaLimiter.Category.BRIDGE_AUTHORIZATION : null;

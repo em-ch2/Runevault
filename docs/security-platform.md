@@ -51,3 +51,24 @@ Request limits use separate fixed-window quotas. `RUNEVAULT_RATE_WINDOW_SECONDS`
 Compromised bridge can request arbitrary challenges; physical buttons alone do not show the amount or destination. Add a trusted display or confirm details through a separate trusted channel. Local simulator contains a public test key and is never production signing infrastructure. The older challenge/approval flow still has in-memory replay state and permits one replica only. Device audit events are durable, but banking idempotency is not implemented. Public-key support must wait for A's agreed algorithm and encoding.
 
 References: https://docs.spring.io/spring-boot/3.4/reference/web/spring-security.html and https://developer.auth0.com/resources/code-samples/api/spring/basic-role-based-access-control
+
+## Maker-checker and step-up MFA
+
+With `RUNEVAULT_APPROVAL_REQUIRED=true` (always on in `compose.cloud.yaml`; CloudDeploymentGuard refuses cloud startup otherwise), a transfer that passed the Pico signature and Gemini policy stays `VERIFIED` until a second person releases it. `GET /api/transactions/approvals` lists waiting transfers and `POST /api/transactions/{id}/approve` releases one; both require `approve:transactions`. The execution claim records the approver and rejects a missing approver (`APPROVER_REQUIRED`), the requester approving their own transfer (`SELF_APPROVAL`), and a large transfer approved without MFA (`STEP_UP_REQUIRED`), all under the same row lock that prevents double execution.
+
+Step-up: approving `RUNEVAULT_STEP_UP_AMOUNT_MINOR` cents or more (default 100000 = $1,000) needs `mfa` in the access token's `amr` (or `https://runevault/amr`) claim. Without it the API answers 401 with `WWW-Authenticate: Bearer error="insufficient_user_authentication"` (RFC 9470), and the dashboard requests a new token with the OIDC multi-factor `acr_values` in an Auth0 popup.
+
+Auth0 setup: add the `approve:transactions` permission to the Runevault API, create a `CFO` role with `approve:transactions` and `read:transactions`, and assign it to someone other than the requester. Auth0 access tokens carry no `amr` by default, so add a Login / Post Login Action and attach it to the post-login trigger:
+
+```js
+exports.onExecutePostLogin = async (event, api) => {
+  const MFA = 'http://schemas.openid.net/pape/policies/2007/06/multi-factor';
+  const stepUp = (event.transaction?.acr_values || []).includes(MFA);
+  const didMfa = (event.authentication?.methods || []).some((m) => m.name === 'mfa');
+  if (stepUp) api.multifactor.enable('any', { allowRememberBrowser: false });
+  if (stepUp || didMfa) {
+    api.accessToken.setCustomClaim('amr', ['mfa']);
+    api.accessToken.setCustomClaim('https://runevault/amr', ['mfa']);
+  }
+};
+```

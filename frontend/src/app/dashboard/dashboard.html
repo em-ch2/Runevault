@@ -6,6 +6,9 @@
     <a href="#dashboard-top" [class.nav-current]="activeNav() === 'dashboard'" [attr.aria-current]="activeNav() === 'dashboard' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('dashboard')"><span aria-hidden="true">&#9638;</span> Dashboard</a>
     <a href="#live-create-title" [class.nav-current]="activeNav() === 'transactions'" [attr.aria-current]="activeNav() === 'transactions' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('transactions', 'live-create-title')"><span aria-hidden="true">&#8644;</span> Transactions</a>
     <a href="#authorize-title" [class.nav-current]="activeNav() === 'approvals'" [attr.aria-current]="activeNav() === 'approvals' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('approvals', 'authorize-title')"><span aria-hidden="true">&#9671;</span> Approvals</a>
+    @if (canApprove()) {
+      <a href="#signoff-title" [class.nav-current]="activeNav() === 'signoff'" [attr.aria-current]="activeNav() === 'signoff' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="openSignoff()"><span aria-hidden="true">&#10003;</span> Sign-off @if (approvalQueue().length) { ({{ approvalQueue().length }}) }</a>
+    }
     <a href="#live-list-title" [class.nav-current]="activeNav() === 'history'" [attr.aria-current]="activeNav() === 'history' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('history', 'live-list-title')"><span aria-hidden="true">&#9636;</span> History</a>
     <a href="#metrics-title" [class.nav-current]="activeNav() === 'analytics'" [attr.aria-current]="activeNav() === 'analytics' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('analytics', 'metrics-title')"><span aria-hidden="true">&#9637;</span> Analytics</a>
   </nav>
@@ -182,7 +185,7 @@
   </app-folder-panel>
 
   <app-folder-panel class="slab activity backend-status folder-light" panelId="live-status-title" [title]="flowStep() === 3 ? 'Your transfer result' : 'Reviewing your transfer'" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'live-status-title'">
-    <p class="flow-guidance" role="status">{{ flowStep() < 2 ? 'This request is awaiting physical approval on your Pico.' : flowStep() === 3 ? (flowBlocked() ? 'This transfer needs attention. Review the outcome below before taking any further action.' : 'Your bank confirmed the transfer. Your receipt is below.') : 'Your physical approval is complete. We are reviewing the request and waiting for the bank. You do not need to submit it again.' }}</p>
+    <p class="flow-guidance" role="status">{{ flowStep() < 2 ? 'This request is awaiting physical approval on your Pico.' : flowStep() === 3 ? (flowBlocked() ? 'This transfer needs attention. Review the outcome below before taking any further action.' : 'Your bank confirmed the transfer. Your receipt is below.') : selected()?.awaitingApproval ? 'Your physical approval is complete and passed review. A second approver must now release it before anything is sent to the bank.' : 'Your physical approval is complete. We are reviewing the request and waiting for the bank. You do not need to submit it again.' }}</p>
     <section class="seal-lore" aria-labelledby="seal-lore-title" aria-live="polite">
       <h3 id="seal-lore-title">Lore of the seal</h3>
       @if (selected()?.lore; as lore) {
@@ -291,6 +294,38 @@
       <p role="status">Loading metrics…</p>
     }
     <button class="btn btn-ghost" type="button" (click)="loadMetrics()">Reload metrics</button>
+  </app-folder-panel>
+
+  <!-- Maker-checker queue. The backend enforces every rule here; the UI only explains them. -->
+  <app-folder-panel class="slab activity live-list folder-light" panelId="signoff-title" title="Second-approver sign-off" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'signoff-title'">
+    <p class="flow-guidance">These transfers were signed on the Pico and passed the Gemini review. Each one needs a second person to release it. You cannot release a transfer you requested.</p>
+    @if (approvalNotice()) { <p class="status status-good" role="status">{{ approvalNotice() }}</p> }
+    @if (approvalProblem()) { <p class="form-error" role="alert">{{ approvalProblem() }}</p> }
+    @if (approvalQueue().length === 0) {
+      <p class="empty">Nothing is waiting for sign-off.</p>
+    } @else {
+      @for (transaction of approvalQueue(); track transaction.transactionId) {
+        <div class="receipt-card">
+          <p class="amount">{{ money(transaction.amountMinor) }}</p>
+          <dl class="facts">
+            <div><dt>Transaction</dt><dd class="mono">{{ shortId(transaction.transactionId) }}</dd></div>
+            <div><dt>Destination</dt><dd class="mono">{{ transaction.destination }}</dd></div>
+            <div><dt>Requested by</dt><dd class="mono">{{ ownRequest(transaction) ? 'You' : (transaction.requesterSubject ?? 'Bridge') }}</dd></div>
+            @if (transaction.verifiedAt) { <div><dt>Pico verified</dt><dd>{{ time(transaction.verifiedAt) }}</dd></div> }
+            @if (transaction.riskScore != null) { <div><dt>Risk score</dt><dd>{{ transaction.riskScore }}</dd></div> }
+          </dl>
+          @if (transaction.stepUpRequired) { <p class="muted small">Large transfer: approving asks you to complete multi-factor verification first.</p> }
+          @if (ownRequest(transaction)) {
+            <p class="muted small">You requested this transfer. Another approver must release it.</p>
+          } @else {
+            <button class="btn btn-primary" type="button" (click)="approve(transaction)" [disabled]="approvingId() !== null">
+              {{ approvingId() === transaction.transactionId ? 'Releasing…' : transaction.stepUpRequired ? 'Verify with MFA and release' : 'Release transfer' }}
+            </button>
+          }
+        </div>
+      }
+    }
+    <button class="btn btn-ghost" type="button" (click)="loadApprovals()">Refresh list</button>
   </app-folder-panel>
 </main>
 }

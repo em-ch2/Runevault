@@ -43,7 +43,7 @@ class PostgresMigrationTest {
    }
    try (var rows = statement.executeQuery("SELECT count(*) FROM flyway_schema_history WHERE success")) {
     rows.next();
-    assertEquals(5, rows.getInt(1));
+    assertEquals(6, rows.getInt(1));
    }
   }
  }
