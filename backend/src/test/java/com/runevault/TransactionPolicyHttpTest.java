@@ -141,6 +141,19 @@ class TransactionPolicyHttpTest {
   assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(disallowed.getTransactionId()));
  }
 
+ @Test void claimRechecksPolicyForPersistedVerifiedRows() {
+  var excessive = Transaction.pending("verified-excess", 50001, "acct-999", "slab-01", GLYPHS);
+  var disallowed = Transaction.pending("verified-destination", 50000, "other", "slab-01", GLYPHS);
+  excessive.verifyPhysicalApproval(Instant.now());
+  disallowed.verifyPhysicalApproval(Instant.now());
+  transactions.saveAllAndFlush(List.of(excessive, disallowed));
+  assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(excessive.getTransactionId()));
+  assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(disallowed.getTransactionId()));
+  assertTrue(transactions.findAll().stream().allMatch(t -> t.getStatus() == Transaction.Status.VERIFIED
+   && t.getExecutionClaimedAt() == null));
+  assertEquals(0, auditEvents.count());
+ }
+
  @Test void legacyChallengeCannotBypassPolicy() throws Exception {
   for (String intent : List.of(
    "{\"deviceId\":\"pico-demo-1\",\"amountMinor\":50001,\"destination\":\"harbor\",\"glyphs\":\"ABCD\"}",

@@ -16,7 +16,8 @@ import org.mockito.ArgumentCaptor;
 
 class TransactionApiTest {
  private final TransactionRepository repository = mock(TransactionRepository.class);
- private final TransactionService transactionService = spy(new TransactionService(repository));
+ private final TransactionService transactionService = spy(new TransactionService(repository,
+  mock(AuditEventRepository.class), new TransactionPolicy(100000000, java.util.List.of("harbor"), 5)));
  private final AtomicInteger transfers = new AtomicInteger();
  private final FakeBankGateway bank = new FakeBankGateway();
  private final AuditEventRepository auditEvents = mock(AuditEventRepository.class);

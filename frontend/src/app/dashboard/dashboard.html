@@ -73,10 +73,11 @@
         <div><dt>Created</dt><dd>{{ time(transaction.createdAt) }}</dd></div>
         @if (transaction.verifiedAt) { <div><dt>Verified</dt><dd>{{ time(transaction.verifiedAt) }}</dd></div> }
       </dl>
-      <p class="status" [class.status-wait]="transaction.status === 'PENDING' && !approvalExpired(transaction)"
+      <p class="status" [class.status-wait]="transaction.status === 'EXECUTING' || (transaction.status === 'PENDING' && !approvalExpired(transaction))"
         [class.status-bad]="transaction.status === 'PENDING' && approvalExpired(transaction)"
         [class.status-good]="transaction.status === 'VERIFIED'" role="status">
         {{ transaction.status === 'VERIFIED' ? 'VERIFIED · Physical approval verified'
+          : transaction.status === 'EXECUTING' ? 'EXECUTING · Execution claimed; processing pending'
           : transaction.status === 'SIMULATED' ? 'SIMULATED · Legacy simulation; physical approval unverified'
           : approvalExpired(transaction) ? 'PENDING · approval window expired' : 'PENDING · awaiting physical approval' }}
       </p>
@@ -92,7 +93,7 @@
     <button class="btn btn-ghost" type="button" (click)="refresh()" [disabled]="loadingRecords()">
       {{ loadingRecords() ? 'Loading…' : 'Refresh status' }}
     </button>
-    <p class="muted small">Pending transactions refresh every three seconds. VERIFIED means physical approval was recorded; no funds were transferred.</p>
+    <p class="muted small">Pending transactions refresh every three seconds. VERIFIED records physical approval; EXECUTING means processing was claimed. Neither confirms a funds transfer.</p>
   </section>
 
   <section class="slab activity live-list" aria-labelledby="live-list-title">
@@ -104,7 +105,7 @@
         @for (transaction of records(); track transaction.transactionId) {
           <li>
             <button class="btn-link mono" type="button" (click)="select(transaction.transactionId)">{{ transaction.transactionId }}</button>
-            <span> · {{ transaction.status === 'VERIFIED' ? 'Physical approval verified' : transaction.status === 'SIMULATED' ? 'Legacy simulation' : 'Pending' }} · {{ money(transaction.amountMinor) }} · {{ transaction.destination }}</span>
+            <span> · {{ transaction.status === 'EXECUTING' ? 'Execution claimed; processing pending' : transaction.status === 'VERIFIED' ? 'Physical approval verified' : transaction.status === 'SIMULATED' ? 'Legacy simulation' : 'Pending' }} · {{ money(transaction.amountMinor) }} · {{ transaction.destination }}</span>
           </li>
         }
       </ul>

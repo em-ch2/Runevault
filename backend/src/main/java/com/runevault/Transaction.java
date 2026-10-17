@@ -13,6 +13,8 @@ public class Transaction {
  private long amountMinor;
  @Column(nullable = false, updatable = false, length = 64)
  private String destination;
+ @Column(length = 3)
+ private String currency;
  @Enumerated(EnumType.STRING)
  @Column(nullable = false, length = 32)
  private Status status;
@@ -38,7 +40,7 @@ public class Transaction {
  private String promptVersion;
  private Instant auditedAt;
 
- public enum Status { PENDING, SIMULATED, VERIFIED }
+ public enum Status { PENDING, SIMULATED, VERIFIED, EXECUTING }
 
  public static Transaction pending(String id, long amount, String destination, String device, String glyphs) {
   return pending(id, amount, destination, device, glyphs, null);
@@ -60,7 +62,12 @@ public class Transaction {
  public Instant getExpiresAt() { return expiresAt; }
  public String getRequesterSubject() { return requesterSubject; }
  public Instant getExecutionClaimedAt() { return executionClaimedAt; }
- public void claimForExecution() { executionClaimedAt = Instant.now(); }
+ public void claimForExecution(Instant claimedAt) {
+  if (status != Status.VERIFIED || verifiedAt == null || executionClaimedAt != null || claimedAt == null)
+   throw new IllegalStateException("Transaction is not eligible for execution");
+  status = Status.EXECUTING;
+  executionClaimedAt = claimedAt;
+ }
  public Instant getVerifiedAt() { return verifiedAt; }
  public void verifyPhysicalApproval(Instant verifiedAt) {
   if (status != Status.PENDING || verifiedAt == null) throw new IllegalStateException("Transaction is not pending");
@@ -78,6 +85,7 @@ public class Transaction {
   this.transactionId = transactionId;
   this.amountMinor = amountMinor;
   this.destination = destination;
+  this.currency = "USD";
   this.status = Status.SIMULATED;
   this.createdAt = Instant.now();
   this.updatedAt = createdAt;
@@ -89,6 +97,7 @@ public class Transaction {
  public String getTransactionId() { return transactionId; }
  public long getAmountMinor() { return amountMinor; }
  public String getDestination() { return destination; }
+ public String getCurrency() { return currency; }
  public Status getStatus() { return status; }
  public Instant getCreatedAt() { return createdAt; }
  public Instant getUpdatedAt() { return updatedAt; }

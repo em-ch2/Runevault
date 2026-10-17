@@ -8,7 +8,7 @@ Compose binds the backend to localhost; a remote bridge needs a separately confi
 
 Configure `RUNEVAULT_PICO_DEVICE_ID=slab-01` and `RUNEVAULT_PICO_KEY` with the UTF-8 key provisioned on the device. There is no default key; Pico endpoints return 503 when it is absent. The existing demo signing key is separate and is not used for Pico authorization. This minimal implementation supports one configured device/key, with durable device state in PostgreSQL.
 
-On startup, Hibernate adds nullable transaction fields without deleting existing rows. The PostgreSQL initialization script allows `PENDING`, `SIMULATED`, and `VERIFIED` and adds nullable `verified_at`. Historical `SIMULATED` records keep that status and do not gain a verification timestamp. Production migrations remain outside this hackathon change.
+On startup, Hibernate adds nullable transaction fields without deleting existing rows. The PostgreSQL initialization script allows `PENDING`, `SIMULATED`, `VERIFIED`, and `EXECUTING`, adds nullable `verified_at` and `currency`, and backfills existing rows with `USD`. Historical `SIMULATED` records keep that status and do not gain a verification timestamp. Production migrations remain outside this hackathon change.
 
 Before authorization, the trusted backend client creates a pending transaction using `POST /api/device/transactions`, with the same bridge header:
 
@@ -36,7 +36,9 @@ That sample is a signing test vector; `abc123` must actually exist as a matching
 
 Successful authorization returns HTTP 200 with `transactionId`, `status: VERIFIED`, `verifiedAt`, and `signatureVerified: true`. It updates the existing transaction; no money moves. A database transaction and row locks commit the verification timestamp, consumed device counter, and approval audit event together.
 
-Milestone 2 must define execution eligibility and connect the verified handoff. The existing `TransactionService.claimPicoAuthorized(id)` still requires `SIMULATED` and is intentionally unchanged in milestone 1; new `VERIFIED` transactions cannot be claimed by it. No bank gateway is called by Pico authorization.
+Milestone 2 handoff: after the physical authorization call returns and commits, Person C's Spring service may inject `TransactionService` and call `claimPicoAuthorized(txId)`. This separate proxied service opens a short transaction, locks the stored transaction row, and requires `VERIFIED`, `verifiedAt`, an assigned device and expected glyphs, no prior claim, stored USD currency, and current amount/destination policy compliance. It saves `EXECUTING` and `executionClaimedAt` with an `EXECUTION_CLAIM` audit event, then commits. Its immutable `VerifiedTransaction` return value contains the stored ID, device, cents, currency, destination, glyphs, status, and timestamps. The caller supplies only the transaction ID; it cannot override execution details. Only one local claim wins, including across restarts. Historical `SIMULATED` rows cannot be claimed.
+
+No banking or Gemini call occurs in the claim transaction. Person C should invoke downstream processing only after `claimPicoAuthorized` returns and its transaction commits, using its returned values. `EXECUTING` means execution was claimed, not that funds moved. If processing stops or times out, leave the row `EXECUTING`; inspect the claim audit and reconcile the downstream provider's actual result before any operator-directed recovery. Do not automatically revert to `VERIFIED` or blindly retry a bank call. A database claim prevents duplicate local claims, but cannot guarantee exactly-once banking execution. Simulator isolation is not yet complete, so real banking adapters must remain disabled until milestone 3.
 
 - 400: malformed/unsupported fields.
 - 401: missing/wrong bridge token, unknown configured device, or invalid signature.

@@ -21,7 +21,7 @@ export interface TransactionRecord {
   transactionId: string;
   amountMinor: number;
   destination: string;
-  status: 'PENDING' | 'SIMULATED' | 'VERIFIED';
+  status: 'PENDING' | 'SIMULATED' | 'VERIFIED' | 'EXECUTING';
   createdAt: string;
   verifiedAt: string | null;
   requesterSubject: string | null;

@@ -154,12 +154,22 @@ class DeviceAuthorizationTest {
   assertTrue(auditEvents.findAll().stream().anyMatch(event -> event.getReason() == AuditEvent.Reason.INVALID_SIGNATURE));
  }
 
- @Test void verifiedApprovalIsNotYetEligibleForExecution() throws Exception {
+ @Test void onlyCommittedVerifiedApprovalCanBeClaimed() throws Exception {
   String id = pending();
   assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(id));
   authorize(signed(id, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  var details = transactionService.claimPicoAuthorized(id);
+  assertEquals(id, details.id());
+  assertEquals(50000L, details.amountMinor());
+  assertEquals("acct-999", details.destination());
+  assertEquals("USD", details.currency());
+  assertEquals("slab-01", details.deviceId());
+  assertEquals(com.runevault.transactions.TransactionStatus.EXECUTING, details.status());
+  var saved = transactions.findById(id).orElseThrow();
+  assertEquals(Transaction.Status.EXECUTING, saved.getStatus());
+  assertNotNull(saved.getExecutionClaimedAt());
+  assertEquals(1, auditEvents.findAll().stream().filter(e -> e.getEventType() == AuditEvent.Type.EXECUTION_CLAIM).count());
   assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(id));
-  assertNull(transactions.findById(id).orElseThrow().getExecutionClaimedAt());
  }
 
  @Test void concurrentDuplicateApprovalsHaveOneWinner() throws Exception {
@@ -175,7 +185,7 @@ class DeviceAuthorizationTest {
   assertEquals(1, auditEvents.findAll().stream().filter(e -> e.getOutcome() == AuditEvent.Outcome.APPROVED).count());
  }
 
- @Test void concurrentExecutionClaimsRemainIneligible() throws Exception {
+ @Test void concurrentExecutionClaimsHaveOneWinner() throws Exception {
   String id = pending();
   authorize(signed(id, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
   var start = new CountDownLatch(1);
@@ -188,10 +198,33 @@ class DeviceAuthorizationTest {
    var first = workers.submit(claim);
    var second = workers.submit(claim);
    start.countDown();
-   assertFalse(first.get());
-   assertFalse(second.get());
+   assertEquals(1, (first.get() ? 1 : 0) + (second.get() ? 1 : 0));
   }
-  assertNull(transactions.findById(id).orElseThrow().getExecutionClaimedAt());
+  assertNotNull(transactions.findById(id).orElseThrow().getExecutionClaimedAt());
+  assertEquals(1, auditEvents.findAll().stream().filter(e -> e.getEventType() == AuditEvent.Type.EXECUTION_CLAIM).count());
+ }
+
+ @Test void pendingHistoricalAndMissingEvidenceCannotBeClaimed() throws Exception {
+  String pendingId = pending();
+  assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(pendingId));
+  var historical = new Transaction("historical", 50000, "acct-999");
+  transactions.saveAndFlush(historical);
+  assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized("historical"));
+  var missingTimestamp = Transaction.pending("missing-timestamp", 50000, "acct-999", "slab-01", GLYPHS);
+  missingTimestamp.verifyPhysicalApproval(java.time.Instant.now());
+  var field = Transaction.class.getDeclaredField("verifiedAt");
+  field.setAccessible(true);
+  field.set(missingTimestamp, null);
+  transactions.saveAndFlush(missingTimestamp);
+  assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized("missing-timestamp"));
+  var missingDevice = Transaction.pending("missing-device", 50000, "acct-999", "slab-01", GLYPHS);
+  missingDevice.verifyPhysicalApproval(java.time.Instant.now());
+  field = Transaction.class.getDeclaredField("deviceId");
+  field.setAccessible(true);
+  field.set(missingDevice, null);
+  transactions.saveAndFlush(missingDevice);
+  assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized("missing-device"));
+  assertEquals(0, auditEvents.count());
  }
 
  @Test void invalidSignatureDoesNotChangeDeviceOrTransaction() throws Exception {

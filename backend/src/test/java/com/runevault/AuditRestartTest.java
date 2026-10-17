@@ -62,17 +62,17 @@ class AuditRestartTest {
    signed = new DeviceApi.Authorization(1, "slab-01", 1L, id, 50000L, "acct-999",
     "0-2-1-2-1", HexFormat.of().formatHex(mac.doFinal(text.getBytes(StandardCharsets.UTF_8))));
    assertEquals(200, service.authorize(signed).getStatusCode().value());
-   assertThrows(IllegalStateException.class, () -> first.getBean(
-    com.runevault.transactions.TransactionService.class).claimPicoAuthorized(id));
+   var claim = first.getBean(com.runevault.transactions.TransactionService.class).claimPicoAuthorized(id);
+   assertEquals(com.runevault.transactions.TransactionStatus.EXECUTING, claim.status());
   }
   try (var second = new SpringApplicationBuilder(RunevaultApplication.class).profiles("dev", "test").run(arguments)) {
    assertEquals(409, second.getBean(DeviceAuthorizationService.class).authorize(signed).getStatusCode().value());
    assertEquals(1, second.getBean(DeviceStateRepository.class).findById("slab-01").orElseThrow().getLastCounter());
    var saved = second.getBean(TransactionRepository.class).findById(id).orElseThrow();
-   assertEquals(Transaction.Status.VERIFIED, saved.getStatus());
+   assertEquals(Transaction.Status.EXECUTING, saved.getStatus());
    assertNotNull(saved.getVerifiedAt());
-   assertNull(saved.getExecutionClaimedAt());
-   assertEquals(2, second.getBean(AuditEventRepository.class).count());
+   assertNotNull(saved.getExecutionClaimedAt());
+   assertEquals(3, second.getBean(AuditEventRepository.class).count());
    assertThrows(IllegalStateException.class, () -> second.getBean(
     com.runevault.transactions.TransactionService.class).claimPicoAuthorized(id));
   }

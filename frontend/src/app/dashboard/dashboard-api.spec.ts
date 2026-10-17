@@ -71,6 +71,15 @@ describe('Dashboard live transactions', () => {
     fixture.destroy();
   });
 
+  it('shows an execution claim without claiming funds were transferred', () => {
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'EXECUTING', verifiedAt: new Date().toISOString() }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Execution claimed; processing pending');
+    expect(fixture.nativeElement.textContent).not.toContain('Funds transferred');
+    fixture.destroy();
+  });
+
   it('labels an expired pending authorization window and stops polling', () => {
     vi.useFakeTimers();
     api.list.mockReturnValue(of({ content: [{ ...pending,
