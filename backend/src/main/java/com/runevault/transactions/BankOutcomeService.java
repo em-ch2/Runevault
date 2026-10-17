@@ -36,4 +36,21 @@ public class BankOutcomeService {
    transaction.getDeviceId(), id, outcome, AuditEvent.Reason.valueOf(receipt.reason().name())));
   return transaction;
  }
+
+ @Transactional(propagation = Propagation.REQUIRES_NEW)
+ public boolean reconcile(String id, BankReceipt receipt) {
+  Transaction transaction = transactions.findForUpdate(id).orElseThrow();
+  boolean changed = transaction.reconcileBankOutcome(receipt, Instant.now());
+  if (!changed) return false;
+  transactions.saveAndFlush(transaction);
+  AuditEvent.Outcome outcome = switch (receipt.outcome()) {
+   case ACCEPTED_PENDING -> AuditEvent.Outcome.PENDING;
+   case COMPLETED -> AuditEvent.Outcome.APPROVED;
+   case FAILED -> AuditEvent.Outcome.REJECTED;
+   case UNKNOWN -> AuditEvent.Outcome.UNKNOWN;
+  };
+  auditEvents.saveAndFlush(new AuditEvent(AuditEvent.Type.BANK_OUTCOME,
+   transaction.getDeviceId(), id, outcome, AuditEvent.Reason.valueOf(receipt.reason().name())));
+  return true;
+ }
 }

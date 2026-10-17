@@ -11,7 +11,8 @@ import { INITIAL_STATE, TransferStore } from './transfer-store';
 
 describe('Dashboard live transactions', () => {
   const pending = { transactionId: 'abc123', amountMinor: 50000, destination: 'acct-999',
-    status: 'PENDING' as const, createdAt: new Date().toISOString(), verifiedAt: null,
+    status: 'PENDING' as const, createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 120000).toISOString(), verifiedAt: null,
     requesterSubject: 'auth0|user' };
   const api = { create: vi.fn(), list: vi.fn(), metrics: vi.fn() };
   const metrics = { from: '2026-10-17T12:00:00Z', to: '2026-10-17T12:02:00Z', source: 'pipeline-events', approved: 3, blocked: 2,
@@ -167,7 +168,7 @@ describe('Dashboard live transactions', () => {
   it('labels an expired pending authorization window and stops polling', () => {
     vi.useFakeTimers();
     api.list.mockReturnValue(of({ content: [{ ...pending,
-      createdAt: new Date(Date.now() - 180000).toISOString() }] }));
+      expiresAt: new Date(Date.now() - 1000).toISOString() }] }));
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Approval window expired');

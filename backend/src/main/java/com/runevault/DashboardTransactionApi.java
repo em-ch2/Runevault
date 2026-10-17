@@ -47,7 +47,7 @@ public class DashboardTransactionApi {
   @NotNull @Pattern(regexp = "[A-Za-z0-9_-]{1,64}") String dest) {}
 
  public record TransactionView(String transactionId, long amountMinor, String destination,
-   Transaction.Status status, Instant createdAt, Instant verifiedAt, String requesterSubject,
+   Transaction.Status status, Instant createdAt, Instant expiresAt, Instant verifiedAt, String requesterSubject,
    String bankReceiptId, String bankStatus, String bankProvider,
    com.runevault.banking.BankReceipt.Outcome bankOutcome,
    com.runevault.banking.BankReceipt.Reason bankReason,
@@ -63,7 +63,8 @@ public class DashboardTransactionApi {
   // Gemini text goes through SafeAssessment: plain, capped, and never the approval glyphs.
   private TransactionView(Transaction transaction, SafeAssessment audit) {
    this(transaction.getTransactionId(), transaction.getAmountMinor(), transaction.getDestination(),
-    transaction.getStatus(), transaction.getCreatedAt(), transaction.getVerifiedAt(), transaction.getRequesterSubject(),
+    transaction.getStatus(), transaction.getCreatedAt(), transaction.getExpiresAt(),
+    transaction.getVerifiedAt(), transaction.getRequesterSubject(),
     transaction.getBankReceiptId(), transaction.getBankStatus(), transaction.getBankProvider(),
     transaction.getBankOutcome(), transaction.getBankReason(),
     transaction.getBankSubmittedAt(), transaction.getBankOutcomeAt(), transaction.getNewBalanceMinor(),
@@ -97,10 +98,10 @@ public class DashboardTransactionApi {
  @GetMapping
  @PreAuthorize("hasAuthority('PERM_read:transactions')")
  public Page<TransactionView> list(@RequestParam(defaultValue = "0") int page,
-   @RequestParam(defaultValue = "20") int size) {
+   @RequestParam(defaultValue = "20") int size, @AuthenticationPrincipal Jwt jwt) {
   if (page < 0 || size < 1 || size > 100)
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "page must be nonnegative and size must be 1-100");
-  return transactions.findAll(PageRequest.of(page, size,
+  return transactions.findByRequesterSubject(jwt.getSubject(), PageRequest.of(page, size,
     Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("transactionId"))))
    .map(TransactionView::new);
  }

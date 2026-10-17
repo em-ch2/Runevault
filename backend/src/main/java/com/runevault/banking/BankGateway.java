@@ -7,4 +7,9 @@ public interface BankGateway {
         String currency,
         String destination
     );
+
+    /** Read an existing provider receipt only. Empty means no reliable new observation. */
+    default java.util.Optional<BankReceipt> lookup(BankReceipt previous) {
+        return java.util.Optional.empty();
+    }
 }

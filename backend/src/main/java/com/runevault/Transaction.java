@@ -153,6 +153,31 @@ public class Transaction {
   };
  }
 
+ public boolean reconcileBankOutcome(BankReceipt receipt, Instant recordedAt) {
+  if ((status != Status.BANK_PENDING && status != Status.OUTCOME_UNKNOWN)
+    || bankReceiptId == null || receipt == null || recordedAt == null
+    || !bankReceiptId.equals(receipt.receiptId()) || !bankProvider.equals(receipt.provider())
+    || !transactionId.equals(receipt.transactionId()) || amountMinor != receipt.amountMinor()
+    || !currency.equals(receipt.currency()) || !destination.equals(receipt.destination())
+    || receipt.outcome() == null || receipt.reason() == null)
+   throw new IllegalStateException("Receipt is not eligible for reconciliation");
+  Status next = switch (receipt.outcome()) {
+   case ACCEPTED_PENDING -> Status.BANK_PENDING;
+   case COMPLETED -> Status.EXECUTED;
+   case FAILED -> Status.FAILED;
+   case UNKNOWN -> Status.OUTCOME_UNKNOWN;
+  };
+  if (status == next && bankOutcome == receipt.outcome()
+    && java.util.Objects.equals(bankStatus, receipt.status())) return false;
+  status = next;
+  bankStatus = receipt.status();
+  bankOutcome = receipt.outcome();
+  bankReason = receipt.reason();
+  bankOutcomeAt = recordedAt;
+  if (receipt.newBalanceMinor() != null) newBalanceMinor = receipt.newBalanceMinor();
+  return true;
+ }
+
 
  protected Transaction() {}
 

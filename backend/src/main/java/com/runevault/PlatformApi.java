@@ -20,13 +20,41 @@ import org.springframework.web.server.ResponseStatusException;
 public class PlatformApi {
  private final AuditEventRepository auditEvents;
  private final DeviceRevocationService revocations;
- public PlatformApi(AuditEventRepository auditEvents, DeviceRevocationService revocations) {
+ private final com.runevault.transactions.BankReconciliationService reconciliation;
+ private final com.runevault.transactions.TransactionProcessor processor;
+ public PlatformApi(AuditEventRepository auditEvents, DeviceRevocationService revocations,
+   com.runevault.transactions.BankReconciliationService reconciliation,
+   com.runevault.transactions.TransactionProcessor processor) {
   this.auditEvents = auditEvents;
   this.revocations = revocations;
+  this.reconciliation = reconciliation;
+  this.processor = processor;
  }
  @GetMapping("/status")
  @PreAuthorize("hasAuthority('PERM_admin:platform')")
  public Map<String,String> status() { return Map.of("mode","auth","storage","postgresql"); }
+ @PostMapping("/transactions/{id}/reconcile")
+ @PreAuthorize("hasAuthority('PERM_admin:platform')")
+ public Map<String, Object> reconcile(@PathVariable String id) {
+  if (!id.matches("[A-Za-z0-9_-]{1,36}"))
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid transaction ID");
+  try { return reconciliation.reconcile(id); }
+  catch (java.util.NoSuchElementException e) {
+   throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Transaction not found");
+  }
+ }
+ @PostMapping("/transactions/{id}/resume")
+ @PreAuthorize("hasAuthority('PERM_admin:platform')")
+ public Map<String, Object> resume(@PathVariable String id) {
+  if (!id.matches("[A-Za-z0-9_-]{1,36}"))
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid transaction ID");
+  try { return processor.process(id); }
+  catch (java.util.NoSuchElementException e) {
+   throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Transaction not found");
+  } catch (IllegalStateException e) {
+   return Map.of("status", "INELIGIBLE");
+  }
+ }
  @PostMapping("/devices/{deviceId}/revoke")
  @PreAuthorize("hasAuthority('PERM_admin:platform')")
  public Map<String, Object> revoke(@PathVariable String deviceId, @AuthenticationPrincipal Jwt jwt) {

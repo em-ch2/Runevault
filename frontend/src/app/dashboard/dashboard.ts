@@ -205,7 +205,7 @@ export class Dashboard implements OnInit, OnDestroy {
 
   approvalExpired(transaction: TransactionRecord | null): boolean {
     const expiresAt = this.createdForSelection()?.expires_at
-      ?? (transaction ? Date.parse(transaction.createdAt) / 1000 + 120 : 0);
+      ?? (transaction?.expiresAt ? Date.parse(transaction.expiresAt) / 1000 : 0);
     return expiresAt > 0 && Date.now() / 1000 >= expiresAt;
   }
 

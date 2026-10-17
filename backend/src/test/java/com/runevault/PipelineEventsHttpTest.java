@@ -255,9 +255,9 @@ class PipelineEventsHttpTest {
   mvc.perform(get("/api/metrics/pipeline?minutes=5")
     .with(jwt().authorities(new SimpleGrantedAuthority("PERM_read:transactions"))))
    .andExpect(status().isOk())
-   .andExpect(jsonPath("$.approved").value(1))
-   .andExpect(jsonPath("$.blocked").value(2))
-   .andExpect(jsonPath("$.source").value("pipeline-events"))
+   .andExpect(jsonPath("$.approved").value(0))
+   .andExpect(jsonPath("$.blocked").value(0))
+   .andExpect(jsonPath("$.source").value("pipeline-events-user"))
    .andExpect(jsonPath("$.minutes.length()").value(5));
   mvc.perform(get("/api/metrics/pipeline").with(jwt().authorities(new SimpleGrantedAuthority("PERM_create:transactions"))))
    .andExpect(status().isForbidden());

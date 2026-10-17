@@ -42,6 +42,7 @@ class DashboardPermissionsHttpTest {
  @Autowired TransactionRepository transactions;
  @Autowired DeviceStateRepository devices;
  @Autowired AuditEventRepository auditEvents;
+ @Autowired com.runevault.events.PipelineEventWriter pipelineWriter;
  @Autowired ObjectMapper mapper;
  @MockBean JwtDecoder decoder;
  @MockBean com.runevault.lore.GeminiGlyphGenerator glyphGenerator;
@@ -96,12 +97,22 @@ class DashboardPermissionsHttpTest {
    .andExpect(jsonPath("$.glyphs").value("0-2-1-2-1"));
   assertEquals("auth0|employee", transactions.findAll().get(0).getRequesterSubject());
   mvc.perform(get("/api/transactions").header("Authorization", "Bearer viewer"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+  mvc.perform(get("/api/transactions").header("Authorization", "Bearer employee"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].requesterSubject").value("auth0|employee"))
    .andExpect(jsonPath("$.content[0].expectedGlyphs").doesNotExist());
   mvc.perform(get("/api/admin/audit-events").header("Authorization", "Bearer employee"))
    .andExpect(status().isForbidden());
   mvc.perform(get("/api/admin/audit-events").header("Authorization", "Bearer admin"))
    .andExpect(status().isOk());
+  mvc.perform(post("/api/admin/transactions/example/reconcile").header("Authorization", "Bearer employee"))
+   .andExpect(status().isForbidden());
+  mvc.perform(post("/api/admin/transactions/example/resume").header("Authorization", "Bearer employee"))
+   .andExpect(status().isForbidden());
+  mvc.perform(post("/api/admin/transactions/missing/reconcile").header("Authorization", "Bearer admin"))
+   .andExpect(status().isNotFound());
+  mvc.perform(post("/api/admin/transactions/missing/resume").header("Authorization", "Bearer admin"))
+   .andExpect(status().isNotFound());
  }
 
  @Test void dashboardDoesNotCreateTransactionsWhenGeminiCannotGenerateGlyphs() throws Exception {
@@ -113,6 +124,29 @@ class DashboardPermissionsHttpTest {
    .andExpect(status().isServiceUnavailable())
    .andExpect(jsonPath("$.error").value("Gemini approval code generation is unavailable"));
   assertEquals(0, transactions.count());
+ }
+
+ @Test void twoUsersSeeOnlyTheirOwnTransactions() throws Exception {
+  transactions.save(Transaction.pending("alice-tx", 125, "acct-999", "slab-01", "0-2-1", "auth0|employee"));
+  transactions.save(Transaction.pending("bob-tx", 225, "acct-999", "slab-02", "1-2-0", "auth0|admin"));
+  transactions.save(Transaction.pending("bridge-tx", 325, "acct-999", "slab-03", "2-1-0", null));
+  mvc.perform(get("/api/transactions").header("Authorization", "Bearer employee"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
+   .andExpect(jsonPath("$.content[0].transactionId").value("alice-tx"))
+   .andExpect(jsonPath("$.content[0].expiresAt").isNotEmpty());
+  mvc.perform(get("/api/transactions").header("Authorization", "Bearer admin"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
+   .andExpect(jsonPath("$.content[0].transactionId").value("bob-tx"));
+  pipelineWriter.write(new com.runevault.events.PipelineEventWriter.Row(
+   java.util.UUID.randomUUID(), Instant.now(), "alice-tx", "GEMINI", "APPROVED", "VERIFIED", null, null, null, null));
+  pipelineWriter.write(new com.runevault.events.PipelineEventWriter.Row(
+   java.util.UUID.randomUUID(), Instant.now(), "bob-tx", "GEMINI", "REJECTED", "VERIFIED", null, null, null, null));
+  mvc.perform(get("/api/metrics/pipeline").header("Authorization", "Bearer employee"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.approved").value(1))
+   .andExpect(jsonPath("$.blocked").value(0));
+  mvc.perform(get("/api/metrics/pipeline").header("Authorization", "Bearer admin"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.approved").value(0))
+   .andExpect(jsonPath("$.blocked").value(1));
  }
 
  @Test void bridgeEndpointsStillRequireBridgeToken() throws Exception {
