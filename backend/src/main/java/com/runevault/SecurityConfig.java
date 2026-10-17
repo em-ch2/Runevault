@@ -48,7 +48,7 @@ public class SecurityConfig {
   http.csrf(c -> c.disable()).sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
   http.authorizeHttpRequests(a -> {
    a.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll();
-   a.requestMatchers("/api/health").permitAll();
+   a.requestMatchers(HttpMethod.GET, "/api/health", "/actuator/health/liveness", "/actuator/health/readiness").permitAll();
    // Bridge requests have their own credential, checked by Gate before authorization.
    if (simulator) a.requestMatchers("/api/challenges", "/api/approvals").permitAll();
    a.requestMatchers("/api/device/authorize", "/api/device/transactions", "/api/device/transactions/*", "/api/lore/*").permitAll();
@@ -100,7 +100,7 @@ public class SecurityConfig {
   }
   @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
    String path = request.getRequestURI().substring(request.getContextPath().length());
-   if (path.equals("/api/health")) { chain.doFilter(request,response); return; }
+   if (isHealthProbe(request)) { chain.doFilter(request,response); return; }
    boolean bridge = (simulator && (path.equals("/api/challenges") || path.equals("/api/approvals")))
      || path.startsWith("/api/device/") || path.startsWith("/api/lore/");
    if (bridge) {
@@ -126,7 +126,7 @@ public class SecurityConfig {
   UserQuotaFilter(RequestQuotaLimiter limiter) { this.limiter = limiter; }
   @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
    String path = request.getRequestURI().substring(request.getContextPath().length());
-   if (path.equals("/api/health")) { chain.doFilter(request, response); return; }
+   if (isHealthProbe(request)) { chain.doFilter(request, response); return; }
    var authentication = SecurityContextHolder.getContext().getAuthentication();
    if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt
      && jwt.getSubject() != null && !jwt.getSubject().isBlank()) {
@@ -146,5 +146,12 @@ public class SecurityConfig {
    }
    chain.doFilter(request, response);
   }
+ }
+
+ private static boolean isHealthProbe(HttpServletRequest request) {
+  if (!request.getMethod().equals("GET")) return false;
+  String path = request.getRequestURI().substring(request.getContextPath().length());
+  return path.equals("/api/health") || path.equals("/actuator/health/liveness")
+   || path.equals("/actuator/health/readiness");
  }
 }

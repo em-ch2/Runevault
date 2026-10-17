@@ -39,16 +39,28 @@ services:
       RUNEVAULT_ALLOWED_DESTINATIONS: ${RUNEVAULT_ALLOWED_DESTINATIONS:-acct-999,harbor}
       RUNEVAULT_MAX_INCORRECT_GLYPH_ATTEMPTS: ${RUNEVAULT_MAX_INCORRECT_GLYPH_ATTEMPTS:-5}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      NESSIE_ENABLED: "true"
+      NESSIE_ENABLED: ${NESSIE_ENABLED:-true}
       NESSIE_API_KEY: ${NESSIE_API_KEY}
       NESSIE_SOURCE_ACCOUNT_ID: ${NESSIE_SOURCE_ACCOUNT_ID}
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "http://localhost:8080/actuator/health/readiness"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
   frontend:
     build: ./frontend
     ports: ["127.0.0.1:4200:80"]
     depends_on:
       - backend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:80/login"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 volumes:
   postgres-data:
