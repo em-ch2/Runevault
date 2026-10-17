@@ -16,6 +16,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
  @Query("select t.deviceId from Transaction t where t.transactionId = :id")
  Optional<String> findAssignedDeviceId(@Param("id") String id);
 
+ // Oldest live pending assignment first, so the bridge serves requests in order.
+ Optional<Transaction> findFirstByDeviceIdAndStatusAndExpiresAtAfterOrderByCreatedAtAsc(
+   String deviceId, Transaction.Status status, Instant now);
+
  @Lock(LockModeType.PESSIMISTIC_WRITE)
  @Query("select t from Transaction t where t.transactionId = :id")
  Optional<Transaction> findForUpdate(@Param("id") String id);
