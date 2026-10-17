@@ -59,6 +59,44 @@ $env:RUNEVAULT_API_URL = "http://localhost:8080"
 
 The bridge reads `RUNEVAULT_BRIDGE_TOKEN` from project-root `.env` (or the environment if no local token exists). It calls `GET /api/device/transactions/<tx_id>?device=slab-01` with `X-Bridge-Token`, verifies the returned pending assignment and expiry, then sends the stored `TX|<id>|<amount>|<destination>\n` to the Pico. `--amount`, `--dest`, and `--glyphs` cannot be combined with `--tx-id`. The lookup never returns expected glyphs; obtain the assigned sequence from the trusted transaction creator. The Pico signs its response, and the bridge forwards it to `POST /api/device/authorize`.
 
+### Temporary public HTTPS access for a bridge on another computer
+
+On the backend computer, keep the normal `auth` profile and the existing `.env` values. From the repository root in PowerShell, run:
+
+```powershell
+docker compose up -d postgres backend
+Invoke-RestMethod http://127.0.0.1:8080/api/health
+docker compose -f compose.yaml -f compose.tunnel.yaml up -d --no-deps tunnel
+docker compose -f compose.yaml -f compose.tunnel.yaml logs --tail=80 tunnel
+```
+
+Copy the generated `https://...trycloudflare.com` base URL from the tunnel logs; do not guess it. The optional tunnel reaches only `http://backend:8080` on the Compose network. It does not publish PostgreSQL. Verify the URL from PowerShell:
+
+```powershell
+$env:RUNEVAULT_API_URL = "https://<generated-name>.trycloudflare.com"
+Invoke-RestMethod "$env:RUNEVAULT_API_URL/api/health"
+curl.exe -s -o NUL -w '%{http_code}' "$env:RUNEVAULT_API_URL/api/device/transactions/missing?device=slab-01"
+```
+
+The last command must return `401` without `X-Bridge-Token`. Keep Auth0's API audience as `https://api.runevault`; the tunnel URL is only a temporary transport address.
+
+On the hardware teammate's computer, use the same checked-out bridge code and install its requirements. Set the URL from the backend computer, select the Pico's actual port, and enter the **matching backend bridge token privately**:
+
+```powershell
+.\.venv\Scripts\python.exe -m serial.tools.list_ports
+$env:RUNEVAULT_API_URL = "https://<generated-name>.trycloudflare.com"
+$env:RUNEVAULT_SERIAL_PORT = "COM3" # Replace with the Pico's actual port
+$secret = Read-Host "Bridge token" -AsSecureString
+$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret)
+try { $env:RUNEVAULT_BRIDGE_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
+finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr); Remove-Variable secret, ptr }
+.\.venv\Scripts\python.exe bridge/usb_bridge.py --tx-id "<existing-pending-tx-id>" --device slab-01
+```
+
+Run these commands from the repository root. If that computer has a project-root `.env` containing `RUNEVAULT_BRIDGE_TOKEN`, the bridge uses that file's value **instead of** the terminal variable; update the file privately to match or remove its stale token entry. Do not copy the backend computer's full `.env` to the hardware computer. The dashboard transaction must still be pending and assigned to `slab-01`; start the bridge promptly because it expires after 120 seconds.
+
+The backend computer and tunnel must remain running during the test. Quick Tunnel URLs can change after a tunnel restart; send the new URL to the hardware teammate and update `RUNEVAULT_API_URL`. This is temporary testing access, not AWS deployment.
+
 Hardware checklist:
 
 1. Start the backend with the existing PostgreSQL data and configured Pico key. Do not reset the database or `counter.txt`.
