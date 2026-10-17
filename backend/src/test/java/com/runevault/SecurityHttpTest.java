@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties={"runevault.bridge-token=test-bridge-token-with-enough-characters", "runevault.requests-per-minute=1000"})
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
+@ActiveProfiles({"dev", "test"})
 class SecurityHttpTest {
  @Autowired MockMvc mvc;
  @Autowired TransactionRepository transactions;
