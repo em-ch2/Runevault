@@ -23,7 +23,7 @@ describe('Dashboard live transactions', () => {
       imports: [Dashboard],
       providers: [
         { provide: TransactionApiService, useValue: api },
-        { provide: AuthService, useValue: { user: signal({ name: 'Ada', email: 'ada@example.com' }), signOut: vi.fn() } },
+        { provide: AuthService, useValue: { user: signal({ name: 'Ada', email: 'ada@example.com' }), busy: signal(false), error: signal(null), signOut: vi.fn() } },
         { provide: FeedService, useValue: { isMock: true, connection: signal('mock'), start: vi.fn(), stop: vi.fn() } },
         { provide: TransferStore, useValue: { state: signal(INITIAL_STATE) } },
       ],

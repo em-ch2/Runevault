@@ -34,7 +34,8 @@ class TransactionApiTest {
   var approval = new TransactionApi.Approval(c.challengeId(), sign(c.signingText()));
   var response = api.approve(approval);
   assertEquals("SIMULATED", response.get("status"));
-  assertEquals("simulator", response.get("mode"));
+  assertEquals("hardware-simulated", response.get("mode"));
+  assertEquals("local-fake", response.get("bankingMode"));
   verify(repository).saveAndFlush(argThat(t -> t.getStatus() == Transaction.Status.SIMULATED
    && t.getVerifiedAt() == null && t.getDeviceId() == null));
   verify(fakeBank).transfer(c.challengeId(), 2500, "USD", "harbor");

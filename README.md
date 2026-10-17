@@ -19,16 +19,16 @@ Compose builds Angular with `npm ci` inside the frontend image; a local `fronten
 Backend: http://localhost:8080/api/health
 Dashboard: http://localhost:4200. For Angular development outside Docker, run `npm start` in `frontend/`. See frontend/README.md.
 For a temporary public HTTPS URL used by a USB bridge on another computer, see [the bridge tunnel instructions](bridge/README.md#temporary-public-https-access-for-a-bridge-on-another-computer). Keep the Auth0 audience unchanged.
-To run the legacy simulator, stop the normal backend and explicitly start `dev,simulator`:
+Normal demo mode uses the physical Pico to verify a transaction, then Person C's execution pipeline may hand it to Nessie sandbox banking. Nessie is a sandbox; it does not move real money. To replace the Pico for a separate hardware-simulation test, stop the normal backend and explicitly start `dev,simulator`:
 
 ```powershell
 docker compose stop backend
-docker compose run --service-ports -e SPRING_PROFILES_ACTIVE=dev,simulator backend
+docker compose run --service-ports -e SPRING_PROFILES_ACTIVE=dev,simulator -e NESSIE_ENABLED=false backend
 ```
 
-In another PowerShell terminal, set `RUNEVAULT_BRIDGE_TOKEN` and `RUNEVAULT_DEVICE_SECRET` to the same values used by Compose, then run `node bridge/simulator.mjs` with Node 22+. Resume the normal Auth0 backend with `docker compose up -d backend`. The simulator routes are unavailable in the normal `auth` profile, and simulator records cannot enter the live execution claim pipeline.
+Keep `NESSIE_ENABLED=false` for hardware simulation; combining `dev,simulator` with Nessie enabled fails startup. In another PowerShell terminal, set `RUNEVAULT_BRIDGE_TOKEN` and `RUNEVAULT_DEVICE_SECRET` to the same values used by Compose, then run `node bridge/simulator.mjs` with Node 22+. Resume the normal Auth0 backend with `docker compose up -d backend`. Hardware-simulator responses are labeled `hardware-simulated` and `local-fake`; persisted `SIMULATED` records cannot enter the physical execution claim pipeline. Simulator routes are unavailable in `auth` mode.
 
-The legacy challenge flow uses only a fake bank adapter. No money moves. The Angular dashboard uses Auth0 login and can create and read pending backend transactions; its separate demo preview still uses scripted transfer data. Gemini, Nessie, the dashboard WebSocket and production deployment remain team tasks.
+The legacy challenge flow uses only a local fake bank adapter. The Angular dashboard uses Auth0 login and can create and read pending backend transactions; its separate demo preview still uses scripted transfer data. Hardware-simulator-to-Nessie testing is unsupported.
 
 Successful signed simulations are saved to PostgreSQL in the `transactions` table, with the challenge ID as transaction ID, the USD amount in minor units, destination, status, and creation/update timestamps. Compose starts PostgreSQL before the backend and retains records in the `postgres-data` volume across restarts. `docker compose down -v` deletes that data.
 

@@ -46,14 +46,16 @@ describe('AuthService', () => {
   it('starts hosted login, hosted signup, and Auth0 logout', () => {
     const auth = TestBed.inject(AuthService);
     auth.signIn();
-    expect(sdk.loginWithRedirect).toHaveBeenCalledWith({ appState: { target: '/' } });
+    expect(sdk.loginWithRedirect).toHaveBeenCalledWith({
+      appState: { target: '/' }, authorizationParams: { prompt: 'login', max_age: 0 },
+    });
     auth.signUp();
     expect(sdk.loginWithRedirect).toHaveBeenCalledWith({
-      appState: { target: '/' }, authorizationParams: { screen_hint: 'signup' },
+      appState: { target: '/' }, authorizationParams: { screen_hint: 'signup', prompt: 'login', max_age: 0 },
     });
     auth.signOut();
     expect(sdk.logout).toHaveBeenCalledWith({
-      logoutParams: { returnTo: window.location.origin + '/login' },
+      logoutParams: { returnTo: window.location.origin },
     });
   });
 
@@ -65,5 +67,16 @@ describe('AuthService', () => {
     auth.signIn();
     expect(auth.error()).toBe('Could not open sign in. Please try again.');
     expect(auth.busy()).toBe(false);
+  });
+
+  it('allows retrying logout after a redirect error', () => {
+    const auth = TestBed.inject(AuthService);
+    sdk.logout.mockReturnValueOnce(throwError(() => new Error('Network unavailable')));
+    auth.signOut();
+    expect(auth.error()).toContain('Could not sign out');
+    expect(auth.busy()).toBe(false);
+    auth.signOut();
+    expect(sdk.logout).toHaveBeenCalledTimes(2);
+    expect(auth.error()).toBeNull();
   });
 });

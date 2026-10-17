@@ -53,7 +53,7 @@ Every fresh, validly signed attempt consumes its counter, including transaction 
 
 ## Explicit simulator challenge/approval flow
 
-This legacy flow exists only with the `dev,simulator` profiles. It uses `FakeBankGateway` directly, returns `mode: simulator`, persists `SIMULATED` rows without physical verification, and cannot feed the live execution claim. The normal `auth` profile does not expose these routes. `GET /api/health` remains available in either profile.
+This legacy flow replaces the physical Pico only with explicit `dev,simulator` profiles and `NESSIE_ENABLED=false`. It uses the local `FakeBankGateway`, returns `mode: hardware-simulated` and `bankingMode: local-fake`, persists `SIMULATED` rows without `verifiedAt`, and cannot feed the physical execution claim. `auth,simulator` and hardware simulation with Nessie enabled fail startup. Hardware-simulator-to-Nessie testing is unsupported. Normal `auth` mode keeps these routes disabled; physical Pico verification can feed Person C's Nessie sandbox pipeline. Nessie sandbox does not move real money. `GET /api/health` remains available in either profile.
 
 POST /api/challenges: {"deviceId":"pico-demo-1","amountMinor":2500,"destination":"demo-harbor","glyphs":"ABCD"}
 Returns challengeId, expiresAt (Unix seconds), intent and signingText. Challenge expires in 120 seconds.

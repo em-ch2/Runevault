@@ -15,8 +15,8 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.runevault.banking.BankGateway;
 import com.runevault.banking.BankReceipt;
+import com.runevault.banking.FakeBankGateway;
 
 
 @RestController
@@ -24,12 +24,12 @@ import com.runevault.banking.BankReceipt;
 @RequestMapping("/api")
 public class TransactionApi {
  private final byte[] secret;
- private final BankGateway bankGateway;
+ private final FakeBankGateway bankGateway;
  private final TransactionRepository transactions;
  private final TransactionPolicy policy;
  private final AuditEventRepository auditEvents;
  private final Map<String, Challenge> pending = new ConcurrentHashMap<>();
- public TransactionApi(@Value("${runevault.device-secret}") String secret, BankGateway bankGateway, TransactionRepository transactions, TransactionPolicy policy, AuditEventRepository auditEvents) {
+ public TransactionApi(@Value("${runevault.device-secret}") String secret, FakeBankGateway bankGateway, TransactionRepository transactions, TransactionPolicy policy, AuditEventRepository auditEvents) {
   this.secret = secret.getBytes(StandardCharsets.UTF_8);
   this.bankGateway = bankGateway;
   this.transactions = transactions;
@@ -60,7 +60,7 @@ public class TransactionApi {
   String id = UUID.randomUUID().toString();
   long expiry = now + 120;
   String text = String.join("\n", "runevault-v1", id, intent.deviceId(), Long.toString(intent.amountMinor()), "USD", intent.destination(), intent.glyphs(), Long.toString(expiry));
-  Challenge c = new Challenge(id, expiry, intent, text, "simulator");
+  Challenge c = new Challenge(id, expiry, intent, text, "hardware-simulated");
   pending.put(id, c);
   return c;
  }
@@ -79,7 +79,8 @@ public class TransactionApi {
   return Map.of(
     "transactionId", c.challengeId(),
     "status", receipt.status(),
-    "mode", "simulator",
+    "mode", "hardware-simulated",
+    "bankingMode", "local-fake",
     "signatureVerified", true,
     "analysis", Map.of(
       "lore", "The stone records a passage across the sea.",
