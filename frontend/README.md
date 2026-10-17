@@ -9,7 +9,18 @@ npm test -- --watch=false
 npm run build      # dist/poneglyph/browser, served by the compose nginx service
 ```
 
-Sign in with the demo account shown on the login page, or create one. Accounts are mock, stored only in this browser (`src/app/auth/auth.service.ts`); replace with Auth0 PKCE using the same `user` / `signUp` / `signIn` / `signOut` surface.
+## Auth0 login
+
+The dashboard uses the Auth0 Angular SDK with hosted Universal Login and authorization code flow with PKCE. The public domain, client ID, and API audience are in `src/environments/environment.ts`; there are no browser-side passwords or backend secrets. The sign-in and create-account buttons redirect to Auth0, and sign-out clears the Auth0 session.
+
+In Auth0, configure client `VXOx3TrDK15L7XPejXwXYFQEtpRqXYlH` as a **Single Page Application**. For local development and the Compose frontend, set:
+
+- Allowed Callback URLs: `http://localhost:4200`
+- Allowed Logout URLs: `http://localhost:4200/login`
+- Allowed Web Origins: `http://localhost:4200`
+- Allowed Origins (CORS), if used: `http://localhost:4200`
+
+The SDK requests an access token for audience `https://api.runevault`. The API must exist in the same tenant and be authorized for this SPA client. For another deployed frontend origin, add that exact origin to the Auth0 settings above; its logout URL is `<origin>/login`. Route guards wait for SDK initialization before deciding whether to show the dashboard or sign-in screen. Browser authentication alone does not send API requests or replace backend permission checks.
 
 ## Live feed (Person B)
 
