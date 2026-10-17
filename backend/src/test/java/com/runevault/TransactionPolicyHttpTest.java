@@ -47,7 +47,7 @@ class TransactionPolicyHttpTest {
  @Autowired AuditEventRepository auditEvents;
  @Autowired TransactionService transactionService;
  @MockBean JwtDecoder decoder;
- @MockBean com.runevault.lore.GeminiGlyphGenerator glyphGenerator;
+ @MockBean com.runevault.ApprovalCodeGenerator glyphGenerator;
 
  @BeforeEach void prepare() {
   auditEvents.deleteAll();

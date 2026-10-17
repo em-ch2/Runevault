@@ -70,7 +70,6 @@ export function transactionError(error: unknown): string {
     if (error.status === 400) return 'Check the amount, destination, and device.';
     if (error.status === 401) return 'Your session expired. Sign in again.';
     if (error.status === 403) return 'Your account does not have permission for this action.';
-    if (error.status === 502 || error.status === 503) return 'Gemini could not generate approval glyphs. Try again shortly.';
     if (error.status === 0 || error.status >= 500) return 'The backend is unavailable. Try again shortly.';
     return 'The transaction request failed. Please try again.';
   }

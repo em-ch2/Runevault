@@ -153,3 +153,9 @@ app-folder-panel:not(.folder-open) { align-self:start; }
 .vault-content > .mock-bar { margin:0 16px 12px; }
 @media(max-width:1100px) { .vault-shell { grid-template-columns:168px minmax(0,1fr); }.sidebar nav { padding:18px 10px; }.sidebar nav a { font-size:.8rem; gap:10px; padding:12px 10px; } }
 @media(max-width:700px) { .vault-shell { display:block; }.compass-logo { height:auto; }.sidebar nav { padding:0; gap:3px; }.sidebar nav a { padding:9px 7px; font-size:.67rem; }.nav-indicator { border-left-width:1px; }.vault-content > .guided-flow,.flow-navigation { margin:0 10px; } }
+/* Larger wordmark; the sidebar stays viewport-height so the seal and motto sit in the same spot on every view. */
+.wordmark { font-size:2rem; letter-spacing:.12em; }
+.brand-caption { font-size:.7rem; }
+.sidebar { position:sticky; top:0; height:100vh; height:100dvh; align-self:start; overflow-y:auto; scrollbar-width:none; }
+@media(max-width:1100px) { .wordmark { font-size:1.7rem; } }
+@media(max-width:700px) { .sidebar { position:static; height:auto; overflow:visible; }.wordmark { font-size:1.4rem; } }

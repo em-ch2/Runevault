@@ -112,7 +112,7 @@ describe('Dashboard live transactions', () => {
     fixture.destroy();
   });
 
-  it('creates a pending request without client-supplied glyphs and displays Gemini glyphs', () => {
+  it('creates a pending request without client-supplied glyphs and displays the server-generated glyphs', () => {
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
     const dashboard = fixture.componentInstance;
@@ -147,22 +147,21 @@ describe('Dashboard live transactions', () => {
     fixture.destroy();
   });
 
-  it('shows the six-field Gemini assessment for a transfer', () => {
+  it('shows the lore and a plain review result without operator scores', () => {
     api.list.mockReturnValue(of({ content: [{ ...pending, status: 'EXECUTED', verifiedAt: new Date().toISOString(),
-      lore: 'The forge is lit to begin the great exchange.', translationConfidence: 0.92, riskScore: 72,
+      geminiDecisionReason: 'GEMINI_APPROVED',
+      lore: 'The forge is lit to begin the great exchange.', translationConfidence: 0.92, riskScore: 12,
       riskFlags: ['new destination', 'large amount'], securityMessage: 'This amount is far above earlier transfers.' }] }));
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('The forge is lit to begin the great exchange.');
-    expect(text).toContain('72 / 100');
-    expect(text).toContain('Outside policy');
-    expect(text).toContain('Translation confidence');
-    expect(text).toContain('92%');
-    expect(text).toContain('This amount is far above earlier transfers.');
-    expect(text).toContain('new destination · large amount');
-    expect(fixture.nativeElement.querySelector('.gauge-fill-bad')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('[role="meter"]')?.getAttribute('aria-valuetext')).toBe('72 / 100, Outside policy');
+    expect(text).toContain('Passed our security review');
+    // Scores, confidence and flags are operator detail; they stay in the History trace.
+    expect(text).not.toContain('12 / 100');
+    expect(text).not.toContain('Translation confidence');
+    expect(text).not.toContain('large amount');
+    expect(text).not.toContain('This amount is far above earlier transfers.');
     fixture.destroy();
   });
 
@@ -222,7 +221,8 @@ describe('Dashboard live transactions', () => {
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Gemini policy blocked transfer');
-    expect(fixture.nativeElement.textContent).toContain('Blocked: translation confidence too low');
+    expect(fixture.nativeElement.textContent).toContain('We could not confirm your approval seal');
+    expect(fixture.nativeElement.textContent).toContain('no money moved');
     vi.advanceTimersByTime(3000);
     expect(api.list).toHaveBeenCalledTimes(1);
     fixture.destroy();
@@ -251,10 +251,10 @@ describe('Dashboard live transactions', () => {
       securityMessage: 'Unusually large for this destination.' }));
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent;
-    expect(text).toContain('Blocked: risk above limit');
-    expect(text).toContain('Risk score 72 is above the limit of 30, so banking was blocked.');
-    expect(text).toContain('Gemini: Unusually large for this destination.');
-    expect(text).toContain('72 / 100');
+    expect(text).toContain('Stopped by our security review');
+    expect(text).toContain('no money moved');
+    expect(text).not.toContain('Risk score 72 is above the limit of 30');
+    expect(text).not.toContain('72 / 100');
     vi.advanceTimersByTime(9000);
     expect(api.list).toHaveBeenCalledTimes(1);
     fixture.destroy();
@@ -277,14 +277,14 @@ describe('Dashboard live transactions', () => {
     fixture.destroy();
   });
 
-  it('shows the balance as unavailable when the bank did not confirm it', () => {
+  it('does not report a new balance when the bank outcome is unknown', () => {
     api.list.mockReturnValue(of({ content: [{ ...pending, status: 'OUTCOME_UNKNOWN', verifiedAt: new Date().toISOString(),
       bankProvider: 'nessie', bankStatus: 'NETWORK_UNCERTAIN', bankOutcome: 'UNKNOWN', newBalanceMinor: null }] }));
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('Outcome unknown, check Nessie before any retry');
-    expect(text).toContain('Unavailable');
+    expect(text).toContain('Unknown until the bank outcome is confirmed');
     fixture.destroy();
   });
 

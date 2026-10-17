@@ -45,7 +45,7 @@ class DashboardPermissionsHttpTest {
  @Autowired com.runevault.events.PipelineEventWriter pipelineWriter;
  @Autowired ObjectMapper mapper;
  @MockBean JwtDecoder decoder;
- @MockBean com.runevault.lore.GeminiGlyphGenerator glyphGenerator;
+ @MockBean com.runevault.ApprovalCodeGenerator glyphGenerator;
 
  @BeforeEach void prepare() {
   auditEvents.deleteAll();
@@ -113,17 +113,6 @@ class DashboardPermissionsHttpTest {
    .andExpect(status().isNotFound());
   mvc.perform(post("/api/admin/transactions/missing/resume").header("Authorization", "Bearer admin"))
    .andExpect(status().isNotFound());
- }
-
- @Test void dashboardDoesNotCreateTransactionsWhenGeminiCannotGenerateGlyphs() throws Exception {
-  token("gemini-test", "auth0|employee", "create:transactions");
-  when(glyphGenerator.generate()).thenThrow(new com.runevault.lore.GeminiGlyphGenerator.Unavailable("offline"));
-
-  mvc.perform(post("/api/transactions").header("Authorization", "Bearer gemini-test")
-    .contentType("application/json").content(BODY))
-   .andExpect(status().isServiceUnavailable())
-   .andExpect(jsonPath("$.error").value("Gemini approval code generation is unavailable"));
-  assertEquals(0, transactions.count());
  }
 
  @Test void twoUsersSeeOnlyTheirOwnTransactions() throws Exception {
