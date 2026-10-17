@@ -14,24 +14,16 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.runevault.banking.BankGateway;
-import com.runevault.banking.BankReceipt;
-import com.runevault.transactions.TransactionService;
-import com.runevault.transactions.VerifiedTransaction;
-import com.runevault.ai.AiAuditor;
-import com.runevault.ai.AuditResult;
 
 
 @RestController
 @RequestMapping("/api")
 public class TransactionApi {
  private final byte[] secret;
- private final BankGateway bankGateway;
  private final TransactionRepository transactions;
- private final TransactionService transactionService;
- private final AiAuditor aiAuditor;
+ private final TransactionProcessor processor;
  private final Map<String, Challenge> pending = new ConcurrentHashMap<>();
- public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode, BankGateway bankGateway, TransactionRepository transactions, TransactionService transactionService, AiAuditor aiAuditor) {
+ public TransactionApi(@Value("${runevault.device-secret}") String secret, @Value("${runevault.mode}") String mode, TransactionRepository transactions, TransactionProcessor processor) {
   if (!"local".equals(mode)) {
     throw new IllegalStateException(
       "Production security is not implemented."
@@ -39,10 +31,8 @@ public class TransactionApi {
   }
 
   this.secret = secret.getBytes(StandardCharsets.UTF_8);
-  this.bankGateway = bankGateway;
   this.transactions = transactions;
-  this.transactionService = transactionService;
-  this.aiAuditor = aiAuditor;
+  this.processor = processor;
  }
 
  public record Intent(@NotNull @Pattern(regexp="pico-demo-1") String deviceId,
@@ -54,12 +44,17 @@ public class TransactionApi {
  @GetMapping("/health") public Map<String,String> health() { return Map.of("status","ok","mode","simulation"); }
  @PostMapping("/challenges") public synchronized Challenge challenge(@Valid @RequestBody Intent intent) {
   long now = Instant.now().getEpochSecond();
-  pending.entrySet().removeIf(e -> e.getValue().expiresAt() <= now);
+  pending.entrySet().removeIf(e -> {
+   if (e.getValue().expiresAt() > now) return false;
+   processor.expire(e.getKey());
+   return true;
+  });
   if (pending.size() >= 1000) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
   String id = UUID.randomUUID().toString();
   long expiry = now + 120;
   String text = String.join("\n", "runevault-v1", id, intent.deviceId(), Long.toString(intent.amountMinor()), "USD", intent.destination(), intent.glyphs(), Long.toString(expiry));
   Challenge c = new Challenge(id, expiry, intent, text);
+  transactions.saveAndFlush(Transaction.pending(id, intent.amountMinor(), intent.destination(), intent.deviceId(), intent.glyphs()));
   pending.put(id, c);
   return c;
  }
@@ -70,6 +65,7 @@ public synchronized Map<String, Object> approve(
 ) throws Exception {
     Challenge c = pending.get(approval.challengeId());
 
+    if (c != null && c.expiresAt() <= Instant.now().getEpochSecond()) processor.expire(c.challengeId());
     if (c == null || c.expiresAt() <= Instant.now().getEpochSecond()) {
         throw new ResponseStatusException(
             HttpStatus.CONFLICT,
@@ -94,47 +90,14 @@ public synchronized Map<String, Object> approve(
         );
     }
 
-    // Preserve the existing database save before consuming the challenge.
-    transactions.saveAndFlush(
-        new Transaction(
-            c.challengeId(),
-            c.intent().amountMinor(),
-            c.intent().destination()
-        )
-    );
-
-    if (!pending.remove(c.challengeId(), c)) {
-        throw new ResponseStatusException(
-            HttpStatus.CONFLICT,
-            "Already consumed"
-        );
+    // Commit VERIFIED before consuming the in-memory challenge; failed saves remain retryable.
+    if (!processor.verifyLegacy(c.challengeId(), c.intent())) {
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "Already consumed or expired");
     }
-
-    VerifiedTransaction verified =
-        transactionService.createVerifiedTransaction(
-            c.challengeId(),
-            c.intent().deviceId(),
-            c.intent().amountMinor(),
-            c.intent().destination(),
-            c.intent().glyphs()
-        );
-
-    AuditResult analysis = aiAuditor.audit(verified);
-
-    BankReceipt receipt = bankGateway.transfer(
-        verified.id(),
-        verified.amountMinor(),
-        verified.currency(),
-        verified.destination()
-    );
-
-    return Map.of(
-        "transactionId", verified.id(),
-        "status", receipt.status(),
-        "signatureVerified", true,
-        "analysis", analysis,
-        "receipt", receipt
-    );
+    if (!pending.remove(c.challengeId(), c)) {
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "Already consumed");
+    }
+    return processor.process(c.challengeId());
 }
 
 }

@@ -20,14 +20,18 @@ public class DeviceAuthorizationService {
  private final DeviceStateRepository devices;
  private final String deviceId;
  private final byte[] key;
+ private final TransactionProcessor processor;
+ private final org.springframework.transaction.support.TransactionTemplate verification;
 
  public DeviceAuthorizationService(TransactionRepository transactions, DeviceStateRepository devices,
    @Value("${runevault.pico-device-id}") String deviceId,
-   @Value("${runevault.pico-key}") String key) {
+   @Value("${runevault.pico-key}") String key, TransactionProcessor processor, org.springframework.transaction.PlatformTransactionManager manager) {
   this.transactions = transactions;
   this.devices = devices;
   this.deviceId = deviceId;
   this.key = key.getBytes(StandardCharsets.UTF_8);
+  this.processor = processor;
+  this.verification = new org.springframework.transaction.support.TransactionTemplate(manager);
  }
 
  private ResponseEntity<Map<String, Object>> error(int code, String reason) {
@@ -51,7 +55,6 @@ public class DeviceAuthorizationService {
    + request.amount() + "|" + request.dest() + "|" + request.glyphs();
  }
 
- @Transactional
  public ResponseEntity<Map<String, Object>> authorize(DeviceApi.Authorization request) {
   if (key.length == 0) return error(503, "Device key is not configured");
   if (!deviceId.equals(request.device())) return error(401, "Unknown device");
@@ -63,6 +66,12 @@ public class DeviceAuthorizationService {
   } catch (GeneralSecurityException e) {
    throw new IllegalStateException("HMAC verification unavailable", e);
   }
+  var result = verification.execute(ignored -> verifyLocked(request));
+  if (!result.getStatusCode().is2xxSuccessful()) return result;
+  return ResponseEntity.ok(processor.process(request.txId()));
+ }
+
+ private ResponseEntity<Map<String, Object>> verifyLocked(DeviceApi.Authorization request) {
   // Lock device first, then transaction: concurrent requests cannot reuse a counter.
   var device = devices.findForUpdate(request.device()).orElse(null);
   if (device == null) return error(409, "No pending device transaction");
@@ -71,7 +80,11 @@ public class DeviceAuthorizationService {
   // Consume every authenticated fresh counter, including rejected transaction/glyph attempts.
   device.consumeCounter(request.counter());
   var transaction = transactions.findForUpdate(request.txId()).orElse(null);
-  if (transaction == null || transaction.getStatus() != Transaction.Status.PENDING
+  if (transaction != null && transaction.getStatus() == com.runevault.transactions.TransactionStatus.PENDING
+    && transaction.getExpiresAt() != null && !transaction.getExpiresAt().isAfter(Instant.now())) {
+   transaction.transition(com.runevault.transactions.TransactionStatus.EXPIRED);
+  }
+  if (transaction == null || transaction.getStatus() != com.runevault.transactions.TransactionStatus.PENDING
     || !request.device().equals(transaction.getDeviceId())
     || transaction.getExpiresAt() == null || !transaction.getExpiresAt().isAfter(Instant.now())
     || request.amount() != transaction.getAmountMinor() || !request.dest().equals(transaction.getDestination())) {
@@ -82,7 +95,8 @@ public class DeviceAuthorizationService {
    return error(device.isLocked() ? 423 : 403, device.isLocked() ? "Device locked" : "Incorrect glyphs");
   }
   device.resetAttempts();
-  transaction.authorizeSimulation();
-  return ResponseEntity.ok(Map.of("transactionId", transaction.getTransactionId(), "status", "SIMULATED", "signatureVerified", true));
+  transaction.verify();
+  transactions.saveAndFlush(transaction);
+  return ResponseEntity.ok(Map.of("transactionId", transaction.getTransactionId(), "status", "VERIFIED", "signatureVerified", true));
  }
 }

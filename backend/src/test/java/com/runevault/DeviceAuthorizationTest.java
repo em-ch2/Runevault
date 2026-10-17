@@ -31,8 +31,12 @@ class DeviceAuthorizationTest {
  private static final String KEY = randomKey();
  @Autowired MockMvc mvc;
  @Autowired ObjectMapper mapper;
- @Autowired TransactionRepository transactions;
+ @org.springframework.test.context.bean.override.mockito.MockitoSpyBean TransactionRepository transactions;
  @Autowired DeviceStateRepository devices;
+ @Autowired DeviceAuthorizationService authorization;
+ @Autowired org.springframework.transaction.PlatformTransactionManager manager;
+ @org.springframework.test.context.bean.override.mockito.MockitoSpyBean com.runevault.banking.FakeBankGateway bank;
+ @org.springframework.test.context.bean.override.mockito.MockitoSpyBean com.runevault.ai.FakeAiAuditor auditor;
 
  private static String randomKey() {
   byte[] bytes = new byte[32];
@@ -94,8 +98,11 @@ class DeviceAuthorizationTest {
   authorize(signed(id, 2, 50000, "acct-999", GLYPHS))
    .andExpect(status().isOk()).andExpect(jsonPath("transactionId").value(id))
    .andExpect(jsonPath("status").value("SIMULATED"));
-  assertEquals(Transaction.Status.SIMULATED, transactions.findById(id).orElseThrow().getStatus());
+  assertEquals(com.runevault.transactions.TransactionStatus.SIMULATED, transactions.findById(id).orElseThrow().getStatus());
   assertEquals(2, devices.findById("slab-01").orElseThrow().getLastCounter());
+  org.mockito.Mockito.verify(bank).transfer(id,50000,"USD","acct-999");
+  org.mockito.Mockito.verify(auditor).audit(org.mockito.ArgumentMatchers.argThat(t -> t.id().equals(id) && t.glyphs().equals(GLYPHS)));
+  assertNotNull(transactions.findById(id).orElseThrow().getReceiptJson());
  }
 
  @Test void invalidSignatureDoesNotChangeDeviceOrTransaction() throws Exception {
@@ -105,7 +112,8 @@ class DeviceAuthorizationTest {
   var device = devices.findById("slab-01").orElseThrow();
   assertEquals(-1, device.getLastCounter());
   assertEquals(0, device.getFailedAttempts());
-  assertEquals(Transaction.Status.PENDING, transactions.findById(id).orElseThrow().getStatus());
+  assertEquals(com.runevault.transactions.TransactionStatus.PENDING, transactions.findById(id).orElseThrow().getStatus());
+  org.mockito.Mockito.verifyNoInteractions(bank, auditor);
   authorize(signed(id, 2, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
  }
 
@@ -116,6 +124,7 @@ class DeviceAuthorizationTest {
   String next = pending();
   authorize(signed(next, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isConflict());
   authorize(signed(id, 3, 50000, "acct-999", GLYPHS)).andExpect(status().isConflict());
+  org.mockito.Mockito.verify(bank,org.mockito.Mockito.times(1)).transfer(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString());
   authorize(signed(next, 4, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
  }
 
@@ -127,10 +136,11 @@ class DeviceAuthorizationTest {
     .andExpect(status().is(counter == 5 ? 423 : 403));
   }
   var device = devices.findById("slab-01").orElseThrow();
+  org.mockito.Mockito.verifyNoInteractions(bank, auditor);
   assertTrue(device.isLocked());
   assertEquals(5, device.getLastCounter());
   authorize(signed(other, 6, 50000, "acct-999", GLYPHS)).andExpect(status().is(423));
-  assertEquals(Transaction.Status.PENDING, transactions.findById(id).orElseThrow().getStatus());
+  assertEquals(com.runevault.transactions.TransactionStatus.PENDING, transactions.findById(id).orElseThrow().getStatus());
  }
 
  @Test void wrongGlyphReplayDoesNotCountTwiceAndSuccessResetsAttempts() throws Exception {
@@ -147,7 +157,8 @@ class DeviceAuthorizationTest {
   authorize(signed(id, 1, 50001, "acct-999", GLYPHS)).andExpect(status().isConflict());
   authorize(signed(id, 2, 50000, "other", GLYPHS)).andExpect(status().isConflict());
   authorize(signed("missing", 3, 50000, "acct-999", GLYPHS)).andExpect(status().isConflict());
-  assertEquals(Transaction.Status.PENDING, transactions.findById(id).orElseThrow().getStatus());
+  org.mockito.Mockito.verifyNoInteractions(bank, auditor);
+  assertEquals(com.runevault.transactions.TransactionStatus.PENDING, transactions.findById(id).orElseThrow().getStatus());
  }
 
  @Test void bridgeTokenRequiredOnBothEndpoints() throws Exception {
@@ -168,5 +179,58 @@ class DeviceAuthorizationTest {
    .andExpect(status().isBadRequest());
   authorize(signed(id, 1, 50000, "acct-999", "0-3"))
    .andExpect(status().isBadRequest());
+ }
+
+ @Test void expiredRequestConsumesCounterButCannotReachAuditOrBank() throws Exception {
+  String id = pending();
+  new org.springframework.transaction.support.TransactionTemplate(manager).executeWithoutResult(ignored -> {
+   var t = transactions.findForUpdate(id).orElseThrow();
+   org.springframework.test.util.ReflectionTestUtils.setField(t, "expiresAt", java.time.Instant.now().minusSeconds(1));
+  });
+  authorize(signed(id,1,50000,"acct-999",GLYPHS)).andExpect(status().isConflict());
+  assertEquals(com.runevault.transactions.TransactionStatus.EXPIRED,transactions.findById(id).orElseThrow().getStatus());
+  assertEquals(1,devices.findById("slab-01").orElseThrow().getLastCounter());
+  org.mockito.Mockito.verifyNoInteractions(bank,auditor);
+ }
+
+ @Test void physicalAuthorizationRequiringReviewNeverCallsBank() throws Exception {
+  org.mockito.Mockito.doReturn(com.runevault.ai.AuditResult.unavailable()).when(auditor).audit(org.mockito.ArgumentMatchers.any());
+  String id = pending();
+  authorize(signed(id,1,50000,"acct-999",GLYPHS)).andExpect(status().isOk())
+   .andExpect(jsonPath("status").value("APPROVAL_PENDING"));
+  assertEquals(com.runevault.transactions.TransactionStatus.APPROVAL_PENDING,transactions.findById(id).orElseThrow().getStatus());
+  assertEquals(1,devices.findById("slab-01").orElseThrow().getLastCounter());
+  org.mockito.Mockito.verifyNoInteractions(bank);
+ }
+
+ @Test void concurrentPhysicalApprovalsConsumeTransactionOnce() throws Exception {
+  String id=pending();
+  var request=signed(id,1,50000,"acct-999",GLYPHS);
+  try(var pool=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+   var first=pool.submit(()->authorization.authorize(request));
+   var second=pool.submit(()->authorization.authorize(request));
+   var codes=java.util.List.of(first.get(10,java.util.concurrent.TimeUnit.SECONDS).getStatusCode().value(),second.get(10,java.util.concurrent.TimeUnit.SECONDS).getStatusCode().value());
+   assertTrue(codes.contains(200)); assertTrue(codes.contains(409));
+  }
+  org.mockito.Mockito.verify(bank,org.mockito.Mockito.times(1)).transfer(id,50000,"USD","acct-999");
+ }
+
+ @Test void failedVerifiedSaveRollsBackCounterAndTransactionTogether() throws Exception {
+  String id=pending();
+  var request=signed(id,1,50000,"acct-999",GLYPHS);
+  org.mockito.Mockito.doThrow(new org.springframework.dao.DataAccessResourceFailureException("Unavailable"))
+   .when(transactions).saveAndFlush(org.mockito.ArgumentMatchers.any(Transaction.class));
+  assertThrows(org.springframework.dao.DataAccessResourceFailureException.class,()->authorization.authorize(request));
+  assertEquals(-1,devices.findById("slab-01").orElseThrow().getLastCounter());
+  assertEquals(com.runevault.transactions.TransactionStatus.PENDING,transactions.findById(id).orElseThrow().getStatus());
+  org.mockito.Mockito.verifyNoInteractions(bank,auditor);
+ }
+
+ @Test void wrongDeviceCannotReachAuditOrBank() throws Exception {
+  String id=pending();
+  String text="v1|other-device|1|"+id+"|50000|acct-999|"+GLYPHS;
+  authorize(new DeviceApi.Authorization(1,"other-device",1L,id,50000L,"acct-999",GLYPHS,signature(KEY,text)))
+   .andExpect(status().isUnauthorized());
+  org.mockito.Mockito.verifyNoInteractions(bank,auditor);
  }
 }

@@ -1,232 +1,66 @@
 package com.runevault;
 
-import com.runevault.ai.FakeAiAuditor;
-import com.runevault.banking.BankReceipt;
-import com.runevault.banking.FakeBankGateway;
-import com.runevault.glyphs.GlyphDictionary;
-import com.runevault.transactions.TransactionService;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.web.server.ResponseStatusException;
-
+import org.springframework.dao.DataAccessResourceFailureException;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
-import java.util.concurrent.atomic.AtomicInteger;
-
+import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class TransactionApiTest {
-
-    private final TransactionRepository repository =
-        mock(TransactionRepository.class);
-
-    private final TransactionService transactionService =
-        spy(new TransactionService());
-
-    private final AtomicInteger transfers = new AtomicInteger();
-    private final FakeBankGateway bank = new FakeBankGateway();
-
-    private final TransactionApi api = new TransactionApi(
-        "test-key",
-        "local",
-        (id, amount, currency, destination) -> {
-            transfers.incrementAndGet();
-            return bank.transfer(id, amount, currency, destination);
-        },
-        repository,
-        transactionService,
-        new FakeAiAuditor(new GlyphDictionary())
-    );
-
+    private final TransactionRepository repository = mock(TransactionRepository.class);
+    private final TransactionProcessor processor = mock(TransactionProcessor.class);
+    private final TransactionApi api = new TransactionApi("test-key", "local", repository, processor);
     private TransactionApi.Challenge challenge() {
-        return api.challenge(
-            new TransactionApi.Intent(
-                "pico-demo-1",
-                2500,
-                "harbor",
-                "ABCD"
-            )
-        );
+        return api.challenge(new TransactionApi.Intent("pico-demo-1",2500,"harbor","ABCD"));
     }
-
     private String sign(String text) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
-        mac.init(
-            new SecretKeySpec(
-                "test-key".getBytes(StandardCharsets.UTF_8),
-                "HmacSHA256"
-            )
-        );
-
-        return HexFormat.of().formatHex(
-            mac.doFinal(text.getBytes(StandardCharsets.UTF_8))
-        );
+        mac.init(new SecretKeySpec("test-key".getBytes(StandardCharsets.UTF_8),"HmacSHA256"));
+        return HexFormat.of().formatHex(mac.doFinal(text.getBytes(StandardCharsets.UTF_8)));
     }
-
-    @Test
-    void acceptsOnceAndRejectsReplay() throws Exception {
+    @Test void acceptsOnceAndRejectsReplay() throws Exception {
         var c = challenge();
-        var approval = new TransactionApi.Approval(
-            c.challengeId(),
-            sign(c.signingText())
-        );
-
-        var result = api.approve(approval);
-
-        assertEquals(true, result.get("signatureVerified"));
-        assertEquals("SIMULATED", result.get("status"));
-        assertEquals(
-            new BankReceipt(
-                "fake-" + c.challengeId(),
-                c.challengeId(),
-                "fake",
-                "SIMULATED",
-                2500,
-                "USD",
-                "harbor"
-            ),
-            result.get("receipt")
-        );
-        assertEquals(1, transfers.get());
-
-        var error = assertThrows(
-            ResponseStatusException.class,
-            () -> api.approve(approval)
-        );
-
-        assertEquals(409, error.getStatusCode().value());
-        assertEquals(1, transfers.get());
-
-        var saved = ArgumentCaptor.forClass(Transaction.class);
-        verify(repository, times(1)).saveAndFlush(saved.capture());
-
-        assertEquals(
-            c.challengeId(),
-            saved.getValue().getTransactionId()
-        );
-        assertEquals(2500, saved.getValue().getAmountMinor());
-        assertEquals("harbor", saved.getValue().getDestination());
-        assertEquals(
-            Transaction.Status.SIMULATED,
-            saved.getValue().getStatus()
-        );
-
-        var order = inOrder(repository, transactionService);
-        order.verify(repository).saveAndFlush(any(Transaction.class));
-        order.verify(transactionService).createVerifiedTransaction(
-            c.challengeId(),
-            "pico-demo-1",
-            2500,
-            "harbor",
-            "ABCD"
-        );
-
-        verifyNoMoreInteractions(transactionService);
+        var saved = org.mockito.ArgumentCaptor.forClass(Transaction.class);
+        verify(repository).saveAndFlush(saved.capture());
+        assertEquals(com.runevault.transactions.TransactionStatus.PENDING, saved.getValue().getStatus());
+        when(processor.verifyLegacy(c.challengeId(), c.intent())).thenReturn(true);
+        when(processor.process(c.challengeId())).thenReturn(Map.of("status", "SIMULATED"));
+        var approval = new TransactionApi.Approval(c.challengeId(), sign(c.signingText()));
+        assertEquals("SIMULATED", api.approve(approval).get("status"));
+        assertEquals(409, assertThrows(ResponseStatusException.class, () -> api.approve(approval)).getStatusCode().value());
+        var order = inOrder(processor);
+        order.verify(processor).verifyLegacy(c.challengeId(), c.intent());
+        order.verify(processor).process(c.challengeId());
+        verifyNoMoreInteractions(processor);
     }
-
-    @Test
-    void tamperedAmountFailsWithoutConsumingChallenge() throws Exception {
+    @Test void invalidSignatureCannotReachProcessor() throws Exception {
         var c = challenge();
-        var bad = new TransactionApi.Approval(
-            c.challengeId(),
-            sign(c.signingText().replace("2500", "2501"))
-        );
-
-        var error = assertThrows(
-            ResponseStatusException.class,
-            () -> api.approve(bad)
-        );
-
-        assertEquals(401, error.getStatusCode().value());
-        assertEquals(0, transfers.get());
-        verifyNoInteractions(repository, transactionService);
-
-        var validApproval = new TransactionApi.Approval(
-            c.challengeId(),
-            sign(c.signingText())
-        );
-
-        assertEquals(
-            true,
-            api.approve(validApproval).get("signatureVerified")
-        );
-        assertEquals(1, transfers.get());
+        var bad = new TransactionApi.Approval(c.challengeId(), sign(c.signingText().replace("2500", "2501")));
+        assertEquals(401, assertThrows(ResponseStatusException.class, () -> api.approve(bad)).getStatusCode().value());
+        verifyNoInteractions(processor);
+        when(processor.verifyLegacy(c.challengeId(), c.intent())).thenReturn(true);
+        api.approve(new TransactionApi.Approval(c.challengeId(), sign(c.signingText())));
+        verify(processor).process(c.challengeId());
     }
-
-    @Test
-    void signingTextMatchesProtocol() {
+    @Test void failedVerificationSaveCanRetry() throws Exception {
         var c = challenge();
-
-        assertEquals(
-            String.join(
-                "\n",
-                "runevault-v1",
-                c.challengeId(),
-                "pico-demo-1",
-                "2500",
-                "USD",
-                "harbor",
-                "ABCD",
-                Long.toString(c.expiresAt())
-            ),
-            c.signingText()
-        );
+        var approval = new TransactionApi.Approval(c.challengeId(), sign(c.signingText()));
+        when(processor.verifyLegacy(c.challengeId(), c.intent())).thenThrow(new DataAccessResourceFailureException("Unavailable")).thenReturn(true);
+        assertThrows(DataAccessResourceFailureException.class, () -> api.approve(approval));
+        verify(processor, never()).process(anyString());
+        api.approve(approval);
+        verify(processor).process(c.challengeId());
     }
-
-    @Test
-    void productionModeRefused() {
-        assertThrows(
-            IllegalStateException.class,
-            () -> new TransactionApi(
-                "key",
-                "production",
-                new FakeBankGateway(),
-                repository,
-                transactionService,
-                new FakeAiAuditor(new GlyphDictionary())
-            )
-        );
-    }
-
-    @Test
-    void failedSaveLeavesChallengeAvailableForRetry() throws Exception {
+    @Test void signingProtocolUnchanged() {
         var c = challenge();
-        var approval = new TransactionApi.Approval(
-            c.challengeId(),
-            sign(c.signingText())
-        );
-
-        when(repository.saveAndFlush(any(Transaction.class)))
-            .thenThrow(
-                new DataAccessResourceFailureException("Unavailable")
-            )
-            .thenAnswer(invocation -> invocation.getArgument(0));
-
-        assertThrows(
-            DataAccessResourceFailureException.class,
-            () -> api.approve(approval)
-        );
-
-        verifyNoInteractions(transactionService);
-        assertEquals(0, transfers.get());
-
-        assertEquals(
-            "SIMULATED",
-            api.approve(approval).get("status")
-        );
-        assertEquals(1, transfers.get());
-
-        var replay = assertThrows(
-            ResponseStatusException.class,
-            () -> api.approve(approval)
-        );
-
-        assertEquals(409, replay.getStatusCode().value());
-        assertEquals(1, transfers.get());
-        verify(repository, times(2)).saveAndFlush(any(Transaction.class));
+        assertEquals(String.join("\n", "runevault-v1", c.challengeId(), "pico-demo-1", "2500", "USD", "harbor", "ABCD", Long.toString(c.expiresAt())), c.signingText());
+    }
+    @Test void productionModeRefused() {
+        assertThrows(IllegalStateException.class, () -> new TransactionApi("key", "production", repository, processor));
     }
 }

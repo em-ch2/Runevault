@@ -36,7 +36,7 @@ class GeminiAiAuditorTest {
     @Test void selectsTheRightAuditor() {
     var base = new ApplicationContextRunner()
         .withUserConfiguration(FakeAiAuditor.class, GeminiAiAuditor.class,
-            AuditResultParser.class, GlyphDictionary.class)
+            AuditResultParser.class, GlyphDictionary.class, com.runevault.transactions.ReviewPolicy.class)
         .withBean(GeminiClient.class, () -> client)
         .withPropertyValues("runevault.mode=local");
 

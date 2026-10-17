@@ -64,4 +64,9 @@ class AuditResultParserTest {
         assertTrue(parser.parse(json("MEDIUM", "0.0")).requiresHumanReview());
         assertTrue(parser.parse(json("HIGH", "0.0")).requiresHumanReview());
     }
+    @Test void reviewThresholdIsConfigurable() {
+        var configured = new AuditResultParser(new com.runevault.transactions.ReviewPolicy(0.8, 1000));
+        assertFalse(configured.parse(json("LOW", "0.7")).requiresHumanReview());
+        assertTrue(configured.parse(json("LOW", "0.8")).requiresHumanReview());
+    }
 }

@@ -8,7 +8,7 @@ Compose binds the backend to localhost; a remote bridge needs a separately confi
 
 Configure `RUNEVAULT_PICO_DEVICE_ID=slab-01` and `RUNEVAULT_PICO_KEY` with the UTF-8 key provisioned on the device. There is no default key; Pico endpoints return 503 when it is absent. The existing demo signing key is separate and is not used for Pico authorization. This minimal implementation supports one configured device/key, with durable device state in PostgreSQL.
 
-On startup, Hibernate adds the new nullable transaction fields and device table. The PostgreSQL initialization script widens the existing status CHECK constraint to allow `PENDING` without deleting receipts. This retains the demo schema-update approach; production migrations remain outside this hackathon change.
+On startup, Hibernate adds the new nullable transaction fields and device table. The PostgreSQL initialization script widens the existing status CHECK constraint to allow all lifecycle states without deleting receipts. This retains the demo schema-update approach; production migrations remain outside this hackathon change.
 
 Before authorization, the trusted backend client creates a pending transaction using `POST /api/device/transactions`, with the same bridge header:
 
@@ -32,7 +32,7 @@ v1|<device>|<counter>|<tx_id>|<amount>|<dest>|<glyphs>
 
 That sample is a signing test vector; `abc123` must actually exist as a matching pending transaction to authorize it. The supplied firmware development key was verified against this vector. To run the optional golden-vector JUnit test, supply that key through `PICO_TEST_VECTOR_KEY`; normal tests generate an ephemeral key and need no secrets.
 
-Successful authorization returns HTTP 200 with `transactionId`, `status: SIMULATED`, and `signatureVerified: true`. It updates the existing transaction; no money moves. A database transaction and row locks serialize device counters and transaction consumption.
+Successful authorization atomically consumes the hardware counter and changes the matching transaction to `VERIFIED`. After that database transaction commits, the shared processor audits and applies backend review rules. HTTP 200 returns `transactionId`, `signatureVerified: true`, and the actual processing status: `SIMULATED` only after a fake bank receipt, `APPROVAL_PENDING` for review, `REJECTED` for HIGH risk, or a failure/unknown state. AI and bank requests run outside database locks. No money moves.
 
 - 400: malformed/unsupported fields.
 - 401: missing/wrong bridge token, unknown configured device, or invalid signature.
@@ -69,6 +69,6 @@ USB proposal: one JSON object per LF-terminated line, maximum 4096 bytes. Host s
 
 No trusted device display means the user cannot independently verify amount/destination. USB-connected means offline signing token, not fully air-gapped. Real bridge holds no signing key. simulator.mjs is test-only and deliberately uses a public demo key.
 
-Proposed Gemini schema: {"lore":"string","riskLevel":"LOW|MEDIUM|HIGH","reasons":["string"]}. Validate output; backend rules control authorization. The unrelated empathy schema from the original brief is not applicable.
+Gemini output uses `lore_translation`, `risk_level`, `risk_score`, `risk_flags`, `risk_explanation`, and `security_message`. The backend validates the schema and assigns `source` and `requires_human_review`. Backend policy controls banking; model text never verifies signatures or authorizes execution. See [transaction-processing.md](transaction-processing.md).
 
 Bridge requests now require X-Bridge-Token. Local default: local-bridge-only-change-before-deploy. Override via RUNEVAULT_BRIDGE_TOKEN; never share the device HMAC key with the real bridge.

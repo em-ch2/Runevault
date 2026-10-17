@@ -11,7 +11,10 @@ import java.util.Set;
 
 @Component
 public class AuditResultParser {
-    static final double REVIEW_SCORE_THRESHOLD = 0.5;
+    private final com.runevault.transactions.ReviewPolicy policy;
+    public AuditResultParser() { this(new com.runevault.transactions.ReviewPolicy(0.5, 100000)); }
+    @org.springframework.beans.factory.annotation.Autowired
+    public AuditResultParser(com.runevault.transactions.ReviewPolicy policy) { this.policy = policy; }
     private static final int MAX_FLAGS = 6;
     private static final Set<String> FIELDS = Set.of(
         "lore_translation", "risk_level", "risk_score",
@@ -42,7 +45,7 @@ public class AuditResultParser {
             String explanation = requiredText(root.path("risk_explanation"));
             String message = requiredText(root.path("security_message"));
             // Deterministic backend rule: the model cannot clear its own review flag.
-            boolean review = risk != AuditResult.RiskLevel.LOW || score >= REVIEW_SCORE_THRESHOLD;
+            boolean review = policy.requiresReview(new AuditResult(lore, risk, score, parsedFlags, explanation, message, false, "gemini"));
             return new AuditResult(lore, risk, score, parsedFlags, explanation, message, review, "gemini");
         } catch (JsonProcessingException | IllegalArgumentException e) {
             // Do not expose model output or transaction data in errors.
