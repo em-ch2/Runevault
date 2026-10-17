@@ -49,17 +49,18 @@ class CloudDeploymentGuardTest {
  }
 
  @Test void rejectsUnsafeDatabaseTransport() {
-  MockEnvironment env = valid().setProperty("SPRING_DATASOURCE_URL",
+  MockEnvironment env = valid();
+  env.setProperty("SPRING_DATASOURCE_URL",
    "jdbc:postgresql://db.tigerdata.com:5432/runevault?sslmode=require");
   assertThrows(IllegalStateException.class, () -> CloudDeploymentGuard.validate(env));
  }
 
  @Test void rejectsPlaceholderAndSimulatorProfile() {
-  MockEnvironment env = valid().setProperty("RUNEVAULT_PICO_KEY", "poneglyph-dev-key-change-me-0001");
+  MockEnvironment env = valid();
+  env.setProperty("RUNEVAULT_PICO_KEY", "poneglyph-dev-key-change-me-0001");
   assertThrows(IllegalStateException.class, () -> CloudDeploymentGuard.validate(env));
-  env = valid();
-  env.setActiveProfiles("auth", "cloud", "simulator");
-  MockEnvironment simulator = env;
+  MockEnvironment simulator = valid();
+  simulator.setActiveProfiles("auth", "cloud", "simulator");
   assertThrows(IllegalStateException.class, () -> CloudDeploymentGuard.validate(simulator));
  }
 }

@@ -140,6 +140,10 @@ public class SecurityConfig {
      ? RequestQuotaLimiter.Category.DASHBOARD_READ
      : path.equals("/api/transactions") && request.getMethod().equals("POST")
      ? RequestQuotaLimiter.Category.TRANSACTION_CREATION : null;
+    // Issuance quota counts eligible ticket requests, not permission-denied attempts.
+    if (category == RequestQuotaLimiter.Category.WS_TICKET
+      && authentication.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("PERM_read:transactions")))
+     category = null;
     if (category != null) {
      int retry = limiter.retryAfter(category, "user:" + jwt.getSubject());
      if (retry != 0) {

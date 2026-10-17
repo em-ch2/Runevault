@@ -7,6 +7,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
@@ -22,6 +23,7 @@ public class WebSocketTickets {
  private final int ttlSeconds;
  private final int maxTickets;
 
+ @Autowired
  public WebSocketTickets(@Value("${runevault.ws.ticket-seconds:30}") int ttlSeconds,
    @Value("${runevault.ws.max-tickets:10000}") int maxTickets) {
   this(ttlSeconds, maxTickets, Clock.systemUTC());
