@@ -9,10 +9,7 @@ import java.util.concurrent.ConcurrentMap;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 @Service
-
-@Component
 @ConditionalOnProperty(name = "nessie.enabled", havingValue = "false", matchIfMissing = true)
-@Profile("simulator & dev & !auth")
 public class FakeBankGateway implements BankGateway {
     
     private final ConcurrentMap<String, BankReceipt> receipts = 
