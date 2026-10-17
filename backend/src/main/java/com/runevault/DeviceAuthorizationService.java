@@ -18,14 +18,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class DeviceAuthorizationService {
  private final TransactionRepository transactions;
  private final DeviceStateRepository devices;
+ private final AuditEventRepository auditEvents;
  private final String deviceId;
  private final byte[] key;
 
  public DeviceAuthorizationService(TransactionRepository transactions, DeviceStateRepository devices,
+   AuditEventRepository auditEvents,
    @Value("${runevault.pico-device-id}") String deviceId,
    @Value("${runevault.pico-key}") String key) {
   this.transactions = transactions;
   this.devices = devices;
+  this.auditEvents = auditEvents;
   this.deviceId = deviceId;
   this.key = key.getBytes(StandardCharsets.UTF_8);
  }
@@ -34,13 +37,25 @@ public class DeviceAuthorizationService {
   return ResponseEntity.status(code).body(Map.of("error", reason));
  }
 
+ private ResponseEntity<Map<String, Object>> rejected(DeviceApi.Authorization request, int code,
+   String message, AuditEvent.Reason reason) {
+  auditEvents.save(new AuditEvent(request.device(), request.txId(), AuditEvent.Outcome.REJECTED, reason));
+  return error(code, message);
+ }
+
  @Transactional
  public ResponseEntity<Map<String, Object>> createPending(DeviceApi.Pending request) {
+  return createPending(request, null);
+ }
+
+ @Transactional
+ public ResponseEntity<Map<String, Object>> createPending(DeviceApi.Pending request, String requesterSubject) {
   if (key.length == 0) return error(503, "Device key is not configured");
   if (!deviceId.equals(request.device())) return error(404, "Unknown device");
   var device = devices.findForUpdate(request.device()).orElseGet(() -> devices.saveAndFlush(new DeviceState(request.device())));
   if (device.isLocked()) return error(423, "Device locked");
-  var transaction = Transaction.pending(UUID.randomUUID().toString(), request.amount(), request.dest(), request.device(), request.glyphs());
+  var transaction = Transaction.pending(UUID.randomUUID().toString(), request.amount(), request.dest(),
+   request.device(), request.glyphs(), requesterSubject);
   transactions.save(transaction);
   return ResponseEntity.status(201).body(Map.of("tx_id", transaction.getTransactionId(), "status", "PENDING",
    "expires_at", transaction.getExpiresAt().getEpochSecond()));
@@ -54,35 +69,41 @@ public class DeviceAuthorizationService {
  @Transactional
  public ResponseEntity<Map<String, Object>> authorize(DeviceApi.Authorization request) {
   if (key.length == 0) return error(503, "Device key is not configured");
-  if (!deviceId.equals(request.device())) return error(401, "Unknown device");
+  if (!deviceId.equals(request.device())) return rejected(request, 401, "Unknown device", AuditEvent.Reason.UNKNOWN_DEVICE);
   try {
    Mac mac = Mac.getInstance("HmacSHA256");
    mac.init(new SecretKeySpec(key, "HmacSHA256"));
    byte[] expected = mac.doFinal(signingText(request).getBytes(StandardCharsets.UTF_8));
-   if (!MessageDigest.isEqual(expected, HexFormat.of().parseHex(request.sig()))) return error(401, "Invalid signature");
+   if (!MessageDigest.isEqual(expected, HexFormat.of().parseHex(request.sig())))
+    return rejected(request, 401, "Invalid signature", AuditEvent.Reason.INVALID_SIGNATURE);
   } catch (GeneralSecurityException e) {
    throw new IllegalStateException("HMAC verification unavailable", e);
   }
   // Lock device first, then transaction: concurrent requests cannot reuse a counter.
   var device = devices.findForUpdate(request.device()).orElse(null);
-  if (device == null) return error(409, "No pending device transaction");
-  if (device.isLocked()) return error(423, "Device locked");
-  if (request.counter() <= device.getLastCounter()) return error(409, "Counter replay");
+  if (device == null) return rejected(request, 409, "No pending device transaction", AuditEvent.Reason.NO_PENDING_DEVICE_TRANSACTION);
+  if (device.isLocked()) return rejected(request, 423, "Device locked", AuditEvent.Reason.DEVICE_LOCKED);
+  if (request.counter() <= device.getLastCounter()) return rejected(request, 409, "Counter replay", AuditEvent.Reason.COUNTER_REPLAY);
   // Consume every authenticated fresh counter, including rejected transaction/glyph attempts.
   device.consumeCounter(request.counter());
   var transaction = transactions.findForUpdate(request.txId()).orElse(null);
   if (transaction == null || transaction.getStatus() != Transaction.Status.PENDING
     || !request.device().equals(transaction.getDeviceId())
-    || transaction.getExpiresAt() == null || !transaction.getExpiresAt().isAfter(Instant.now())
     || request.amount() != transaction.getAmountMinor() || !request.dest().equals(transaction.getDestination())) {
-   return error(409, "Pending transaction mismatch or expired");
+   return rejected(request, 409, "Pending transaction mismatch or expired", AuditEvent.Reason.TRANSACTION_MISMATCH);
+  }
+  if (transaction.getExpiresAt() == null || !transaction.getExpiresAt().isAfter(Instant.now())) {
+   return rejected(request, 409, "Pending transaction mismatch or expired", AuditEvent.Reason.TRANSACTION_EXPIRED);
   }
   if (!request.glyphs().equals(transaction.getExpectedGlyphs())) {
    device.wrongGlyphs();
-   return error(device.isLocked() ? 423 : 403, device.isLocked() ? "Device locked" : "Incorrect glyphs");
+   return rejected(request, device.isLocked() ? 423 : 403,
+    device.isLocked() ? "Device locked" : "Incorrect glyphs",
+    device.isLocked() ? AuditEvent.Reason.DEVICE_LOCKED : AuditEvent.Reason.INCORRECT_GLYPHS);
   }
   device.resetAttempts();
   transaction.authorizeSimulation();
+  auditEvents.save(new AuditEvent(request.device(), request.txId(), AuditEvent.Outcome.APPROVED, AuditEvent.Reason.APPROVED));
   return ResponseEntity.ok(Map.of("transactionId", transaction.getTransactionId(), "status", "SIMULATED", "signatureVerified", true));
  }
 }

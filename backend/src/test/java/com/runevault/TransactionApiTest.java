@@ -16,7 +16,7 @@ import org.mockito.ArgumentCaptor;
 
 class TransactionApiTest {
  private final TransactionRepository repository = mock(TransactionRepository.class);
- private final TransactionService transactionService = spy(new TransactionService());
+ private final TransactionService transactionService = spy(new TransactionService(repository));
  private final AtomicInteger transfers = new AtomicInteger();
  private final FakeBankGateway bank = new FakeBankGateway();
  private final TransactionApi api = new TransactionApi("test-key", "local", (id, amount, currency, destination) -> {

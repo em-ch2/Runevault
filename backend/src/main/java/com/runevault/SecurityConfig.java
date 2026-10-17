@@ -15,6 +15,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.http.HttpMethod;
 import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -35,8 +36,12 @@ public class SecurityConfig {
    a.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll();
    a.requestMatchers("/api/health").permitAll();
    // Bridge requests have their own credential, checked by Gate before authorization.
-   a.requestMatchers("/api/challenges", "/api/approvals", "/api/device/authorize", "/api/device/transactions").permitAll();
-   if (auth) a.requestMatchers("/api/admin/**").hasAuthority("PERM_admin:platform").anyRequest().authenticated();
+   a.requestMatchers("/api/challenges", "/api/approvals", "/api/device/authorize", "/api/device/transactions", "/api/device/transactions/*").permitAll();
+   if (auth) {
+    a.requestMatchers(HttpMethod.POST, "/api/transactions").hasAuthority("PERM_create:transactions");
+    a.requestMatchers(HttpMethod.GET, "/api/transactions").hasAuthority("PERM_read:transactions");
+   }
+   if (auth) a.requestMatchers("/api/admin/**").hasAuthority("PERM_admin:platform").anyRequest().denyAll();
    else a.anyRequest().denyAll();
   });
   if (auth) {
@@ -70,7 +75,8 @@ public class SecurityConfig {
    if (path.equals("/api/health")) { chain.doFilter(request,response); return; }
    if (!allow()) { response.setHeader("Retry-After","60"); response.sendError(429); return; }
    if (path.equals("/api/challenges") || path.equals("/api/approvals")
-     || path.equals("/api/device/authorize") || path.equals("/api/device/transactions")) {
+     || path.equals("/api/device/authorize") || path.equals("/api/device/transactions")
+     || (request.getMethod().equals("GET") && path.matches("/api/device/transactions/[^/]+"))) {
     String supplied = request.getHeader("X-Bridge-Token");
     if (supplied == null || !MessageDigest.isEqual(token, supplied.getBytes(StandardCharsets.UTF_8))) { response.sendError(401); return; }
    }
