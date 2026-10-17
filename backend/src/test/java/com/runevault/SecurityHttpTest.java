@@ -18,6 +18,13 @@ class SecurityHttpTest {
  @Autowired com.fasterxml.jackson.databind.ObjectMapper mapper;
  @org.springframework.beans.factory.annotation.Value("${runevault.device-secret}") String deviceSecret;
  @Autowired com.runevault.transactions.TransactionService executionClaims;
+ @Autowired org.springframework.context.ApplicationContext context;
+ @Test void hardwareSimulationUsesOnlyLocalFakeBank() {
+  org.junit.jupiter.api.Assertions.assertEquals(1,
+   context.getBeansOfType(com.runevault.banking.FakeBankGateway.class).size());
+  org.junit.jupiter.api.Assertions.assertTrue(
+   context.getBeansOfType(com.runevault.banking.NessieBankGateway.class).isEmpty());
+ }
  @Test void approvedSimulationIsPersistedAndReplayRejected() throws Exception {
   String token = "test-bridge-token-with-enough-characters";
   var result = mvc.perform(post("/api/challenges").header("X-Bridge-Token", token)
@@ -25,7 +32,7 @@ class SecurityHttpTest {
     {"deviceId":"pico-demo-1","amountMinor":2500,"destination":"5a1b0e4e-4f52-4360-9000-000000000002","glyphs":"0-1-2"}
     """)).andExpect(status().isOk()).andReturn();
   var challenge = mapper.readTree(result.getResponse().getContentAsString());
-  org.junit.jupiter.api.Assertions.assertEquals("simulator", challenge.get("mode").asText());
+  org.junit.jupiter.api.Assertions.assertEquals("hardware-simulated", challenge.get("mode").asText());
   String id = challenge.get("challengeId").asText();
   var mac = javax.crypto.Mac.getInstance("HmacSHA256");
   mac.init(new javax.crypto.spec.SecretKeySpec(deviceSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
@@ -33,7 +40,9 @@ class SecurityHttpTest {
   String body = mapper.writeValueAsString(new TransactionApi.Approval(id, signature));
   mvc.perform(post("/api/approvals").header("X-Bridge-Token", token).contentType("application/json").content(body))
    .andExpect(status().isOk()).andExpect(jsonPath("transactionId").value(id))
-   .andExpect(jsonPath("mode").value("simulator")).andExpect(jsonPath("status").value("SIMULATED"));
+   .andExpect(jsonPath("mode").value("hardware-simulated"))
+   .andExpect(jsonPath("bankingMode").value("local-fake"))
+   .andExpect(jsonPath("status").value("SIMULATED"));
   var saved = transactions.findById(id).orElseThrow();
   org.junit.jupiter.api.Assertions.assertEquals(2500, saved.getAmountMinor());
   org.junit.jupiter.api.Assertions.assertEquals("5a1b0e4e-4f52-4360-9000-000000000002", saved.getDestination());

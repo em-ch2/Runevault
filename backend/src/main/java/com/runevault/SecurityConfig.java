@@ -39,6 +39,8 @@ public class SecurityConfig {
   if (!auth && !env.acceptsProfiles(Profiles.of("dev"))) throw new IllegalStateException("Select dev or auth profile");
   if (simulator && (auth || !env.acceptsProfiles(Profiles.of("dev"))))
    throw new IllegalStateException("Simulator requires dev and cannot run with auth");
+  if (simulator && env.getProperty("nessie.enabled", Boolean.class, false))
+   throw new IllegalStateException("Hardware simulator supports local fake banking only; disable Nessie");
   if (token.length() < 24 || (auth && token.startsWith("local-"))) throw new IllegalStateException("Set a strong bridge token (24+ characters)");
   http.csrf(c -> c.disable()).sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
   http.authorizeHttpRequests(a -> {
