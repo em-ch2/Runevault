@@ -11,6 +11,7 @@ import { mergeLiveEvent } from './live-merge';
 import { FeedService } from '../feed/feed.service';
 import { MockScenario } from '../feed/mock-feed';
 import { GLYPH_NAMES, Glyph } from './glyph';
+import { PicoApproval } from './pico-approval';
 import { Stage, TransferStore } from './transfer-store';
 import { glideTo, slideUp } from './motion';
 
@@ -19,7 +20,7 @@ type NavSection = 'dashboard' | 'transactions' | 'approvals' | 'history' | 'anal
 
 @Component({
   selector: 'app-dashboard',
-  imports: [ApprovalsChart, Glyph, FolderPanel, ReactiveFormsModule],
+  imports: [ApprovalsChart, Glyph, FolderPanel, PicoApproval, ReactiveFormsModule],
   templateUrl: './dashboard.html',
 })
 export class Dashboard implements OnInit, AfterViewInit, OnDestroy {

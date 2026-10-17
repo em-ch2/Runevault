@@ -28,13 +28,15 @@ public class DashboardTransactionApi {
  private final TransactionRepository transactions;
  private final ApprovalCodeGenerator glyphGenerator;
  private final PipelineEvents events;
+ private final DeviceApi device;
 
  public DashboardTransactionApi(DeviceAuthorizationService authorization, TransactionRepository transactions,
-   ApprovalCodeGenerator glyphGenerator, PipelineEvents events) {
+   ApprovalCodeGenerator glyphGenerator, PipelineEvents events, DeviceApi device) {
   this.authorization = authorization;
   this.transactions = transactions;
   this.glyphGenerator = glyphGenerator;
   this.events = events;
+  this.device = device;
  }
 
  public record CreatePending(
@@ -79,6 +81,18 @@ public class DashboardTransactionApi {
    new DeviceApi.Pending(request.device(), request.amount(), request.dest(), glyphs), jwt.getSubject(), true);
   events.createdIfSuccessful(response);
   return response;
+ }
+
+ // The dashboard relays the Pico's signed approval over Web Serial, so the bridge token never reaches the browser.
+ // Only the transfer's creator may relay it; the signature, counter, and glyph checks are the bridge path's own.
+ @PostMapping("/{id}/authorize")
+ @PreAuthorize("hasAuthority('PERM_create:transactions')")
+ public ResponseEntity<Map<String, Object>> authorize(@PathVariable String id,
+   @Valid @RequestBody DeviceApi.Authorization request, @AuthenticationPrincipal Jwt jwt) {
+  boolean owned = id.equals(request.txId()) && transactions.findById(id)
+   .map(t -> jwt.getSubject().equals(t.getRequesterSubject())).orElse(false);
+  if (!owned) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  return device.authorize(request);
  }
 
  @GetMapping

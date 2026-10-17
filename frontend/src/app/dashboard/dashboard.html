@@ -169,6 +169,9 @@
       </div>
       <p class="authorization-note">Press these glyphs in order on your Pico, then tap Enter.</p>
       @if (createdForSelection(); as pending) { <p class="small muted">Approval expires {{ expiry(pending.expires_at) }}</p> }
+      <app-pico-approval [txId]="selected()?.status === 'PENDING' ? createdForSelection()?.tx_id ?? null : null"
+        [amount]="selected()?.amountMinor ?? null" [dest]="selected()?.destination ?? null"
+        [expected]="pendingGlyphs()" [expiresAt]="createdForSelection()?.expires_at ?? null" (authorized)="refresh(true)" />
     } @else {
       <div class="glyph-placeholder" aria-hidden="true"><span>&#9671;</span><span>&#9671;</span><span>&#9671;</span><span>&#9671;</span><span>&#9671;</span><span>&#9671;</span></div>
       <p class="empty">{{ selected()?.status === 'PENDING' && approvalExpired(selected()) ? 'This approval window has expired. Create a new request to generate glyphs.' : selected()?.verifiedAt ? 'Physical approval received. Follow the transfer status alongside.' : 'Create a transaction to reveal its unique glyph sequence.' }}</p>

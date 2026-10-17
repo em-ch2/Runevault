@@ -94,6 +94,15 @@ export class TransactionApiService {
     )));
   }
 
+  // Relays the Pico's signed line unchanged; the backend verifies its signature.
+  authorize(txId: string, signedLine: string) {
+    return this.token().pipe(switchMap((token) => this.http.post<{ status: string }>(
+      `${this.endpoint}/${encodeURIComponent(txId)}/authorize`, signedLine, {
+        headers: new HttpHeaders({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }),
+      },
+    )));
+  }
+
   list() {
     return this.token().pipe(switchMap((token) => this.http.get<TransactionPage>(
       this.endpoint, {

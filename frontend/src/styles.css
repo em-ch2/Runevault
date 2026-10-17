@@ -225,6 +225,12 @@ code, .mono { font-family: var(--mono); font-size: 0.92em; }
 .glyph-row figure:nth-child(7) { animation-delay: 0.48s; }
 .glyph-row figure:nth-child(n + 8) { animation-delay: 0.56s; }
 .glyph-row figcaption { font-size: 0.75rem; color: var(--ink-muted); letter-spacing: 0.08em; text-transform: uppercase; }
+.pico-link { margin: 1rem 0; }
+.pico-status { display: flex; align-items: center; gap: 0.5rem; color: var(--good); margin: 0 0 0.5rem; }
+.pico-status .dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: currentColor; }
+.pico-presses figure { min-width: 3.5rem; }
+.pico-presses .press-empty { color: var(--ink-muted); }
+.pico-presses .press-wrong .glyph, .pico-presses .press-wrong figcaption { color: var(--bad); }
 .lore-text { margin: 0 0 1rem; padding: 0 0 0 1rem; border-left: 3px solid var(--gold-deep); font-family: Georgia, 'Times New Roman', serif; font-size: 1.2rem; line-height: 1.65; font-style: italic; }
 .risk { font-family: var(--mono); font-weight: 600; padding: 0.05rem 0.45rem; border-radius: 4px; }
 .risk-low { color: var(--good); background: rgba(127, 207, 166, 0.12); }

@@ -164,4 +164,32 @@ class DashboardPermissionsHttpTest {
    .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].status").value("VERIFIED"))
    .andExpect(jsonPath("$.content[0].verifiedAt").isNotEmpty());
  }
+
+ @Test void creatorRelaysPicoApprovalWithoutBridgeToken() throws Exception {
+  mvc.perform(post("/api/transactions").header("Authorization", "Bearer employee")
+    .contentType("application/json").content(BODY)).andExpect(status().isCreated());
+  String id = transactions.findAll().get(0).getTransactionId();
+  String signed = "v1|slab-01|1|" + id + "|50000|acct-999|0-2-1-2-1";
+  Mac mac = Mac.getInstance("HmacSHA256");
+  mac.init(new SecretKeySpec("test-pico-key-for-permission-tests".getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+  String approval = mapper.writeValueAsString(new DeviceApi.Authorization(1, "slab-01", 1L, id, 50000L, "acct-999",
+   "0-2-1-2-1", HexFormat.of().formatHex(mac.doFinal(signed.getBytes(StandardCharsets.UTF_8)))));
+  String path = "/api/transactions/" + id + "/authorize";
+  mvc.perform(post(path).contentType("application/json").content(approval))
+   .andExpect(status().isUnauthorized());
+  mvc.perform(post(path).header("Authorization", "Bearer viewer").contentType("application/json").content(approval))
+   .andExpect(status().isForbidden());
+  // Another user's transfer and a body for a different transaction both look missing.
+  mvc.perform(post(path).header("Authorization", "Bearer admin").contentType("application/json").content(approval))
+   .andExpect(status().isNotFound());
+  mvc.perform(post("/api/transactions/other-tx/authorize").header("Authorization", "Bearer employee")
+    .contentType("application/json").content(approval))
+   .andExpect(status().isNotFound());
+  assertEquals(Transaction.Status.PENDING, transactions.findById(id).orElseThrow().getStatus());
+  mvc.perform(post(path).header("Authorization", "Bearer employee").contentType("application/json").content(approval))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("VERIFIED"));
+  // The signed counter is consumed, so relaying it again is a replay.
+  mvc.perform(post(path).header("Authorization", "Bearer employee").contentType("application/json").content(approval))
+   .andExpect(status().is4xxClientError());
+ }
 }
