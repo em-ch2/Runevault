@@ -1,12 +1,12 @@
 <div class="vault-shell" id="dashboard-top">
 <aside class="sidebar" aria-label="Main navigation">
-  <a class="compass-logo" href="#dashboard-top" aria-label="Runevault dashboard"><span aria-hidden="true">&#10037;</span></a>
+  <a class="compass-logo" href="#dashboard-top" aria-label="Runevault dashboard"><img src="compass.svg" width="90" height="90" alt="" /></a>
   <nav>
     <a href="#dashboard-top" class="nav-current"><span aria-hidden="true">&#9638;</span> Dashboard</a>
-    <a href="#live-create-title" (click)="switchMode('live')"><span aria-hidden="true">&#8644;</span> Transactions</a>
-    <a href="#authorize-title" (click)="switchMode('live')"><span aria-hidden="true">&#9671;</span> Approvals</a>
-    <a href="#live-list-title" (click)="switchMode('live')"><span aria-hidden="true">&#9636;</span> History</a>
-    <a href="#metrics-title" (click)="switchMode('live')"><span aria-hidden="true">&#9637;</span> Analytics</a>
+    <a href="#live-create-title" (click)="openLiveFolder('live-create-title')"><span aria-hidden="true">&#8644;</span> Transactions</a>
+    <a href="#authorize-title" (click)="openLiveFolder('authorize-title')"><span aria-hidden="true">&#9671;</span> Approvals</a>
+    <a href="#live-list-title" (click)="openLiveFolder('live-list-title')"><span aria-hidden="true">&#9636;</span> History</a>
+    <a href="#metrics-title" (click)="openLiveFolder('metrics-title')"><span aria-hidden="true">&#9637;</span> Analytics</a>
   </nav>
   <div class="sidebar-seal" aria-hidden="true">&#10023;</div>
   <span class="sidebar-foot">SEALED IN TRUST</span>
@@ -56,9 +56,9 @@
   <div class="section-heading"><h2 id="workflow-title">Transfer workflow</h2><span class="small">{{ mode() === 'demo' ? 'Demo preview' : 'Physical approval / verified execution' }}</span></div>
   <ol class="workflow-track">
     @for (step of workflowSteps; track $index) {
-      <li [class.workflow-done]="workflowProgress() > $index" [class.workflow-current]="workflowProgress() === $index" [attr.aria-current]="workflowProgress() === $index ? 'step' : null">
-        <span class="workflow-number">{{ workflowProgress() > $index ? '✓' : $index + 1 }}</span>
-        <strong>{{ step.title }}</strong><span>{{ step.detail }}</span>
+      <li [class.workflow-done]="mode() === 'live' && historyStep() !== null ? false : workflowProgress() > $index" [class.workflow-current]="mode() === 'live' && historyStep() !== null ? historyStep() === $index : workflowProgress() === $index" [class.workflow-attention]="mode() === 'live' && flowBlocked() && $index === 3" [attr.aria-current]="(mode() === 'live' && historyStep() !== null ? historyStep() === $index : workflowProgress() === $index) ? 'step' : null">
+        <button class="workflow-number workflow-step-button" type="button" [disabled]="mode() !== 'live' || historyStep() === null" [class.step-inspected]="mode() === 'live' && historyStep() === $index" [attr.aria-label]="'View ' + historyStepTitles[$index]" [attr.aria-pressed]="mode() === 'live' && historyStep() === $index" (click)="inspectHistoryStep($index)"><span>@if (!(mode() === 'live' && historyStep() !== null) && workflowProgress() > $index) { &#10003; } @else { {{ $index + 1 }} }</span></button>
+        <strong>{{ mode() === 'live' && historyStep() !== null ? historyStepTitles[$index] : step.title }}</strong><span>{{ mode() === 'live' && historyStep() !== null ? (historyStageRecorded($index) ? 'Recorded' : 'No record') : step.detail }}</span>
       </li>
     }
   </ol>
@@ -74,9 +74,73 @@
   <button class="btn btn-ghost" type="button" (click)="replay('rejected')">Replay rejected</button>
 </div>
 } @else {
-<main class="grid live-grid">
-  <section class="slab pending" aria-labelledby="live-create-title">
-    <h2 id="live-create-title">1. Create pending transaction</h2>
+<div class="flow-navigation">
+  @if (secondaryView()) { <button class="btn btn-ghost" type="button" (click)="secondaryView.set(null)">{{ historyStep() !== null ? 'Back to receipt timeline' : 'Back to current transfer' }}</button> }
+  @else if (historyStep() !== null) { <p class="muted">Receipt history &middot; Select a step above to inspect its saved details.</p> }
+  @else { <p class="muted">Step {{ flowStep() + 1 }} of 4 &middot; {{ workflowSteps[flowStep()].title }}</p> }
+  <div><button class="btn btn-ghost" type="button" (click)="secondaryView.set('live-list-title')">History</button>
+  <button class="btn btn-ghost" type="button" (click)="secondaryView.set('metrics-title')">Analytics</button>
+  <button class="btn btn-ghost" type="button" (click)="secondaryView.set('live-events-title')">Activity</button></div>
+</div>
+<main class="grid live-grid guided-flow">
+  <app-folder-panel class="slab folder-light" panelId="history-trace-title" [title]="historyStepTitles[historyStep() ?? 3]"
+    [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'history-trace-title'">
+    @if (selected(); as transaction) {
+      <p class="muted small">Read-only receipt history &middot; <span class="mono">{{ transaction.transactionId }}</span></p>
+      @switch (historyStep()) {
+        @case (0) {
+          <dl class="facts history-facts">
+            <div><dt>Created</dt><dd>{{ time(transaction.createdAt) }}</dd></div>
+            <div><dt>Amount</dt><dd>{{ money(transaction.amountMinor) }}</dd></div>
+            <div><dt>Destination</dt><dd class="mono">{{ transaction.destination }}</dd></div>
+          </dl>
+        }
+        @case (1) {
+          @if (transaction.verifiedAt) {
+            <p class="status status-good">Physical approval verified</p>
+            <p>Verified {{ time(transaction.verifiedAt) }}.</p>
+          } @else {
+            <p>No physical verification timestamp is recorded for this request.</p>
+          }
+          <p class="muted">Historical approval glyphs are not returned by the history API. This view cannot authorize or replay the request.</p>
+        }
+        @case (2) {
+          @if (transaction.geminiDecisionReason) {
+            <p class="decision-title">{{ decisionLabel(transaction.geminiDecisionReason) }}</p>
+            <p class="muted">{{ transaction.geminiDecisionAt ? time(transaction.geminiDecisionAt) : 'Decision timestamp unavailable' }}</p>
+            @if (transaction.geminiDecisionExplanation) { <p>{{ transaction.geminiDecisionExplanation }}</p> }
+          } @else { <p>No Gemini decision is recorded for this request.</p> }
+          @if (transaction.riskScore != null) { <p>Risk score: {{ transaction.riskScore }} / 100</p> }
+          @if (transaction.translationConfidence != null) { <p>Translation confidence: {{ percent(transaction.translationConfidence) }}</p> }
+          @if (transaction.securityMessage) { <p>{{ transaction.securityMessage }}</p> }
+          @if (transaction.riskFlags?.length) { <p>Flags: {{ transaction.riskFlags!.join(', ') }}</p> }
+          @if (transaction.lore) {
+            <section class="seal-lore"><h3>Lore of the seal</h3><blockquote class="lore-text">{{ transaction.lore }}</blockquote></section>
+          }
+        }
+        @case (3) {
+          <p class="amount">{{ money(transaction.amountMinor) }}</p>
+          <p>{{ transaction.status }} &middot; {{ liveStatus(transaction) }}</p>
+          @if (transaction.bankOutcome) {
+            <p class="decision-title">{{ bankOutcomeLabel(transaction.bankOutcome) }}</p>
+            <dl class="facts history-facts">
+              <div><dt>Provider</dt><dd>{{ transaction.bankProvider ?? 'Unavailable' }}</dd></div>
+              <div><dt>Receipt</dt><dd class="mono">{{ transaction.bankReceiptId ?? 'None issued' }}</dd></div>
+              <div><dt>Submitted</dt><dd>{{ transaction.bankSubmittedAt ? time(transaction.bankSubmittedAt) : 'Not recorded' }}</dd></div>
+              <div><dt>Outcome recorded</dt><dd>{{ transaction.bankOutcomeAt ? time(transaction.bankOutcomeAt) : 'Not recorded' }}</dd></div>
+              <div><dt>New balance</dt><dd>{{ transaction.newBalanceMinor != null ? money(transaction.newBalanceMinor) : 'Unavailable' }}</dd></div>
+            </dl>
+          } @else { <p class="muted">No bank outcome is recorded. A request or review decision alone does not confirm a transfer.</p> }
+        }
+      }
+      <nav class="history-step-navigation" aria-label="Receipt history steps">
+        <button class="btn btn-ghost" type="button" [disabled]="historyStep() === 0" (click)="inspectHistoryStep((historyStep() ?? 0) - 1)">Previous step</button>
+        <button class="btn btn-ghost" type="button" (click)="secondaryView.set('live-list-title')">Back to history</button>
+        <button class="btn btn-ghost" type="button" [disabled]="historyStep() === 3" (click)="inspectHistoryStep((historyStep() ?? 0) + 1)">Next step</button>
+      </nav>
+    } @else { <p>The selected transaction is no longer in the loaded history. Return to History to select a record.</p> }
+  </app-folder-panel>
+  <app-folder-panel class="slab pending folder-light" panelId="live-create-title" title="Create your transfer" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'live-create-title'">
     <p class="muted">Set the destination and amount to begin your transfer.</p>
     <form class="live-form" [formGroup]="pendingForm" (ngSubmit)="createPending()">
       <label for="tx-device">Device</label>
@@ -91,10 +155,10 @@
         {{ creating() ? 'Creating…' : 'Confirm transaction' }}
       </button>
     </form>
-  </section>
+  </app-folder-panel>
 
-  <section class="slab authorization" aria-labelledby="authorize-title">
-    <h2 id="authorize-title">2. Authorize with glyphs</h2>
+  <app-folder-panel class="slab authorization folder-dark" panelId="authorize-title" title="Approve on your Pico" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'authorize-title'">
+<p class="flow-guidance">Enter these six glyphs on your physical authenticator, then press Enter. This page will continue automatically after verification.</p>
     <p class="panel-kicker">Your generated authorization sequence</p>
     @if (pendingGlyphs().length) {
       <div class="glyph-row authorization-glyphs" aria-label="Generated approval glyphs">
@@ -105,14 +169,28 @@
       <p class="authorization-note">Press these glyphs in order on your Pico, then tap Enter.</p>
       @if (createdForSelection(); as pending) { <p class="small muted">Approval expires {{ expiry(pending.expires_at) }}</p> }
     } @else {
-      <div class="glyph-placeholder" aria-hidden="true"><span>&#9671;</span><span>&#9671;</span><span>&#9671;</span><span>&#9671;</span></div>
+      <div class="glyph-placeholder" aria-hidden="true"><span>&#9671;</span><span>&#9671;</span><span>&#9671;</span><span>&#9671;</span><span>&#9671;</span><span>&#9671;</span></div>
       <p class="empty">{{ selected()?.status === 'PENDING' && approvalExpired(selected()) ? 'This approval window has expired. Create a new request to generate glyphs.' : selected()?.verifiedAt ? 'Physical approval received. Follow the transfer status alongside.' : 'Create a transaction to reveal its unique glyph sequence.' }}</p>
     }
+    @if (approvalExpired(selected())) { <button class="btn btn-primary" type="button" (click)="startNewTransfer()">Start a new request</button> }
+    <button class="btn btn-ghost" type="button" (click)="secondaryView.set('live-status-title')">View transaction details</button>
     <div class="physical-note"><span aria-hidden="true">&#9671;</span><div><strong>Sealed on your device</strong><p>Authorization happens on the physical authenticator.</p></div></div>
-  </section>
+  </app-folder-panel>
 
-  <section class="slab activity backend-status" aria-labelledby="live-status-title">
-    <h2 id="live-status-title">Backend status</h2>
+  <app-folder-panel class="slab activity backend-status folder-light" panelId="live-status-title" [title]="flowStep() === 3 ? 'Your transfer result' : 'Reviewing your transfer'" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'live-status-title'">
+    <p class="flow-guidance" role="status">{{ flowStep() < 2 ? 'This request is awaiting physical approval on your Pico.' : flowStep() === 3 ? (flowBlocked() ? 'This transfer needs attention. Review the outcome below before taking any further action.' : 'Your bank confirmed the transfer. Your receipt is below.') : 'Your physical approval is complete. We are reviewing the request and waiting for the bank. You do not need to submit it again.' }}</p>
+    <section class="seal-lore" aria-labelledby="seal-lore-title" aria-live="polite">
+      <h3 id="seal-lore-title">Lore of the seal</h3>
+      @if (selected()?.lore; as lore) {
+        <blockquote class="lore-text">{{ lore }}</blockquote>
+      } @else if (selected()?.geminiDecisionReason) {
+        <p class="muted small">No lore is available for this review. See the review decision below.</p>
+      } @else if (selected()?.verifiedAt) {
+        <p class="muted small">Physical approval received. Waiting for the lore review.</p>
+      } @else {
+        <p class="muted small">The story of your seal appears here after physical approval and Gemini review.</p>
+      }
+    </section>
     @if (selected(); as transaction) {
       <p class="amount">{{ money(transaction.amountMinor) }}</p>
       <dl class="facts">
@@ -147,9 +225,6 @@
           }
         </div>
       }
-      @if (transaction.lore) {
-        <blockquote class="lore-text">{{ transaction.lore }}</blockquote>
-      }
       @if (transaction.bankProvider) {
         <div class="receipt-card" [class.receipt-bad]="transaction.bankOutcome === 'FAILED' || transaction.bankOutcome === 'UNKNOWN'">
           <p class="receipt-title">Bank receipt · {{ bankOutcomeLabel(transaction.bankOutcome) }}</p>
@@ -178,17 +253,17 @@
       {{ loadingRecords() ? 'Loading…' : 'Refresh status' }}
     </button>
     <p class="muted small">Updates arrive automatically. Only a completed bank receipt confirms the transfer.</p>
-  </section>
+    @if (flowStep() === 3 && !flowBlocked()) { <button class="btn btn-primary" type="button" (click)="startNewTransfer()">Create another transfer</button> }
+  </app-folder-panel>
 
-  <section class="slab activity live-list" aria-labelledby="live-list-title">
-    <h2 id="live-list-title">Recent transactions</h2>
+  <app-folder-panel class="slab activity live-list folder-dark" panelId="live-list-title" title="Recent transactions" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'live-list-title'">
     @if (loadingRecords() && records().length === 0) { <p role="status">Loading transactions…</p> }
     @else if (records().length === 0) { <p class="empty">No transactions returned by the backend.</p> }
     @else {
       <ul class="log transaction-list">
         @for (transaction of records(); track transaction.transactionId) {
           <li [class.selected-transaction]="selectedId() === transaction.transactionId">
-            <button class="transaction-row" type="button" (click)="select(transaction.transactionId)" [attr.aria-pressed]="selectedId() === transaction.transactionId">
+            <button class="transaction-row" type="button" (click)="selectHistory(transaction.transactionId)" [attr.aria-pressed]="selectedId() === transaction.transactionId">
               <span class="transaction-symbol" aria-hidden="true">{{ transaction.status === 'EXECUTED' ? '✓' : '⇄' }}</span>
               <span class="transaction-description"><strong>{{ liveStatus(transaction) }}</strong><span class="mono">{{ shortId(transaction.transactionId) }} &middot; {{ transaction.destination }}</span></span>
               <span class="transaction-value">{{ money(transaction.amountMinor) }}<small>{{ time(transaction.createdAt) }}</small></span>
@@ -197,10 +272,9 @@
         }
       </ul>
     }
-  </section>
+  </app-folder-panel>
 
-  <section class="slab live-events" aria-labelledby="live-events-title">
-    <h2 id="live-events-title">Live pipeline</h2>
+  <app-folder-panel class="slab live-events folder-light" panelId="live-events-title" title="Live pipeline" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'live-events-title'">
     @if (liveEvents().length === 0) {
       <p class="empty">{{ liveOpen() ? 'Waiting for the next pipeline stage.' : 'Live events appear here once connected.' }}</p>
     } @else {
@@ -214,10 +288,9 @@
         }
       </ol>
     }
-  </section>
+  </app-folder-panel>
 
-  <section class="slab metrics" aria-labelledby="metrics-title">
-    <h2 id="metrics-title">Approvals vs blocks</h2>
+  <app-folder-panel class="slab metrics folder-dark" panelId="metrics-title" title="Approvals vs blocks" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'metrics-title'">
     @if (metrics(); as m) {
       <app-approvals-chart [points]="m.minutes" />
       <p class="muted small">Last 30 minutes &middot; Includes rejected physical approvals.</p>
@@ -227,14 +300,17 @@
       <p role="status">Loading metrics…</p>
     }
     <button class="btn btn-ghost" type="button" (click)="loadMetrics()">Reload metrics</button>
-  </section>
+  </app-folder-panel>
 </main>
 }
 
 @if (mode() === 'demo') {
-<main class="grid">
-  <section class="slab pending" aria-labelledby="pending-title">
-    <h2 id="pending-title">Pending transfer</h2>
+<div class="flow-navigation"><p class="muted">Scripted preview &middot; follows the transfer automatically</p><div>
+<button class="btn btn-ghost" type="button" (click)="demoView.set(null)">Current step</button>
+@if (transfer()?.executed) { <button class="btn btn-ghost" type="button" (click)="demoView.set('lore-title')">Read the lore</button> }
+<button class="btn btn-ghost" type="button" (click)="demoView.set('activity-title')">Activity</button></div></div>
+<main class="grid demo-grid guided-flow">
+  <app-folder-panel class="slab pending folder-light" panelId="pending-title" title="Pending transfer" [open]="true" [collapsible]="false" [hidden]="demoPanel() !== 'pending-title'">
     @if (transfer(); as t) {
       <p class="amount">{{ money(t.amount) }}</p>
       <dl class="facts">
@@ -269,12 +345,11 @@
     @if (transfer()?.rejected; as r) {
       <p class="reject-reason" role="alert">{{ r.reason }}</p>
     }
-  </section>
+  </app-folder-panel>
 
-  <section class="slab lore" aria-labelledby="lore-title">
-    <h2 id="lore-title">Lore of the seal</h2>
+  <app-folder-panel class="slab lore folder-dark" panelId="lore-title" title="Lore of the seal" [open]="true" [collapsible]="false" [hidden]="demoPanel() !== 'lore-title'">
     @if (transfer()?.executed; as ex) {
-      <div class="glyph-row">
+      <div class="glyph-row authorization-glyphs">
         @for (g of glyphIds(); track $index) {
           <figure>
             <app-glyph [id]="g" [size]="50" />
@@ -294,10 +369,9 @@
     } @else {
       <p class="empty">The glyphs and their lore appear after the transfer executes.</p>
     }
-  </section>
+  </app-folder-panel>
 
-  <section class="slab receipt" aria-labelledby="receipt-title">
-    <h2 id="receipt-title">Receipt</h2>
+  <app-folder-panel class="slab receipt folder-light" panelId="receipt-title" title="Receipt" [open]="true" [collapsible]="false" [hidden]="demoPanel() !== 'receipt-title'">
     @if (transfer(); as t) {
       @if (t.executed && t.sealed) {
         <dl class="receipt-list">
@@ -318,10 +392,9 @@
     } @else {
       <p class="empty">No receipts yet.</p>
     }
-  </section>
+  </app-folder-panel>
 
-  <section class="slab activity" aria-labelledby="activity-title">
-    <h2 id="activity-title">Activity</h2>
+  <app-folder-panel class="slab activity folder-dark" panelId="activity-title" title="Activity" [open]="true" [collapsible]="false" [hidden]="demoPanel() !== 'activity-title'">
     @if (log().length === 0) {
       <p class="empty">Listening…</p>
     } @else {
@@ -331,7 +404,7 @@
         }
       </ul>
     }
-  </section>
+  </app-folder-panel>
 </main>
 }
 

@@ -36,9 +36,9 @@ export const MOCK_SCRIPTS: Record<MockScenario, MockStep[]> = {
       event: {
         type: 'transfer_executed',
         tx_id: 'rea433',
-        glyphs: '0-1-2-1-2-0-1-2',
+        glyphs: '0-1-2-1-2-2',
         lore:
-          'The Key was turned beneath a watchful Eye, and the Gate stood open. Twice more the Eye kept vigil as travellers crossed the threshold, until the Key sealed the passage once again and the Eye saw the last of them safely through the Gate.',
+          'The Key turned beneath a watchful Eye, opening the Gate to a safe passage. The Eye kept vigil as the final Gates secured the exchange.',
         risk_level: 'LOW',
         bank_ref: 'nessie-tr-5f2a91',
       },

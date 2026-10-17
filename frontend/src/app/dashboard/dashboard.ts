@@ -7,6 +7,7 @@ import { PendingTransactionResponse, PipelineMetrics, TransactionApiService, Tra
 import { TransferTransportEvent } from '../feed/feed-event';
 import { ApprovalsChart } from './approvals-chart';
 import { Gauge } from './gauge';
+import { FolderPanel } from './folder-panel';
 import { mergeLiveEvent } from './live-merge';
 import { FeedService } from '../feed/feed.service';
 import { MockScenario } from '../feed/mock-feed';
@@ -17,7 +18,7 @@ const STAGE_ORDER: Stage[] = ['received', 'sealed', 'verified', 'executed'];
 
 @Component({
   selector: 'app-dashboard',
-  imports: [ApprovalsChart, Gauge, Glyph, ReactiveFormsModule],
+  imports: [ApprovalsChart, Gauge, Glyph, FolderPanel, ReactiveFormsModule],
   templateUrl: './dashboard.html',
 })
 export class Dashboard implements OnInit, OnDestroy {
@@ -26,23 +27,90 @@ export class Dashboard implements OnInit, OnDestroy {
   readonly store = inject(TransferStore);
   readonly api = inject(TransactionApiService);
   readonly mode = signal<'live' | 'demo'>('live');
+  readonly flowStarted = signal(false);
+  readonly secondaryView = signal<string | null>(null);
+  readonly historyStep = signal<number | null>(null);
+  readonly historyStepTitles = ['Request created', 'Physical approval', 'Gemini review', 'Bank outcome'];
+
+  selectHistory(id: string): void {
+    this.select(id);
+    this.historyStep.set(3);
+  }
+
+  inspectHistoryStep(step: number): void {
+    if (this.historyStep() === null || !this.selected() || step < 0 || step > 3) return;
+    this.secondaryView.set(null);
+    this.historyStep.set(step);
+  }
+
+  historyStageRecorded(step: number): boolean {
+    const transaction = this.selected();
+    if (!transaction) return false;
+    if (step === 0) return true;
+    if (step === 1) return !!transaction.verifiedAt;
+    if (step === 2) return !!transaction.geminiDecisionReason;
+    return !!transaction.bankOutcome;
+  }
+  readonly demoView = signal<string | null>(null);
+  readonly demoPanel = computed(() => this.demoView() ?? (this.transfer()?.stage === 'executed' ? 'receipt-title' : 'pending-title'));
+  readonly flowStep = computed(() => {
+    if (!this.flowStarted()) return 0;
+    const transaction = this.selected();
+    if (!transaction || transaction.status === 'PENDING') return 1;
+    if (['EXECUTED', 'FAILED', 'OUTCOME_UNKNOWN', 'SIMULATED'].includes(transaction.status)
+      || (transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED')) return 3;
+    return 2;
+  });
+  readonly currentPanel = computed(() => this.secondaryView()
+    ?? (this.historyStep() !== null ? 'history-trace-title'
+      : this.flowStep() === 0 ? 'live-create-title' : this.flowStep() === 1 ? 'authorize-title' : 'live-status-title'));
+  readonly flowBlocked = computed(() => this.flowStep() === 3 && this.selected()?.status !== 'EXECUTED');
+
+  startNewTransfer(): void {
+    this.historyStep.set(null);
+    this.flowStarted.set(false);
+    this.secondaryView.set(null);
+    this.selectedId.set(null);
+    this.created.set(null);
+    this.apiError.set(null);
+  }
+  readonly openFolders = signal<ReadonlySet<string>>(new Set(['live-create-title', 'pending-title']));
+
+  toggleFolder(id: string): void {
+    this.openFolders.update(current => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  openFolder(id: string): void {
+    this.openFolders.update(current => new Set([...current, id]));
+    if (id === 'authorize-title' || id === 'live-status-title') {
+      this.flowStarted.set(true);
+      this.secondaryView.set(null);
+    }
+  }
+
+  openLiveFolder(id: string): void {
+    this.switchMode('live');
+    this.secondaryView.set(['live-create-title', 'authorize-title'].includes(id) ? null : id);
+  }
   readonly workflowSteps = [
-    { title: 'Pending approval', detail: 'Request received' },
-    { title: 'Glyph verified', detail: 'Physical authorization' },
-    { title: 'Policy approved', detail: 'Review & execution' },
-    { title: 'Transferred', detail: 'Bank confirmed' },
+    { title: 'Create request', detail: 'Destination & amount' },
+    { title: 'Approve on Pico', detail: 'Enter the six glyphs' },
+    { title: 'Review & transfer', detail: 'Automatic checks' },
+    { title: 'Result', detail: 'Receipt or next steps' },
   ];
   readonly workflowProgress = computed(() => {
     if (this.mode() === 'demo') {
       const transfer = this.transfer();
-      return transfer ? Math.max(0, STAGE_ORDER.indexOf(transfer.stage)) + (transfer.stage === 'executed' ? 1 : 0) : 0;
+      if (!transfer) return 0;
+      if (transfer.stage === 'executed') return 4;
+      if (transfer.stage === 'rejected') return 3;
+      return transfer.stage === 'received' ? 1 : 2;
     }
-    const transaction = this.selected();
-    if (transaction?.status === 'EXECUTED') return 4;
-    if (transaction?.status === 'EXECUTING' || transaction?.status === 'BANK_PENDING'
-      || transaction?.geminiDecisionReason === 'GEMINI_APPROVED') return 2;
-    if (transaction?.verifiedAt) return 1;
-    return 0;
+    return this.flowStarted() && this.selected()?.status === 'EXECUTED' ? 4 : this.flowStep();
   });
   readonly records = signal<TransactionRecord[]>([]);
   readonly selectedId = signal<string | null>(null);
@@ -204,7 +272,9 @@ export class Dashboard implements OnInit, OnDestroy {
     const request = this.pendingForm.getRawValue();
     this.api.create(request).subscribe({
       next: (created) => {
+        this.historyStep.set(null);
         this.created.set(created);
+        this.openFolder('authorize-title');
         this.selectedId.set(created.tx_id);
         this.creating.set(false);
         this.refresh();
@@ -217,7 +287,9 @@ export class Dashboard implements OnInit, OnDestroy {
   }
 
   select(id: string): void {
+    this.historyStep.set(null);
     this.selectedId.set(id);
+    this.openFolder('live-status-title');
     this.syncPolling();
   }
 
@@ -254,6 +326,7 @@ export class Dashboard implements OnInit, OnDestroy {
   }
 
   replay(scenario: MockScenario): void {
+    this.demoView.set(null);
     this.feed.playMock(scenario);
   }
 

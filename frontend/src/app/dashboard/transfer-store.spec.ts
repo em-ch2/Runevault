@@ -18,7 +18,7 @@ describe('reduceFeedEvent', () => {
     expect(state.tablet?.state).toBe('connected');
     expect(state.transfer?.stage).toBe('executed');
     expect(state.transfer?.sealed?.counter).toBe(5);
-    expect(state.transfer?.executed?.glyphs).toBe('0-1-2-1-2-0-1-2');
+    expect(state.transfer?.executed?.glyphs).toBe('0-1-2-1-2-2');
     expect(state.transfer?.rejected).toBeNull();
   });
 

@@ -50,6 +50,67 @@ describe('Dashboard live transactions', () => {
     });
   });
 
+  it('guides the user from creation through physical approval to the final outcome', () => {
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const dashboard = fixture.componentInstance;
+    expect(dashboard.currentPanel()).toBe('live-create-title');
+    dashboard.records.set([pending]);
+    dashboard.select(pending.transactionId);
+    expect(dashboard.currentPanel()).toBe('authorize-title');
+    dashboard.records.set([{ ...pending, status: 'VERIFIED', verifiedAt: new Date().toISOString() }]);
+    expect(dashboard.currentPanel()).toBe('live-status-title');
+    expect(dashboard.flowStep()).toBe(2);
+    dashboard.records.set([{ ...pending, status: 'BANK_PENDING' }]);
+    expect(dashboard.flowStep()).toBe(2);
+    dashboard.records.set([{ ...pending, status: 'OUTCOME_UNKNOWN' }]);
+    expect(dashboard.flowStep()).toBe(3);
+    expect(dashboard.flowBlocked()).toBe(true);
+    expect(dashboard.workflowProgress()).toBe(3);
+    dashboard.records.set([{ ...pending, status: 'EXECUTED' }]);
+    expect(dashboard.workflowProgress()).toBe(4);
+    dashboard.secondaryView.set('live-list-title');
+    expect(dashboard.currentPanel()).toBe('live-list-title');
+    dashboard.secondaryView.set(null);
+    expect(dashboard.currentPanel()).toBe('live-status-title');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('.guided-flow > app-folder-panel:not([hidden])').length).toBe(1);
+    dashboard.startNewTransfer();
+    expect(dashboard.currentPanel()).toBe('live-create-title');
+    fixture.destroy();
+  });
+
+  it('traces historical steps without exposing an approval form or submitting another request', () => {
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'EXECUTED',
+      verifiedAt: '2026-10-17T12:01:00Z', geminiDecisionReason: 'GEMINI_APPROVED',
+      geminiDecisionAt: '2026-10-17T12:02:00Z', bankOutcome: 'COMPLETED', bankReceiptId: 'receipt-123' }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const dashboard = fixture.componentInstance;
+    dashboard.selectHistory(pending.transactionId);
+    fixture.detectChanges();
+    expect(dashboard.historyStep()).toBe(3);
+    expect(dashboard.currentPanel()).toBe('history-trace-title');
+    const steps = fixture.nativeElement.querySelectorAll('.workflow-step-button') as NodeListOf<HTMLButtonElement>;
+    for (let step = 0; step < 4; step++) {
+      steps[step].click();
+      fixture.detectChanges();
+      expect(dashboard.historyStep()).toBe(step);
+      expect(dashboard.currentPanel()).toBe('history-trace-title');
+      const visible = fixture.nativeElement.querySelector('.guided-flow > app-folder-panel:not([hidden])');
+      expect(visible.querySelector('form')).toBeNull();
+    }
+    expect(fixture.nativeElement.textContent).toContain('receipt-123');
+    expect(api.create).not.toHaveBeenCalled();
+    dashboard.records.set([pending]);
+    expect(dashboard.historyStageRecorded(1)).toBe(false);
+    expect(dashboard.historyStageRecorded(2)).toBe(false);
+    expect(dashboard.historyStageRecorded(3)).toBe(false);
+    dashboard.startNewTransfer();
+    expect(dashboard.historyStep()).toBeNull();
+    fixture.destroy();
+  });
+
   it('creates a pending request without client-supplied glyphs and displays Gemini glyphs', () => {
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
@@ -62,6 +123,8 @@ describe('Dashboard live transactions', () => {
     expect(api.create).toHaveBeenCalledWith({ device: 'slab-01', amount: 50000, dest: 'acct-999' });
     expect(fixture.nativeElement.textContent).toContain('abc123');
     expect(dashboard.pendingGlyphs()).toEqual([0, 2, 1, 2, 1]);
+    expect(dashboard.openFolders().has('authorize-title')).toBe(true);
+    expect(dashboard.openFolders().has('live-create-title')).toBe(true);
     fixture.destroy();
   });
 
