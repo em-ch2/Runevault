@@ -3,6 +3,8 @@ import io
 import json
 import threading
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import Mock, patch
 from urllib.error import URLError
@@ -12,6 +14,60 @@ import usb_bridge
 
 
 class BridgeTest(unittest.TestCase):
+    def test_firmware_acknowledges_matching_transaction(self):
+        port = Mock()
+        port.read.side_effect = [bytes([byte]) for byte in
+                                 b"# ready\r\n# enter glyphs for tx abc123\r\n"]
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertTrue(usb_bridge.wait_for_pico_ack(port, "abc123"))
+        self.assertIn("Pico: # enter glyphs for tx abc123", output.getvalue())
+
+    def test_wrong_firmware_acknowledgment_does_not_start_buttons(self):
+        port = Mock()
+        port.read.side_effect = [bytes([byte]) for byte in b"# enter glyphs for tx other\n"]
+        with patch("usb_bridge.time.monotonic", side_effect=[0, 0, 0, 0, 0, 9]):
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertFalse(usb_bridge.wait_for_pico_ack(port, "abc123"))
+
+    def test_local_compose_token_takes_precedence_without_printing_it(self):
+        with TemporaryDirectory() as directory:
+            env_file = Path(directory) / ".env"
+            env_file.write_text('RUNEVAULT_BRIDGE_TOKEN="local-secret"\n', encoding="utf-8")
+            with patch("usb_bridge.LOCAL_ENV", env_file), patch.dict("os.environ", {"RUNEVAULT_BRIDGE_TOKEN": "stale"}):
+                self.assertEqual(usb_bridge.bridge_token(), "local-secret")
+
+    def test_pending_transaction_uses_firmware_command(self):
+        port = Mock()
+        command = b"TX|abc123|50000|acct-999\n"
+        port.write.return_value = len(command)
+        with patch("usb_bridge.forward", return_value=(201, {"tx_id": "abc123", "status": "PENDING"})) as post:
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = usb_bridge.send_pending(port, "http://localhost:8080", "test-token", Mock(),
+                                                 "slab-01", 50000, "acct-999", "0-2-1-2-1")
+        self.assertEqual(result, "abc123")
+        port.write.assert_called_once_with(command)
+        port.flush.assert_called_once()
+        self.assertEqual(post.call_args.args[0], {"device": "slab-01", "amount": 50000,
+                                                "dest": "acct-999", "glyphs": "0-2-1-2-1"})
+        self.assertEqual(post.call_args.args[1], "http://localhost:8080/api/device/transactions")
+
+    def test_failed_creation_or_malformed_id_never_reaches_pico(self):
+        for result in [None, (423, {"error": "locked"}), (201, {"status": "PENDING", "tx_id": "bad\nTX|id"})]:
+            port = Mock()
+            with patch("usb_bridge.forward", return_value=result), self.assertRaises(ValueError):
+                usb_bridge.send_pending(port, "http://localhost:8080", "test-token", Mock(),
+                                        "slab-01", 50000, "acct-999", "0-2-1-2-1")
+            port.write.assert_not_called()
+
+    def test_partial_serial_write_is_not_retried(self):
+        port = Mock()
+        port.write.return_value = 1
+        with patch("usb_bridge.forward", return_value=(201, {"status": "PENDING", "tx_id": "abc123"})):
+            with self.assertRaises(OSError):
+                usb_bridge.send_pending(port, "http://localhost:8080", "test-token", Mock(),
+                                        "slab-01", 50000, "acct-999", "0-2-1-2-1")
+        port.write.assert_called_once()
+
     def test_serial_timeouts_and_oversized_frames(self):
         port = Mock()
         chunks = [b"{"] + [b""] * 2 + [b"}", b"\n"]
@@ -76,7 +132,7 @@ class BridgeTest(unittest.TestCase):
         self.assertIsNone(usb_bridge.NoRedirects().redirect_request(None, None, 302, "", {}, "https://elsewhere/"))
 
     def test_missing_configuration_exits_before_opening_serial(self):
-        with patch.dict("os.environ", {}, clear=True), patch("usb_bridge.serial.Serial") as serial_port:
+        with patch.dict("os.environ", {}, clear=True), patch("usb_bridge.LOCAL_ENV", Path("missing.env")), patch("usb_bridge.serial.Serial") as serial_port:
             with contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(usb_bridge.main(), 2)
             serial_port.assert_not_called()

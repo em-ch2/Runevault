@@ -33,6 +33,7 @@ class DeviceAuthorizationTest {
  @Autowired ObjectMapper mapper;
  @Autowired TransactionRepository transactions;
  @Autowired DeviceStateRepository devices;
+ @Autowired AuditEventRepository auditEvents;
 
  private static String randomKey() {
   byte[] bytes = new byte[32];
@@ -48,6 +49,7 @@ class DeviceAuthorizationTest {
  }
 
  @BeforeEach void reset() {
+  auditEvents.deleteAll();
   transactions.deleteAll();
   devices.deleteAll();
  }
@@ -96,6 +98,11 @@ class DeviceAuthorizationTest {
    .andExpect(jsonPath("status").value("SIMULATED"));
   assertEquals(Transaction.Status.SIMULATED, transactions.findById(id).orElseThrow().getStatus());
   assertEquals(2, devices.findById("slab-01").orElseThrow().getLastCounter());
+  var event = auditEvents.findAll().get(0);
+  assertEquals(AuditEvent.Outcome.APPROVED, event.getOutcome());
+  assertEquals(AuditEvent.Reason.APPROVED, event.getReason());
+  assertEquals(id, event.getTransactionId());
+  assertNotNull(event.getTimestamp());
  }
 
  @Test void invalidSignatureDoesNotChangeDeviceOrTransaction() throws Exception {
@@ -107,6 +114,7 @@ class DeviceAuthorizationTest {
   assertEquals(0, device.getFailedAttempts());
   assertEquals(Transaction.Status.PENDING, transactions.findById(id).orElseThrow().getStatus());
   authorize(signed(id, 2, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  assertEquals(AuditEvent.Reason.INVALID_SIGNATURE, auditEvents.findAll().get(0).getReason());
  }
 
  @Test void counterReplayAndConsumedTransactionsAreRejected() throws Exception {
@@ -117,6 +125,9 @@ class DeviceAuthorizationTest {
   authorize(signed(next, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isConflict());
   authorize(signed(id, 3, 50000, "acct-999", GLYPHS)).andExpect(status().isConflict());
   authorize(signed(next, 4, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  assertEquals(5, auditEvents.count());
+  assertEquals(2, auditEvents.findAll().stream()
+   .filter(event -> event.getReason() == AuditEvent.Reason.COUNTER_REPLAY).count());
  }
 
  @Test void fifthWrongGlyphLocksDeviceAcrossTransactions() throws Exception {
@@ -131,6 +142,10 @@ class DeviceAuthorizationTest {
   assertEquals(5, device.getLastCounter());
   authorize(signed(other, 6, 50000, "acct-999", GLYPHS)).andExpect(status().is(423));
   assertEquals(Transaction.Status.PENDING, transactions.findById(id).orElseThrow().getStatus());
+  assertEquals(6, auditEvents.findAll().stream()
+   .filter(event -> event.getOutcome() == AuditEvent.Outcome.REJECTED).count());
+  assertEquals(2, auditEvents.findAll().stream()
+   .filter(event -> event.getReason() == AuditEvent.Reason.DEVICE_LOCKED).count());
  }
 
  @Test void wrongGlyphReplayDoesNotCountTwiceAndSuccessResetsAttempts() throws Exception {
@@ -148,6 +163,31 @@ class DeviceAuthorizationTest {
   authorize(signed(id, 2, 50000, "other", GLYPHS)).andExpect(status().isConflict());
   authorize(signed("missing", 3, 50000, "acct-999", GLYPHS)).andExpect(status().isConflict());
   assertEquals(Transaction.Status.PENDING, transactions.findById(id).orElseThrow().getStatus());
+  assertEquals(3, auditEvents.count());
+  assertTrue(auditEvents.findAll().stream()
+   .allMatch(event -> event.getReason() == AuditEvent.Reason.TRANSACTION_MISMATCH));
+ }
+
+ @Test void expiredTransactionIsAudited() throws Exception {
+  String id = pending();
+  var transaction = transactions.findById(id).orElseThrow();
+  var field = Transaction.class.getDeclaredField("expiresAt");
+  field.setAccessible(true);
+  field.set(transaction, java.time.Instant.now().minusSeconds(1));
+  transactions.saveAndFlush(transaction);
+  authorize(signed(id, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isConflict());
+  assertEquals(AuditEvent.Reason.TRANSACTION_EXPIRED, auditEvents.findAll().get(0).getReason());
+  assertEquals(1, devices.findById("slab-01").orElseThrow().getLastCounter());
+ }
+
+ @Test void auditNeverContainsSignatureOrConfiguredKey() throws Exception {
+  String id = pending();
+  var bad = new DeviceApi.Authorization(1, "slab-01", 1L, id, 50000L, "acct-999", GLYPHS, "0".repeat(64));
+  authorize(bad).andExpect(status().isUnauthorized());
+  var stored = mapper.writeValueAsString(auditEvents.findAll().get(0));
+  assertFalse(stored.contains(KEY));
+  assertFalse(stored.contains(TOKEN));
+  assertFalse(stored.contains(bad.sig()));
  }
 
  @Test void bridgeTokenRequiredOnBothEndpoints() throws Exception {
