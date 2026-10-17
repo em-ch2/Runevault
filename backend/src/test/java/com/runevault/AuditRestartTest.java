@@ -83,6 +83,8 @@ class AuditRestartTest {
    signed = new DeviceApi.Authorization(1, "slab-01", 1L, id, 50000L, "acct-999",
     "0-2-1-2-1", HexFormat.of().formatHex(mac.doFinal(text.getBytes(StandardCharsets.UTF_8))));
    assertEquals(200, service.authorize(signed).getStatusCode().value());
+   first.getBean(com.runevault.transactions.GeminiDecisionService.class)
+    .record(id, AuditEvent.Reason.GEMINI_APPROVED, null);
    var claim = first.getBean(com.runevault.transactions.TransactionService.class).claimPicoAuthorized(id);
    assertEquals(com.runevault.transactions.TransactionStatus.EXECUTING, claim.status());
   }
@@ -93,7 +95,7 @@ class AuditRestartTest {
    assertEquals(Transaction.Status.EXECUTING, saved.getStatus());
    assertNotNull(saved.getVerifiedAt());
    assertNotNull(saved.getExecutionClaimedAt());
-   assertEquals(3, second.getBean(AuditEventRepository.class).count());
+   assertEquals(4, second.getBean(AuditEventRepository.class).count());
    assertThrows(IllegalStateException.class, () -> second.getBean(
     com.runevault.transactions.TransactionService.class).claimPicoAuthorized(id));
   }

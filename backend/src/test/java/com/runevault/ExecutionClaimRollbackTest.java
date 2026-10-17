@@ -25,6 +25,7 @@ class ExecutionClaimRollbackTest {
  @Test void failedAuditWriteRollsBackClaimWithoutInvokingBank() {
   var transaction = Transaction.pending("rollback-claim", 50000, "acct-999", "slab-01", "0-2-1-2-1");
   transaction.verifyPhysicalApproval(Instant.now());
+  transaction.recordGeminiDecision(AuditEvent.Reason.GEMINI_APPROVED, null, Instant.now());
   transactions.saveAndFlush(transaction);
   doThrow(new IllegalStateException("audit write failed")).when(auditEvents).saveAndFlush(any(AuditEvent.class));
   assertThrows(IllegalStateException.class, () -> service.claimPicoAuthorized(transaction.getTransactionId()));

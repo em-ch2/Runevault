@@ -2,6 +2,10 @@
 
 Three-person hackathon starter. Read docs/protocol.md before changing messages.
 
+Team pipeline decision: `TransactionProcessor` is the single live orchestration path. Physical Pico verification commits first; Gemini must return valid JSON with `translation_confidence >= 0.8` and `risk_score <= 30` before the transaction can be claimed for Nessie sandbox banking. Gemini failure, timeout, malformed output, or a missing field blocks banking and records a fixed audit reason. Set `RUNEVAULT_MIN_TRANSLATION_CONFIDENCE` and `RUNEVAULT_MAX_RISK_SCORE` in `.env` to adjust the backend thresholds. An `EXECUTING` claim and an unknown bank outcome are never automatically retried. See [the internal handoff and event contracts](docs/events.md).
+
+Vultr is the planned hosting target and Tiger Data is the planned event destination; neither is provisioned by this branch. Person C's dashboard event contract is separate from the internal `VerifiedTransaction` handoff.
+
 | Owner | Files |
 | --- | --- |
 | A: hardware | hardware/, bridge/, docs/protocol.md |
@@ -48,7 +52,7 @@ The legacy challenge flow uses only a local fake bank adapter. The Angular dashb
 
 Normal `dev` and `auth` application profiles require Nessie sandbox banking. Set `NESSIE_ENABLED=true`, `NESSIE_API_KEY`, and `NESSIE_SOURCE_ACCOUNT_ID` (a Nessie account UUID) privately in `.env`; Compose reads `NESSIE_ENABLED` from that file. Set `RUNEVAULT_ALLOWED_DESTINATIONS` to the permitted Nessie destination account UUIDs for physical demo transactions. Missing banking configuration fails startup. The fake bank runs only in `test` or explicit hardware `simulator` profiles. No live Nessie request is made by the automated tests.
 
-After the Pico verifies a transaction, the backend claims it once and calls Nessie outside the claim transaction. A pending Nessie receipt becomes `BANK_PENDING`, a confirmed completion becomes `EXECUTED`, a definite rejection becomes `FAILED`, and an ambiguous submitted result becomes `OUTCOME_UNKNOWN`. The provider, receipt when available, status, fixed reason, and timestamps persist with a bank-outcome audit event. Pending and unknown outcomes are never marked completed or resent automatically. Operators must inspect Nessie and the audit history before manually resolving an unknown outcome; background reconciliation and retries are not implemented. Historical rows created by the older receipt-ID rule are reclassified conservatively without deleting data.
+After the Pico verifies a transaction, the backend validates and persists Gemini's decision, claims it once only if approved, and calls Nessie outside the claim transaction. A pending Nessie receipt becomes `BANK_PENDING`, a confirmed completion becomes `EXECUTED`, a definite rejection becomes `FAILED`, and an ambiguous submitted result becomes `OUTCOME_UNKNOWN`. The provider, receipt when available, status, fixed reason, and timestamps persist with a bank-outcome audit event. Pending and unknown outcomes are never marked completed or resent automatically. Operators must inspect Nessie and the audit history before manually resolving an unknown outcome; background reconciliation and retries are not implemented. Historical rows created by the older receipt-ID rule are reclassified conservatively without deleting data.
 
 Successful signed simulations are saved to PostgreSQL in the `transactions` table, with the challenge ID as transaction ID, the USD amount in minor units, destination, status, and creation/update timestamps. Compose starts PostgreSQL before the backend and retains records in the `postgres-data` volume across restarts. `docker compose down -v` deletes that data.
 

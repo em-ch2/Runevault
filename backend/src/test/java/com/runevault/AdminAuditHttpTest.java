@@ -30,6 +30,13 @@ class AdminAuditHttpTest {
   return get(path).with(jwt().authorities(new SimpleGrantedAuthority("PERM_admin:platform")));
  }
 
+ private AuditEvent at(AuditEvent event, Instant timestamp) throws Exception {
+  var field = AuditEvent.class.getDeclaredField("timestamp");
+  field.setAccessible(true);
+  field.set(event, timestamp);
+  return event;
+ }
+
  @Test void onlyAdminCanReadPagedNewestFirst() throws Exception {
   auditEvents.deleteAll();
   auditEvents.saveAndFlush(new AuditEvent("slab-01", "first", AuditEvent.Outcome.REJECTED, AuditEvent.Reason.INVALID_SIGNATURE));
@@ -52,12 +59,13 @@ class AdminAuditHttpTest {
 
  @Test void filtersAreCombinedBeforePaginationAndBoundariesAreInclusive() throws Exception {
   auditEvents.deleteAll();
-  var first = auditEvents.saveAndFlush(new AuditEvent(AuditEvent.Type.DEVICE_AUTHORIZATION,
-   "slab-01", "tx-one", AuditEvent.Outcome.REJECTED, AuditEvent.Reason.INVALID_SIGNATURE));
-  var second = auditEvents.saveAndFlush(new AuditEvent(AuditEvent.Type.DEVICE_AUTHORIZATION,
-   "slab-01", "tx-two", AuditEvent.Outcome.REJECTED, AuditEvent.Reason.COUNTER_REPLAY));
-  auditEvents.saveAndFlush(new AuditEvent(AuditEvent.Type.EXECUTION_CLAIM,
-   "slab-02", "tx-three", AuditEvent.Outcome.APPROVED, AuditEvent.Reason.EXECUTION_CLAIMED));
+  Instant base = Instant.parse("2026-01-01T00:00:00Z");
+  var first = auditEvents.saveAndFlush(at(new AuditEvent(AuditEvent.Type.DEVICE_AUTHORIZATION,
+   "slab-01", "tx-one", AuditEvent.Outcome.REJECTED, AuditEvent.Reason.INVALID_SIGNATURE), base));
+  var second = auditEvents.saveAndFlush(at(new AuditEvent(AuditEvent.Type.DEVICE_AUTHORIZATION,
+   "slab-01", "tx-two", AuditEvent.Outcome.REJECTED, AuditEvent.Reason.COUNTER_REPLAY), base.plusSeconds(1)));
+  auditEvents.saveAndFlush(at(new AuditEvent(AuditEvent.Type.EXECUTION_CLAIM,
+   "slab-02", "tx-three", AuditEvent.Outcome.APPROVED, AuditEvent.Reason.EXECUTION_CLAIMED), base.plusSeconds(2)));
   Instant boundary = auditEvents.findById(first.getId()).orElseThrow().getTimestamp();
   String at = boundary.toString();
   for (String filter : new String[] {"deviceId=slab-01", "transactionId=tx-one",

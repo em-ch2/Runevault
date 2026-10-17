@@ -40,6 +40,10 @@ public class Transaction {
  @Column(length = 64)
  private String promptVersion;
  private Instant auditedAt;
+ @Enumerated(EnumType.STRING)
+ @Column(length = 40)
+ private AuditEvent.Reason geminiDecisionReason;
+ private Instant geminiDecisionAt;
 
  @Column(length = 64)
  private String bankReceiptId;
@@ -95,6 +99,20 @@ public class Transaction {
  public String getAuditSource() { return auditSource; }
  public String getPromptVersion() { return promptVersion; }
  public Instant getAuditedAt() { return auditedAt; }
+ public AuditEvent.Reason getGeminiDecisionReason() { return geminiDecisionReason; }
+ public Instant getGeminiDecisionAt() { return geminiDecisionAt; }
+ public void recordGeminiDecision(AuditEvent.Reason reason, String json, Instant at) {
+  if (status != Status.VERIFIED || verifiedAt == null || geminiDecisionAt != null || reason == null || at == null)
+   throw new IllegalStateException("Gemini decision is not eligible");
+  geminiDecisionReason = reason;
+  geminiDecisionAt = at;
+  if (json != null) {
+   auditJson = json;
+   auditSource = "gemini";
+   promptVersion = com.runevault.lore.LoreAuditService.PROMPT_VERSION;
+   auditedAt = at;
+  }
+ }
  public String getBankReceiptId() { return bankReceiptId; }
  public String getBankStatus() { return bankStatus; }
  public String getBankProvider() { return bankProvider; }

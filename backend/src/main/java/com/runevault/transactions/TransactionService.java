@@ -52,6 +52,8 @@ public class TransactionService {
                 || !assignedDeviceId.equals(transaction.getDeviceId())
                 || transaction.getExpectedGlyphs() == null || transaction.getExpectedGlyphs().isBlank()
                 || transaction.getExecutionClaimedAt() != null
+                || transaction.getGeminiDecisionReason() != AuditEvent.Reason.GEMINI_APPROVED
+                || transaction.getGeminiDecisionAt() == null
                 || !"USD".equals(transaction.getCurrency())
                 || !policy.allowsAmount(transaction.getAmountMinor())
                 || !policy.allowsDestination(transaction.getDestination())) {

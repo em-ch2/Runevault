@@ -34,6 +34,8 @@ export interface TransactionRecord {
   bankOutcomeAt?: string | null;
   lore?: string | null;
   riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+  geminiDecisionReason?: 'GEMINI_APPROVED' | 'GEMINI_UNAVAILABLE' | 'GEMINI_INVALID_RESPONSE' | 'GEMINI_LOW_CONFIDENCE' | 'GEMINI_HIGH_RISK' | null;
+  geminiDecisionAt?: string | null;
 }
 
 interface TransactionPage {

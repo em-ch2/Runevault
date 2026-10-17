@@ -112,6 +112,19 @@ describe('Dashboard live transactions', () => {
     }
   });
 
+  it('shows a Gemini block after physical verification and stops polling', () => {
+    vi.useFakeTimers();
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'VERIFIED',
+      verifiedAt: new Date().toISOString(), geminiDecisionReason: 'GEMINI_LOW_CONFIDENCE' }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Gemini policy blocked transfer');
+    expect(fixture.nativeElement.textContent).toContain('GEMINI_LOW_CONFIDENCE');
+    vi.advanceTimersByTime(3000);
+    expect(api.list).toHaveBeenCalledTimes(1);
+    fixture.destroy();
+  });
+
   it('labels an expired pending authorization window and stops polling', () => {
     vi.useFakeTimers();
     api.list.mockReturnValue(of({ content: [{ ...pending,

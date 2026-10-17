@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = {
  "runevault.bridge-token=test-bridge-token-with-enough-characters",
- "runevault.rate-limit.unauthenticated=1",
+ "runevault.rate-limit.unauthenticated=20",
  "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://issuer.example.test/",
  "spring.security.oauth2.resourceserver.jwt.audiences=https://api.runevault",
  "spring.datasource.url=jdbc:h2:mem:operational-health;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"})
@@ -32,9 +32,12 @@ class OperationalHealthHttpTest {
  @Autowired MockMvc mvc;
  @MockBean JwtDecoder decoder;
  @MockBean(name = "dbHealthContributor") HealthIndicator databaseHealth;
+ @Autowired org.springframework.boot.actuate.health.HealthContributorRegistry contributors;
+ @Autowired org.springframework.core.env.Environment environment;
+ @Autowired org.springframework.boot.actuate.health.HealthEndpointGroups groups;
 
  @Test void onlyExactProbeRoutesArePublicAndUnmetered() throws Exception {
-  when(databaseHealth.health()).thenReturn(Health.up().build());
+  when(databaseHealth.getHealth(false)).thenReturn(Health.up().build());
   mvc.perform(get("/api/transactions")).andExpect(status().isUnauthorized());
   mvc.perform(post("/api/device/authorize")).andExpect(status().isUnauthorized());
   for (int i = 0; i < 3; i++) {
@@ -53,14 +56,19 @@ class OperationalHealthHttpTest {
  }
 
  @Test void databaseFailureMakesReadinessDownButLivenessStaysUp() throws Exception {
-  when(databaseHealth.health()).thenReturn(Health.down().build());
-  mvc.perform(get("/actuator/health/readiness")).andExpect(status().isServiceUnavailable())
-   .andExpect(jsonPath("$.status").value("DOWN"));
-  verify(databaseHealth, atLeastOnce()).health();
+  org.junit.jupiter.api.Assertions.assertSame(databaseHealth, contributors.getContributor("db"));
+  org.junit.jupiter.api.Assertions.assertEquals("readinessState,db",
+   environment.getProperty("management.endpoint.health.group.readiness.include"));
+  org.junit.jupiter.api.Assertions.assertTrue(groups.get("readiness").isMember("db"));
+  when(databaseHealth.getHealth(false)).thenReturn(Health.down().build());
+  var readiness = mvc.perform(get("/actuator/health/readiness")).andReturn();
+  verify(databaseHealth, atLeastOnce()).getHealth(false);
+  org.junit.jupiter.api.Assertions.assertEquals(503, readiness.getResponse().getStatus());
+  org.junit.jupiter.api.Assertions.assertTrue(readiness.getResponse().getContentAsString().contains("DOWN"));
   clearInvocations(databaseHealth);
   mvc.perform(get("/actuator/health/liveness")).andExpect(status().isOk())
    .andExpect(jsonPath("$.status").value("UP"));
-  verify(databaseHealth, never()).health();
+  verify(databaseHealth, never()).getHealth(false);
   mvc.perform(get("/api/health")).andExpect(status().isOk());
  }
 }

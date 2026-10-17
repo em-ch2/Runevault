@@ -77,8 +77,8 @@
         <div><dt>Created</dt><dd>{{ time(transaction.createdAt) }}</dd></div>
         @if (transaction.verifiedAt) { <div><dt>Verified</dt><dd>{{ time(transaction.verifiedAt) }}</dd></div> }
       </dl>
-      <p class="status" [class.status-wait]="transaction.status === 'VERIFIED' || transaction.status === 'EXECUTING' || transaction.status === 'BANK_PENDING' || (transaction.status === 'PENDING' && !approvalExpired(transaction))"
-        [class.status-bad]="transaction.status === 'FAILED' || transaction.status === 'OUTCOME_UNKNOWN' || (transaction.status === 'PENDING' && approvalExpired(transaction))"
+      <p class="status" [class.status-wait]="(transaction.status === 'VERIFIED' && (!transaction.geminiDecisionReason || transaction.geminiDecisionReason === 'GEMINI_APPROVED')) || transaction.status === 'EXECUTING' || transaction.status === 'BANK_PENDING' || (transaction.status === 'PENDING' && !approvalExpired(transaction))"
+        [class.status-bad]="transaction.status === 'FAILED' || transaction.status === 'OUTCOME_UNKNOWN' || (transaction.status === 'VERIFIED' && transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED') || (transaction.status === 'PENDING' && approvalExpired(transaction))"
         [class.status-good]="transaction.status === 'EXECUTED'"
         role="status">
         {{ transaction.status }} · {{ liveStatus(transaction) }}
@@ -88,6 +88,9 @@
           @if (transaction.bankOutcomeAt) { · updated {{ time(transaction.bankOutcomeAt) }} }
         </p>
       }
+      @if (transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED') {
+        <p class="muted small">Gemini policy: {{ transaction.geminiDecisionReason }}</p>
+      }
       @if (transaction.bankReceiptId) {
         <p class="muted small">Bank receipt <span class="mono">{{ transaction.bankReceiptId }}</span> · {{ transaction.bankStatus }}</p>
       }
@@ -95,7 +98,7 @@
         <blockquote class="lore-text">{{ transaction.lore }}</blockquote>
         @if (transaction.riskLevel) {
           <p class="muted small">
-            Gemini risk note (advisory only):
+            Gemini risk assessment:
             <span [class]="'risk risk-' + transaction.riskLevel.toLowerCase()">{{ transaction.riskLevel }}</span>
           </p>
         }

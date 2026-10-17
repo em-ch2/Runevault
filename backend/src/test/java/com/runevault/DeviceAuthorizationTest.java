@@ -84,6 +84,11 @@ class DeviceAuthorizationTest {
   return mvc.perform(post("/api/device/authorize").header("X-Bridge-Token", TOKEN)
    .contentType("application/json").content(mapper.writeValueAsString(request)));
  }
+ private void markGeminiApproved(String id) {
+  var transaction = transactions.findById(id).orElseThrow();
+  transaction.recordGeminiDecision(AuditEvent.Reason.GEMINI_APPROVED, null, java.time.Instant.now());
+  transactions.saveAndFlush(transaction);
+ }
 
  @Test void exactCanonicalFormat() {
   var request = new DeviceApi.Authorization(1, "slab-01", 2L, "abc123", 50000L, "acct-999", GLYPHS, "0".repeat(64));
@@ -118,6 +123,7 @@ class DeviceAuthorizationTest {
  @Test void revocationRejectsPendingCreationAuthorizationAndPriorVerifiedClaim() throws Exception {
   String verifiedId = pending();
   authorize(signed(verifiedId, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  markGeminiApproved(verifiedId);
   String pendingId = pending();
   revocations.revoke("slab-01", "auth0|admin");
   mvc.perform(post("/api/device/transactions").header("X-Bridge-Token", TOKEN)
@@ -178,6 +184,7 @@ class DeviceAuthorizationTest {
   String id = pending();
   assertThrows(IllegalStateException.class, () -> transactionService.claimPicoAuthorized(id));
   authorize(signed(id, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  markGeminiApproved(id);
   var details = transactionService.claimPicoAuthorized(id);
   assertEquals(id, details.id());
   assertEquals(50000L, details.amountMinor());
@@ -209,6 +216,7 @@ class DeviceAuthorizationTest {
  @Test void concurrentExecutionClaimsHaveOneWinner() throws Exception {
   String id = pending();
   authorize(signed(id, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  markGeminiApproved(id);
   var start = new CountDownLatch(1);
   try (var workers = Executors.newFixedThreadPool(2)) {
    java.util.concurrent.Callable<Boolean> claim = () -> {
@@ -228,6 +236,7 @@ class DeviceAuthorizationTest {
  @Test void revocationAndClaimSerializeOnDeviceRow() throws Exception {
   String id = pending();
   authorize(signed(id, 1, 50000, "acct-999", GLYPHS)).andExpect(status().isOk());
+  markGeminiApproved(id);
   var start = new CountDownLatch(1);
   boolean claimed;
   try (var workers = Executors.newFixedThreadPool(2)) {
