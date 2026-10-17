@@ -26,7 +26,7 @@ import java.util.regex.Pattern;
 public class NessieBankGateway implements BankGateway {
 
     private static final Logger log = LoggerFactory.getLogger(NessieBankGateway.class);
-    private static final Pattern ACCOUNT_ID = Pattern.compile("[0-9a-f]{24}");
+    private static final Pattern ACCOUNT_ID = Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
@@ -51,7 +51,7 @@ public class NessieBankGateway implements BankGateway {
             return failed(transactionId, amountMinor, currency, destination, "FAILED_UNSUPPORTED_CURRENCY");
         }
 
-        // destination is the Nessie payee account id (24 hex chars)
+        // destination is the Nessie payee account id (UUID)
         String payeeId = destination;
         if (!ACCOUNT_ID.matcher(payeeId).matches()) {
             return failed(transactionId, amountMinor, currency, destination, "FAILED_UNKNOWN_DESTINATION");
@@ -67,11 +67,15 @@ public class NessieBankGateway implements BankGateway {
             }
 
             ObjectNode body = mapper.createObjectNode();
-            body.put("medium", "balance");
-            body.put("payee_id", payeeId);
-            body.put("amount", amount);
+            body.put("status", "pending");
+            if (amount.stripTrailingZeros().scale() <= 0) {
+                body.put("amount", amount.longValueExact()); // whole dollars as an integer
+            } else {
+                body.put("amount", amount);
+            }
             body.put("transaction_date", LocalDate.now().toString());
-            body.put("description", "runevault:" + transactionId); // traces back to our record
+            // Nessie's create call has no payee field, so keep the trace in the description
+            body.put("description", "runevault:" + transactionId + " to " + payeeId);
 
             JsonNode created = unwrap(post("/accounts/" + sourceAccountId + "/transfers", body));
             String receiptId = created.path("_id").asText(null);
@@ -89,7 +93,7 @@ public class NessieBankGateway implements BankGateway {
                     currency,
                     destination);
         } catch (NessieException e) {
-            log.error("Nessie rejected transfer for transaction {}: HTTP {}", transactionId, e.status);
+            log.error("Nessie rejected transfer for transaction {}: HTTP {} {}", transactionId, e.status, e.body);
             return failed(transactionId, amountMinor, currency, destination, "FAILED_BANK_ERROR");
         } catch (IOException e) {
             log.error("Nessie unreachable for transaction {}", transactionId, e);
@@ -129,7 +133,7 @@ public class NessieBankGateway implements BankGateway {
     private JsonNode send(HttpRequest req) throws IOException, InterruptedException {
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() / 100 != 2) {
-            throw new NessieException(resp.statusCode());
+            throw new NessieException(resp.statusCode(), resp.body());
         }
         return mapper.readTree(resp.body());
     }
@@ -140,10 +144,12 @@ public class NessieBankGateway implements BankGateway {
 
     private static class NessieException extends RuntimeException {
         final int status;
+        final String body;
 
-        NessieException(int status) {
+        NessieException(int status, String body) {
             super("Nessie returned HTTP " + status);
             this.status = status;
+            this.body = body;
         }
     }
 }

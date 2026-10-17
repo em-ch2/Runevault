@@ -1,0 +1,13 @@
+node_modules
+dist
+.angular
+.cache
+coverage
+*.log
+npm-debug.log*
+.env
+.env.*
+*.pem
+*.key
+.git
+.vscode

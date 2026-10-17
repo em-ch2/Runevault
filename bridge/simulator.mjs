@@ -7,7 +7,8 @@ async function post(path, body) {
  return response.json();
 }
 try {
- const c = await post('challenges', {deviceId:'pico-demo-1',amountMinor:2500,destination:'demo-harbor',glyphs:'ABCD'});
+ const c = await post('challenges', {deviceId:'pico-demo-1',amountMinor:2500,destination:'harbor',glyphs:'ABCD'});
+ if (c.mode !== 'simulator') throw new Error('Simulator profile is not active');
  const signature = createHmac('sha256',secret).update(c.signingText,'utf8').digest('hex');
  console.log(JSON.stringify(await post('approvals',{challengeId:c.challengeId,signature}),null,2));
 } catch(error) { console.error(error.message); process.exitCode = 1; }

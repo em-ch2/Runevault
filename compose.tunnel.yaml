@@ -1,0 +1,8 @@
+# Optional temporary HTTPS endpoint for a remote Python USB bridge.
+# Run with: docker compose -f compose.yaml -f compose.tunnel.yaml up tunnel
+services:
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: ["tunnel", "--no-autoupdate", "--url", "http://backend:8080"]
+    depends_on:
+      - backend

@@ -9,39 +9,55 @@ import org.springframework.test.context.ActiveProfiles;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties={"runevault.bridge-token=test-bridge-token-with-enough-characters", "runevault.requests-per-minute=1000"})
+@SpringBootTest(properties={"runevault.bridge-token=test-bridge-token-with-enough-characters"})
 @AutoConfigureMockMvc
-@ActiveProfiles({"dev", "test"})
+@ActiveProfiles({"dev", "simulator", "test"})
 class SecurityHttpTest {
+ @org.springframework.boot.test.context.TestConfiguration
+ static class OtherBankConfiguration {
+  @org.springframework.context.annotation.Bean("otherBankGateway")
+  @org.springframework.context.annotation.Primary
+  com.runevault.banking.BankGateway otherBankGateway() {
+   return org.mockito.Mockito.mock(com.runevault.banking.BankGateway.class);
+  }
+ }
  @Autowired MockMvc mvc;
+ @Autowired @org.springframework.beans.factory.annotation.Qualifier("otherBankGateway")
+ com.runevault.banking.BankGateway otherBankGateway;
  @Autowired TransactionRepository transactions;
  @Autowired com.fasterxml.jackson.databind.ObjectMapper mapper;
  @org.springframework.beans.factory.annotation.Value("${runevault.device-secret}") String deviceSecret;
+ @Autowired com.runevault.transactions.TransactionService executionClaims;
  @Test void approvedSimulationIsPersistedAndReplayRejected() throws Exception {
   String token = "test-bridge-token-with-enough-characters";
   var result = mvc.perform(post("/api/challenges").header("X-Bridge-Token", token)
    .contentType("application/json").content("""
-    {"deviceId":"pico-demo-1","amountMinor":2500,"destination":"5a1b0e4e4f52360490000002","glyphs":"0-1-2"}
+    {"deviceId":"pico-demo-1","amountMinor":2500,"destination":"5a1b0e4e-4f52-4360-9000-000000000002","glyphs":"0-1-2"}
     """)).andExpect(status().isOk()).andReturn();
   var challenge = mapper.readTree(result.getResponse().getContentAsString());
+  org.junit.jupiter.api.Assertions.assertEquals("simulator", challenge.get("mode").asText());
   String id = challenge.get("challengeId").asText();
   var mac = javax.crypto.Mac.getInstance("HmacSHA256");
   mac.init(new javax.crypto.spec.SecretKeySpec(deviceSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
   String signature = java.util.HexFormat.of().formatHex(mac.doFinal(challenge.get("signingText").asText().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
   String body = mapper.writeValueAsString(new TransactionApi.Approval(id, signature));
   mvc.perform(post("/api/approvals").header("X-Bridge-Token", token).contentType("application/json").content(body))
-   .andExpect(status().isOk()).andExpect(jsonPath("transactionId").value(id));
+   .andExpect(status().isOk()).andExpect(jsonPath("transactionId").value(id))
+   .andExpect(jsonPath("mode").value("simulator")).andExpect(jsonPath("status").value("SIMULATED"));
   var saved = transactions.findById(id).orElseThrow();
   org.junit.jupiter.api.Assertions.assertEquals(2500, saved.getAmountMinor());
-  org.junit.jupiter.api.Assertions.assertEquals("5a1b0e4e4f52360490000002", saved.getDestination());
+  org.junit.jupiter.api.Assertions.assertEquals("5a1b0e4e-4f52-4360-9000-000000000002", saved.getDestination());
   org.junit.jupiter.api.Assertions.assertEquals(Transaction.Status.SIMULATED, saved.getStatus());
+  org.junit.jupiter.api.Assertions.assertNull(saved.getVerifiedAt());
+  org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> executionClaims.claimPicoAuthorized(id));
   org.junit.jupiter.api.Assertions.assertNotNull(saved.getCreatedAt());
   org.junit.jupiter.api.Assertions.assertNotNull(saved.getUpdatedAt());
+  org.mockito.Mockito.verifyNoInteractions(otherBankGateway);
   mvc.perform(post("/api/approvals").header("X-Bridge-Token", token).contentType("application/json").content(body))
    .andExpect(status().isConflict());
  }
  @Test void healthIsPublic() throws Exception {
-  mvc.perform(get("/api/health")).andExpect(status().isOk());
+  mvc.perform(get("/api/health")).andExpect(status().isOk()).andExpect(jsonPath("status").value("ok"));
  }
  @Test void bridgeCredentialRequired() throws Exception {
   mvc.perform(post("/api/challenges").contentType("application/json").content("{}"))
@@ -55,7 +71,7 @@ class SecurityHttpTest {
  @Test void bridgeCanCreateChallenge() throws Exception {
   mvc.perform(post("/api/challenges").header("X-Bridge-Token","test-bridge-token-with-enough-characters")
    .contentType("application/json").content("""
-    {"deviceId":"pico-demo-1","amountMinor":2500,"destination":"5a1b0e4e4f52360490000002","glyphs":"0-1-2"}
+    {"deviceId":"pico-demo-1","amountMinor":2500,"destination":"5a1b0e4e-4f52-4360-9000-000000000002","glyphs":"0-1-2"}
     """))
    .andExpect(status().isOk()).andExpect(jsonPath("challengeId").isNotEmpty());
  }

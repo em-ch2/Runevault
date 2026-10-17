@@ -26,10 +26,10 @@ public class DashboardTransactionApi {
  }
 
  public record TransactionView(String transactionId, long amountMinor, String destination,
-   Transaction.Status status, Instant createdAt, String requesterSubject) {
+   Transaction.Status status, Instant createdAt, Instant verifiedAt, String requesterSubject) {
   TransactionView(Transaction transaction) {
    this(transaction.getTransactionId(), transaction.getAmountMinor(), transaction.getDestination(),
-    transaction.getStatus(), transaction.getCreatedAt(), transaction.getRequesterSubject());
+    transaction.getStatus(), transaction.getCreatedAt(), transaction.getVerifiedAt(), transaction.getRequesterSubject());
   }
  }
 

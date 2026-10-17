@@ -10,7 +10,8 @@ import { INITIAL_STATE, TransferStore } from './transfer-store';
 
 describe('Dashboard live transactions', () => {
   const pending = { transactionId: 'abc123', amountMinor: 50000, destination: 'acct-999',
-    status: 'PENDING' as const, createdAt: new Date().toISOString(), requesterSubject: 'auth0|user' };
+    status: 'PENDING' as const, createdAt: new Date().toISOString(), verifiedAt: null,
+    requesterSubject: 'auth0|user' };
   const api = { create: vi.fn(), list: vi.fn() };
 
   afterEach(() => vi.useRealTimers());
@@ -46,17 +47,36 @@ describe('Dashboard live transactions', () => {
 
   it('polls pending status and stops once the backend reports authorization', () => {
     vi.useFakeTimers();
+    const verifiedAt = new Date().toISOString();
     api.list.mockReturnValueOnce(of({ content: [pending] }))
-      .mockReturnValueOnce(of({ content: [{ ...pending, status: 'SIMULATED' }] }));
+      .mockReturnValueOnce(of({ content: [{ ...pending, status: 'VERIFIED', verifiedAt }] }));
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
     expect(api.list).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(3000);
     fixture.detectChanges();
     expect(api.list).toHaveBeenCalledTimes(2);
-    expect(fixture.nativeElement.textContent).toContain('SIMULATED');
+    expect(fixture.nativeElement.textContent).toContain('Physical approval verified');
+    expect(fixture.nativeElement.textContent).not.toContain('Funds transferred');
     vi.advanceTimersByTime(3000);
     expect(api.list).toHaveBeenCalledTimes(2);
+    fixture.destroy();
+  });
+
+  it('does not label historical simulations as physical approvals', () => {
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'SIMULATED' }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Legacy simulation; physical approval unverified');
+    fixture.destroy();
+  });
+
+  it('shows an execution claim without claiming funds were transferred', () => {
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'EXECUTING', verifiedAt: new Date().toISOString() }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Execution claimed; processing pending');
+    expect(fixture.nativeElement.textContent).not.toContain('Funds transferred');
     fixture.destroy();
   });
 

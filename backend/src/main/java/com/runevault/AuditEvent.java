@@ -24,24 +24,37 @@ public class AuditEvent {
  @Enumerated(EnumType.STRING)
  @Column(nullable = false, updatable = false, length = 40)
  private Reason reason;
+ @Column(updatable = false, length = 255)
+ private String actorSubject;
 
- public enum Type { DEVICE_AUTHORIZATION }
+ public enum Type { DEVICE_AUTHORIZATION, TRANSACTION_CREATION, EXECUTION_CLAIM, DEVICE_REVOCATION }
  public enum Outcome { APPROVED, REJECTED }
  public enum Reason {
   APPROVED, UNKNOWN_DEVICE, INVALID_SIGNATURE, NO_PENDING_DEVICE_TRANSACTION,
   COUNTER_REPLAY, TRANSACTION_EXPIRED, TRANSACTION_MISMATCH,
-  INCORRECT_GLYPHS, DEVICE_LOCKED
+  INCORRECT_GLYPHS, DEVICE_LOCKED, AMOUNT_LIMIT_EXCEEDED, DESTINATION_NOT_ALLOWED,
+  EXECUTION_CLAIMED, EXECUTION_INELIGIBLE, DEVICE_REVOKED, REVOKED_BY_ADMIN
  }
 
  protected AuditEvent() {}
 
  public AuditEvent(String deviceId, String transactionId, Outcome outcome, Reason reason) {
+  this(Type.DEVICE_AUTHORIZATION, deviceId, transactionId, outcome, reason);
+ }
+
+ public AuditEvent(Type type, String deviceId, String transactionId, Outcome outcome, Reason reason) {
   timestamp = Instant.now();
-  eventType = Type.DEVICE_AUTHORIZATION;
+  eventType = type;
   this.deviceId = deviceId;
   this.transactionId = transactionId;
   this.outcome = outcome;
   this.reason = reason;
+ }
+
+ public AuditEvent(Type type, String deviceId, String transactionId, Outcome outcome, Reason reason,
+   String actorSubject) {
+  this(type, deviceId, transactionId, outcome, reason);
+  this.actorSubject = actorSubject;
  }
 
  public Long getId() { return id; }
@@ -51,4 +64,5 @@ public class AuditEvent {
  public String getTransactionId() { return transactionId; }
  public Outcome getOutcome() { return outcome; }
  public Reason getReason() { return reason; }
+ public String getActorSubject() { return actorSubject; }
 }

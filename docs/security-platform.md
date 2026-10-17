@@ -1,7 +1,23 @@
 # Security platform: first implementation
 
 ## Profiles
-- Default `dev`: bridge token required on challenge/approval endpoints; health public; other endpoints denied.
+
+## Device revocation
+
+An Auth0 access token with `admin:platform` may call `POST /api/admin/devices/{deviceId}/revoke` with no request body. The backend takes the administrator identity from the verified token's `sub` claim. The response contains `deviceId`, `revoked: true`, and `revokedAt`; repeating the call returns the original timestamp and creates no duplicate revocation event. An unregistered device returns 404. Revocation retains device counters, transactions, and audit history. It blocks new pending transactions, physical authorizations, and future execution claims, including claims on earlier `VERIFIED` transactions. It cannot undo an `EXECUTING` transfer already in progress.
+
+In PowerShell, with an administrator **access token** for audience `https://api.runevault` already obtained:
+
+```powershell
+$adminToken = '<ADMIN_ACCESS_TOKEN>'
+$headers = @{ Authorization = "Bearer $adminToken" }
+Invoke-RestMethod -Method Post -Uri 'http://localhost:8080/api/admin/devices/slab-01/revoke' -Headers $headers
+Invoke-RestMethod -Method Get -Uri 'http://localhost:8080/api/admin/audit-events?page=0&size=20' -Headers $headers
+```
+
+Use a non-admin token to confirm the POST returns 403, or omit the token to confirm 401. Revocation events record the JWT subject and fixed `REVOKED_BY_ADMIN` reason; denied pending creation, authorization, and execution claims use fixed reasons without credentials or signatures. There is no reactivation endpoint in this milestone.
+- Default `dev`: health and Pico bridge endpoints available; legacy challenge/approval routes unavailable.
+- Explicit `dev,simulator`: enables legacy challenge/approval routes with a bridge token and the fake bank adapter only. It cannot be combined with `auth`.
 - `auth`: same bridge gate plus Auth0 JWT validation for dashboard API routes. Admin status requires `admin:platform` permission. Set SPRING_PROFILES_ACTIVE=auth, AUTH0_ISSUER_URI (HTTPS issuer with trailing slash), AUTH0_AUDIENCE, RUNEVAULT_BRIDGE_TOKEN (random 32+ bytes), and RUNEVAULT_DEVICE_SECRET.
 - `prod`: deliberately refuses startup. Persistent replay and execution storage are not ready. Do not bypass this guard to deploy real transfers.
 
@@ -11,11 +27,11 @@ Set `AUTH0_ISSUER_URI=https://<tenant>.auth0.com/` (the exact Auth0 issuer, incl
 
 Dashboard `POST /api/transactions` requires `create:transactions` and accepts `{ "device": "slab-01", "amount": 50000, "dest": "acct-999", "glyphs": "0-2-1-2-1" }`. It creates a pending Pico transaction. `GET /api/transactions?page=0&size=20` requires `read:transactions` and lists newest first. The persisted requester identity comes from the verified access token's `sub` claim; a request-body identity is ignored. `GET /api/admin/audit-events` and `GET /api/admin/status` require `admin:platform`. The existing `/api/device/transactions` and `/api/device/authorize` routes continue to use `X-Bridge-Token` independently of dashboard JWT permissions.
 
-GET /api/admin/status requires an Auth0 access token with permissions=["admin:platform"]. The bridge credential cannot access admin routes. Challenge/approval endpoints require X-Bridge-Token, even in dev. Never put that token in the browser. Bridge credential and device HMAC secret are distinct.
+GET /api/admin/status requires an Auth0 access token with permissions=["admin:platform"]. The bridge credential cannot access admin routes. Legacy challenge/approval endpoints exist only with `dev,simulator` and require `X-Bridge-Token`. Never put that token in the browser. Bridge credential and device HMAC secret are distinct.
 
 GET /api/admin/audit-events requires the same Auth0 `admin:platform` permission. It returns Spring Data pagination metadata and audit records newest first; `page` defaults to 0 and `size` to 20 (maximum 100). For example, `/api/admin/audit-events?page=0&size=20`. Device authorization attempts store timestamp, event type, device ID, transaction ID, outcome, and a fixed reason code in PostgreSQL. Rejected attempts are committed, including invalid signatures, counter replays, expired/mismatched transactions, wrong glyphs, and locked-device attempts. Request bodies, signatures, HMAC keys, and bridge tokens are not stored in these records. No public audit read or unlock route exists.
 
-Current rate limiter is a configurable process-wide fixed window: RUNEVAULT_REQUESTS_PER_MINUTE (default 120), with HTTP 429 and Retry-After. Health is exempt. A noisy client can exhaust this shared quota; replace with gateway/per-principal limits before public deployment. Do not trust forwarded client-IP headers without a configured trusted proxy.
+Request limits use separate fixed-window quotas. `RUNEVAULT_RATE_WINDOW_SECONDS` sets the window (default 60 seconds), and `RUNEVAULT_RATE_MAX_ENTRIES` bounds each quota map (default 10000 identities). The per-window quotas are `RUNEVAULT_DASHBOARD_READS_PER_WINDOW` (300, per verified JWT `sub`), `RUNEVAULT_TRANSACTION_CREATION_PER_WINDOW` (60, per verified user or authenticated bridge identity), `RUNEVAULT_BRIDGE_AUTHORIZATIONS_PER_WINDOW` (120, bridge identity), `RUNEVAULT_BRIDGE_OTHER_PER_WINDOW` (120, bridge lookups and lore), `RUNEVAULT_ADMIN_OPERATIONS_PER_WINDOW` (60, per verified admin `sub`), and `RUNEVAULT_UNAUTHENTICATED_PER_WINDOW` (60, per direct client address). Expired entries are removed and capacity is bounded; requests over quota receive HTTP 429 with `Retry-After`. Health is exempt. Forwarded-IP headers are ignored, so a trusted reverse proxy would need explicit configuration before its client addresses could be used. These in-memory quotas apply **per backend instance**, not globally across replicas. The former process-wide `RUNEVAULT_REQUESTS_PER_MINUTE` setting is no longer used.
 
 ## Next B tasks
 1. Flyway migrations and production-grade tables: devices (key version, revoked, organization), challenges (bound intent, expiry, consumed), transactions (unique challenge, state, version), audit_events (actor/identity). The demo currently relies on Hibernate schema updates.
