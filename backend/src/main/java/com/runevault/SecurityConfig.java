@@ -49,12 +49,14 @@ public class SecurityConfig {
   http.authorizeHttpRequests(a -> {
    a.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll();
    a.requestMatchers(HttpMethod.GET, "/api/health", "/actuator/health/liveness", "/actuator/health/readiness").permitAll();
+   a.requestMatchers(HttpMethod.GET, "/ws/transfers").permitAll();
    // Bridge requests have their own credential, checked by Gate before authorization.
    if (simulator) a.requestMatchers("/api/challenges", "/api/approvals").permitAll();
    a.requestMatchers("/api/device/authorize", "/api/device/transactions", "/api/device/transactions/*", "/api/device/pending", "/api/lore/*").permitAll();
    if (auth) {
     a.requestMatchers(HttpMethod.POST, "/api/transactions").hasAuthority("PERM_create:transactions");
     a.requestMatchers(HttpMethod.GET, "/api/transactions").hasAuthority("PERM_read:transactions");
+    a.requestMatchers(HttpMethod.POST, "/api/ws-ticket").hasAuthority("PERM_read:transactions");
    }
    if (auth) a.requestMatchers("/api/admin/**").hasAuthority("PERM_admin:platform").anyRequest().denyAll();
    else a.anyRequest().denyAll();
@@ -132,10 +134,16 @@ public class SecurityConfig {
      && jwt.getSubject() != null && !jwt.getSubject().isBlank()) {
     RequestQuotaLimiter.Category category = path.startsWith("/api/admin/")
      ? RequestQuotaLimiter.Category.ADMIN
+     : path.equals("/api/ws-ticket") && request.getMethod().equals("POST")
+     ? RequestQuotaLimiter.Category.WS_TICKET
      : path.equals("/api/transactions") && request.getMethod().equals("GET")
      ? RequestQuotaLimiter.Category.DASHBOARD_READ
      : path.equals("/api/transactions") && request.getMethod().equals("POST")
      ? RequestQuotaLimiter.Category.TRANSACTION_CREATION : null;
+    // Issuance quota counts eligible ticket requests, not permission-denied attempts.
+    if (category == RequestQuotaLimiter.Category.WS_TICKET
+      && authentication.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("PERM_read:transactions")))
+     category = null;
     if (category != null) {
      int retry = limiter.retryAfter(category, "user:" + jwt.getSubject());
      if (retry != 0) {

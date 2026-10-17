@@ -1,0 +1,25 @@
+# No HTTP access log: requests may contain credentials or sensitive query strings.
+
+http://{$RUNEVAULT_DOMAIN} {
+	redir https://{$RUNEVAULT_DOMAIN}{uri} permanent
+}
+
+{$RUNEVAULT_DOMAIN} {
+	@actuator path /actuator /actuator/*
+	respond @actuator 404
+
+	# Caddy forwards the WebSocket upgrade without logging the ticket subprotocol.
+	@transfers path /ws/transfers /ws/transfers/*
+	handle @transfers {
+		reverse_proxy backend:8080
+	}
+
+	@api path /api/*
+	handle @api {
+		reverse_proxy backend:8080
+	}
+
+	handle {
+		reverse_proxy frontend:80
+	}
+}
