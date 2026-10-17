@@ -17,7 +17,8 @@ Start in PowerShell: install Docker Desktop, copy `.env.example` to `.env`, fill
 ```powershell
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
 # Edit .env: set a strong RUNEVAULT_BRIDGE_TOKEN, Auth0 issuer/audience,
-# PostgreSQL password, Pico key, and Nessie API key/source account ID.
+# PostgreSQL password, Pico key, Gemini key, Nessie key/source account ID,
+# and allowed Nessie destination account UUIDs.
 docker compose up -d --build
 ```
 
@@ -58,13 +59,13 @@ Successful signed simulations are saved to PostgreSQL in the `transactions` tabl
 
 Set `POSTGRES_PASSWORD` in `.env` before the first startup. For a backend running outside Compose, start the database with `docker compose up -d postgres`, and set `SPRING_DATASOURCE_PASSWORD` to the same password. The default JDBC URL is `jdbc:postgresql://localhost:5432/runevault` with username `runevault`; override with `SPRING_DATASOURCE_URL` and `SPRING_DATASOURCE_USERNAME` as needed. PostgreSQL initialization credentials apply only when the data volume is first created.
 
-Hibernate updates the local demo schema automatically. Tests use an isolated H2 database in PostgreSQL compatibility mode and do not require a running database. Simulator challenges remain in memory and are available only under `dev,simulator`; persisting simulation receipts does not implement durable challenge/replay storage or production schema migrations.
+Flyway applies versioned PostgreSQL migrations before Hibernate validates the local or cloud application schema. See [the migration and existing-data procedure](docs/database-migrations.md) before connecting an existing database. H2 unit tests remain isolated; the PostgreSQL migration integration test needs Docker. Simulator challenges remain in memory and are available only under `dev,simulator`.
 
-Local Java builds require Java 25 and Maven 3.9+: `mvn -f backend/pom.xml verify`. Your installed Java 8 cannot build this project. Docker builds use Java 25.
+Local Java builds require Java 25 and Maven 3.9+: `mvn -f backend/pom.xml verify`. Docker builds use Java 25. The CI workflow runs Maven verification, Maven dependency scanning, npm audit, and frontend checks; Maven scanning requires the private `NVD_API_KEY` repository secret.
 
 Use small branches such as codex/a-firmware, codex/b-auth0, codex/c-gemini. Keep secrets out of Git. See docs/roadmap.md.
 
-Security foundation and Auth0 setup: [docs/security-platform.md](docs/security-platform.md). Default dev now requires the bridge credential; the simulator supplies it. The auth profile validates JWTs; production remains blocked pending durable storage.
+Security foundation and Auth0 setup: [docs/security-platform.md](docs/security-platform.md). Default dev requires the bridge credential; the simulator supplies it. The auth profile validates JWTs. The cloud sandbox deployment procedure is in [infra/README.md](infra/README.md); `prod` remains deliberately blocked for real-money banking.
 
 For the transaction demo, set `RUNEVAULT_MAX_AMOUNT_MINOR` (positive integer cents, at most 100000000), `RUNEVAULT_ALLOWED_DESTINATIONS` (comma-separated account IDs such as `acct-999,harbor`), and `RUNEVAULT_MAX_INCORRECT_GLYPH_ATTEMPTS` (positive integer) in `.env`. The defaults are 100000000 cents, `acct-999,harbor`, and five attempts. The amount and destination policy applies to dashboard and bridge pending-transaction creation and the older bridge challenge route. It is checked again after a valid signature, before approval. Policy rejections are audited with fixed reason codes; rejected creation does not save a transaction. Change these settings and restart the backend to apply them.
 

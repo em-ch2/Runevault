@@ -14,6 +14,32 @@ jobs:
           cache: maven
           cache-dependency-path: backend/pom.xml
       - run: mvn -B -f backend/pom.xml verify
+      - name: Require PostgreSQL migration integration tests
+        run: |
+          report=backend/target/surefire-reports/com.runevault.PostgresMigrationTest.txt
+          test -f "$report"
+          grep -q 'Tests run: 2, Failures: 0, Errors: 0, Skipped: 0' "$report"
+          bootstrap=backend/target/surefire-reports/com.runevault.PostgresBootstrapSpringTest.txt
+          test -f "$bootstrap"
+          grep -q 'Tests run: 1, Failures: 0, Errors: 0, Skipped: 0' "$bootstrap"
+      - name: Generate resolved Maven dependency inventory
+        run: mvn -B -f backend/pom.xml org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeBom
+      - name: Scan Maven dependencies without a private API key
+        continue-on-error: true # Exit 1 means findings; the next step still requires a valid report.
+        run: |
+          docker run --rm -v "$PWD/backend/target:/scan:ro" \
+            ghcr.io/google/osv-scanner:v2.6.0 scan source \
+            --lockfile=/scan/bom.json --format=json > backend/target/osv-results.json
+      - name: Require a completed dependency scan
+        run: |
+          test -s backend/target/osv-results.json
+          jq -e '.results | type == "array"' backend/target/osv-results.json >/dev/null
+          jq -r '[.results[].packages[].vulnerabilities[].id] | unique | .[]' backend/target/osv-results.json
+      - name: Save backend vulnerability report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-vulnerability-report
+          path: backend/target/osv-results.json
       - run: node --check bridge/simulator.mjs
   frontend:
     runs-on: ubuntu-latest
@@ -28,5 +54,20 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm run build
       - run: npx ng test --watch=false
+  cloud-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate cloud Compose and published ports without revealing resolved environment
+        run: |
+          docker compose --env-file .env.cloud.example -f compose.cloud.yaml config --quiet
+          docker compose --env-file .env.cloud.example -f compose.cloud.yaml config --format json |
+            jq -e '(.services.backend.ports // []) == [] and (.services.frontend.ports // []) == [] and (.services.caddy.ports | length) == 2' >/dev/null
+      - name: Validate Caddy routing syntax
+        run: |
+          docker run --rm -e RUNEVAULT_DOMAIN=example.invalid \
+            -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2.10.2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
