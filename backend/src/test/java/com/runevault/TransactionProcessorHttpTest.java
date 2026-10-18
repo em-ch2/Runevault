@@ -64,7 +64,7 @@ class TransactionProcessorHttpTest {
  }
 
  private void ai(String confidence, String risk) throws Exception {
-  when(lore.audit(anyString(), anyString(), anyLong(), anyString()))
+  when(lore.audit(any(Transaction.class), anyString()))
    .thenReturn(mapper.readTree("""
     {"lore_translation":"Safe passage.","translation_confidence":%s,"risk_score":%s,
      "risk_flags":[],"risk_explanation":"Routine.","security_message":"Looks routine."}
@@ -119,7 +119,7 @@ class TransactionProcessorHttpTest {
  }
 
  @Test void geminiFailureAndMissingFieldsBlockBanking() throws Exception {
-  when(lore.audit(anyString(), anyString(), anyLong(), anyString()))
+  when(lore.audit(any(Transaction.class), anyString()))
    .thenThrow(new IllegalStateException("timeout"));
   String unavailable = pending();
   mvc.perform(post("/api/device/authorize").header("X-Bridge-Token", TOKEN)
@@ -127,13 +127,13 @@ class TransactionProcessorHttpTest {
    .andExpect(status().isOk()).andExpect(jsonPath("$.execution.reason").value("GEMINI_UNAVAILABLE"));
   doReturn(mapper.readTree("""
    {"lore_translation":"Missing every score."}
-   """)).when(lore).audit(anyString(), anyString(), anyLong(), anyString());
+   """)).when(lore).audit(any(Transaction.class), anyString());
   String malformed = pending();
   mvc.perform(post("/api/device/authorize").header("X-Bridge-Token", TOKEN)
    .contentType("application/json").content(signed(malformed, 2)))
    .andExpect(status().isOk()).andExpect(jsonPath("$.execution.reason").value("GEMINI_INVALID_RESPONSE"));
   doThrow(new com.fasterxml.jackson.core.JsonParseException(null, "invalid JSON"))
-   .when(lore).audit(anyString(), anyString(), anyLong(), anyString());
+   .when(lore).audit(any(Transaction.class), anyString());
   String invalidJson = pending();
   mvc.perform(post("/api/device/authorize").header("X-Bridge-Token", TOKEN)
    .contentType("application/json").content(signed(invalidJson, 3)))

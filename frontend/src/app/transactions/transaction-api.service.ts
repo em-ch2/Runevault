@@ -90,6 +90,31 @@ export interface PipelineMetrics {
   policy: { minTranslationConfidence: number; maxRiskScore: number };
 }
 
+export interface AuditEventRecord {
+  id: number;
+  timestamp: string;
+  transactionId: string | null;
+  deviceId: string | null;
+  eventType: string;
+  outcome: string;
+  reason: string;
+  actorSubject: string | null;
+}
+
+export interface AuditEventPage {
+  content: AuditEventRecord[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+}
+
+export interface AuditFilters {
+  transactionId?: string;
+  outcome?: string;
+  from?: string;
+  to?: string;
+}
+
 interface TransactionPage {
   content: TransactionRecord[];
 }
@@ -115,6 +140,13 @@ export class TransactionApiService {
     return this.auth0.getAccessTokenSilently({
       authorizationParams: { audience: environment.auth0.audience },
     });
+  }
+
+  auditEvents(page: number, filters: AuditFilters) {
+    return this.token().pipe(switchMap((token) => this.http.get<AuditEventPage>('/api/audit-events', {
+      params: { page, size: 20, ...filters },
+      headers: new HttpHeaders({ Authorization: `Bearer ${token}` }),
+    })));
   }
 
   create(request: PendingTransactionRequest) {

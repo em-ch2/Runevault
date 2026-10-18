@@ -17,6 +17,14 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
 
  Page<Transaction> findByRequesterSubject(String requesterSubject, Pageable pageable);
 
+ long countByDestinationAndStatusIn(String destination, java.util.Collection<Transaction.Status> statuses);
+
+ @Query("select avg(t.amountMinor) from Transaction t where t.destination = :destination and t.status in :statuses")
+ Double averageAmountByDestinationAndStatusIn(@Param("destination") String destination,
+   @Param("statuses") java.util.Collection<Transaction.Status> statuses);
+
+ long countByCreatedAtAfterAndCreatedAtBeforeAndTransactionIdNot(Instant after, Instant before, String transactionId);
+
  // Passed the device and Gemini checks and not yet claimed: what a maker-checker approver can release.
  Page<Transaction> findByStatusAndGeminiDecisionReasonAndExecutionClaimedAtIsNull(
    Transaction.Status status, AuditEvent.Reason reason, Pageable pageable);

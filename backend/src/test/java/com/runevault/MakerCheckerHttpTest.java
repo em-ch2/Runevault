@@ -57,7 +57,7 @@ class MakerCheckerHttpTest {
   reset(bank, lore);
   counter = 0;
   when(glyphGenerator.generate()).thenReturn(GLYPHS);
-  when(lore.audit(anyString(), anyString(), anyLong(), anyString())).thenReturn(mapper.readTree("""
+  when(lore.audit(any(Transaction.class), anyString())).thenReturn(mapper.readTree("""
    {"lore_translation":"Safe passage.","translation_confidence":0.9,"risk_score":10,
     "risk_flags":[],"risk_explanation":"Routine.","security_message":"Looks routine."}
    """));

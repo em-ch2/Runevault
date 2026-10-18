@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subscription, interval } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
-import { BankBalance, PendingTransactionResponse, PipelineMetrics, TransactionApiService, TransactionRecord, approvalError, transactionError } from '../transactions/transaction-api.service';
+import { AuditEventPage, BankBalance, PendingTransactionResponse, PipelineMetrics, TransactionApiService, TransactionRecord, approvalError, transactionError } from '../transactions/transaction-api.service';
 import { TransferTransportEvent } from '../feed/feed-event';
 import { ApprovalsChart } from './approvals-chart';
 import { FolderPanel } from './folder-panel';
@@ -16,7 +16,7 @@ import { Stage, TransferStore } from './transfer-store';
 import { BoatMotion, glideTo, rockBoat, slideAcross, slideUp, swingCompass, wavePath } from './motion';
 
 const STAGE_ORDER: Stage[] = ['received', 'sealed', 'verified', 'executed'];
-type NavSection = 'dashboard' | 'approval' | 'signoff' | 'history' | 'analytics';
+type NavSection = 'dashboard' | 'approval' | 'signoff' | 'history' | 'analytics' | 'audit';
 
 @Component({
   selector: 'app-dashboard',
@@ -177,6 +177,21 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   readonly metrics = signal<PipelineMetrics | null>(null);
   // Maker-checker: transfers waiting for a second approver (CFO role, approve:transactions).
   readonly canApprove = signal(false);
+  readonly permissionsLoaded = signal(false);
+  readonly canReadTransactions = signal(false);
+  readonly canCreate = signal(false);
+  readonly canAudit = signal(false);
+  readonly auditorOnly = computed(() => this.canAudit() && !this.canReadTransactions());
+  readonly auditOpen = signal(false);
+  readonly auditPage = signal<AuditEventPage | null>(null);
+  readonly auditLoading = signal(false);
+  readonly auditError = signal<string | null>(null);
+  readonly auditFilters = new FormGroup({
+    transactionId: new FormControl('', { nonNullable: true }),
+    outcome: new FormControl('', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
+  });
   readonly approvalQueue = signal<TransactionRecord[]>([]);
   readonly highValueApprovals = computed(() => this.approvalQueue().filter((transaction) => transaction.stepUpRequired).length);
   readonly approvingId = signal<string | null>(null);
@@ -218,6 +233,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   readonly landing = signal(true);
   // History and Analytics follow the visible view, so the "Back" buttons also return the highlight.
   readonly activeNav = computed<NavSection>(() => {
+    if (this.auditOpen()) return 'audit';
     if (this.landing()) return 'dashboard';
     if (this.mode() === 'demo') return 'approval';
     const view = this.secondaryView();
@@ -232,6 +248,9 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   });
 
   navTo(section: NavSection, panelId?: string): void {
+    if (section === 'audit') { this.openAudit(); return; }
+    if (this.auditorOnly()) return;
+    this.auditOpen.set(false);
     this.landing.set(section === 'dashboard');
     if (section === 'dashboard') return;
     if (panelId) { this.openLiveFolder(panelId); return; }
@@ -316,20 +335,52 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
       // Fetch the authoritative state again after every (re)connect, in case events were missed.
       this.feed.opened.subscribe(() => { this.refresh(true); this.loadMetrics(); }),
     );
-    this.refresh();
-    this.loadMetrics();
     this.api.permissions().subscribe({
       next: (permissions) => {
+        this.canReadTransactions.set(permissions.includes('read:transactions'));
+        this.canCreate.set(permissions.includes('create:transactions'));
+        this.canAudit.set(permissions.includes('read:audit') || permissions.includes('admin:platform'));
         this.canApprove.set(permissions.includes('approve:transactions'));
+        this.permissionsLoaded.set(true);
+        if (this.auditorOnly()) {
+          this.openAudit();
+        } else {
+          if (this.canReadTransactions()) {
+            this.refresh();
+            this.loadMetrics();
+            this.feed.startLive();
+          }
+        }
         if (this.canApprove()) {
           this.loadApprovals();
           // The transfer feed is scoped to the requester; refresh the CFO queue independently.
           this.approvalPoll = interval(15000).subscribe(() => this.loadApprovals());
         }
       },
-      error: () => this.canApprove.set(false),
+      error: () => { this.permissionsLoaded.set(true); this.auditError.set('Could not read account permissions. Sign in again.'); },
     });
-    this.feed.startLive();
+  }
+
+  openAudit(): void {
+    if (!this.canAudit()) return;
+    this.auditOpen.set(true);
+    this.landing.set(false);
+    this.loadAudit(0);
+  }
+
+  loadAudit(page = this.auditPage()?.number ?? 0): void {
+    if (!this.canAudit()) return;
+    const form = this.auditFilters.getRawValue();
+    const filters: Record<string, string> = {};
+    if (form.transactionId.trim()) filters['transactionId'] = form.transactionId.trim();
+    if (form.outcome) filters['outcome'] = form.outcome;
+    if (form.from) filters['from'] = new Date(form.from).toISOString();
+    if (form.to) filters['to'] = new Date(form.to).toISOString();
+    this.auditLoading.set(true);
+    this.api.auditEvents(page, filters).subscribe({
+      next: (result) => { this.auditPage.set(result); this.auditError.set(null); this.auditLoading.set(false); },
+      error: (error: unknown) => { this.auditError.set(transactionError(error)); this.auditLoading.set(false); },
+    });
   }
 
   openSignoff(): void {

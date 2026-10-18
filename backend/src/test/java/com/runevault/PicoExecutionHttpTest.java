@@ -34,8 +34,8 @@ class PicoExecutionHttpTest {
  @org.springframework.boot.test.mock.mockito.MockBean com.runevault.lore.LoreAuditService lore;
 
  @Test void verifiedPicoApprovalExecutesTransferOnce() throws Exception {
-  org.mockito.Mockito.when(lore.audit(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
-   org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString()))
+  org.mockito.Mockito.when(lore.audit(org.mockito.ArgumentMatchers.any(Transaction.class),
+   org.mockito.ArgumentMatchers.anyString()))
    .thenReturn(mapper.readTree("""
     {"lore_translation":"A voyage.","translation_confidence":0.8,"risk_score":30,
      "risk_flags":[],"risk_explanation":"Routine.","security_message":"Looks routine."}

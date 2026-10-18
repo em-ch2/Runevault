@@ -14,7 +14,7 @@ describe('Dashboard live transactions', () => {
     status: 'PENDING' as const, createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 120000).toISOString(), verifiedAt: null,
     requesterSubject: 'auth0|user' };
-  const api = { create: vi.fn(), list: vi.fn(), metrics: vi.fn(), bankBalance: vi.fn(), permissions: vi.fn(), approvals: vi.fn(), approve: vi.fn() };
+  const api = { create: vi.fn(), list: vi.fn(), metrics: vi.fn(), bankBalance: vi.fn(), permissions: vi.fn(), approvals: vi.fn(), approve: vi.fn(), auditEvents: vi.fn() };
   const metrics = { from: '2026-10-17T12:00:00Z', to: '2026-10-17T12:02:00Z', source: 'pipeline-events', approved: 3, blocked: 2,
     policy: { minTranslationConfidence: 0.8, maxRiskScore: 30 },
     minutes: [
@@ -42,6 +42,7 @@ describe('Dashboard live transactions', () => {
       sentTransfersMinor: 100_000, remainingBalanceMinor: 49_900_000, asOf: new Date().toISOString() }));
     api.permissions.mockReset().mockReturnValue(of(['create:transactions', 'read:transactions']));
     api.approvals.mockReset().mockReturnValue(of({ content: [] }));
+    api.auditEvents.mockReset().mockReturnValue(of({ content: [], totalElements: 0, totalPages: 0, number: 0 }));
     api.approve.mockReset();
     feed = { liveEnabled: true, connection: signal<FeedConnection>('closed'), startLive: vi.fn(), startDemo: vi.fn(),
       stop: vi.fn(), playMock: vi.fn(), transportEvents: new Subject(), opened: new Subject() };
@@ -54,6 +55,41 @@ describe('Dashboard live transactions', () => {
         { provide: TransferStore, useValue: { state: signal(INITIAL_STATE) } },
       ],
     });
+  });
+
+  it('shows a read-only audit view for an auditor without loading transfer APIs', () => {
+    api.permissions.mockReturnValue(of(['read:audit']));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const dashboard = fixture.componentInstance;
+    expect(dashboard.auditorOnly()).toBe(true);
+    expect(dashboard.auditOpen()).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('Audit events');
+    expect(fixture.nativeElement.querySelector('#audit-view form')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Begin a transfer');
+    expect(api.auditEvents).toHaveBeenCalledWith(0, {});
+    expect(api.list).not.toHaveBeenCalled();
+    expect(api.metrics).not.toHaveBeenCalled();
+    expect(api.approvals).not.toHaveBeenCalled();
+    dashboard.auditFilters.patchValue({ transactionId: 'tx-one', outcome: 'REJECTED' });
+    dashboard.loadAudit(0);
+    expect(api.auditEvents).toHaveBeenCalledWith(0, { transactionId: 'tx-one', outcome: 'REJECTED' });
+    fixture.destroy();
+  });
+
+  it('keeps the transfer dashboard and adds audit navigation for an administrator', () => {
+    api.permissions.mockReturnValue(of(['read:transactions', 'create:transactions', 'admin:platform']));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const dashboard = fixture.componentInstance;
+    expect(dashboard.auditorOnly()).toBe(false);
+    expect(api.list).toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('Begin a transfer');
+    dashboard.openAudit();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Audit events');
+    expect(api.auditEvents).toHaveBeenCalled();
+    fixture.destroy();
   });
 
   it('guides the user from creation through physical approval to the final outcome', () => {

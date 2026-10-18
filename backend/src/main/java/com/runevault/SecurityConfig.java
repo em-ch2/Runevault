@@ -54,6 +54,8 @@ public class SecurityConfig {
    if (simulator) a.requestMatchers("/api/challenges", "/api/approvals").permitAll();
    a.requestMatchers("/api/device/authorize", "/api/device/transactions", "/api/device/transactions/*", "/api/device/pending", "/api/lore/*").permitAll();
    if (auth) {
+    a.requestMatchers(HttpMethod.GET, "/api/audit-events")
+     .hasAnyAuthority("PERM_read:audit", "PERM_admin:platform");
     a.requestMatchers(HttpMethod.POST, "/api/transactions").hasAuthority("PERM_create:transactions");
     a.requestMatchers(HttpMethod.POST, "/api/transactions/*/authorize").hasAuthority("PERM_create:transactions");
     a.requestMatchers(HttpMethod.GET, "/api/transactions").hasAuthority("PERM_read:transactions");
@@ -137,7 +139,7 @@ public class SecurityConfig {
    var authentication = SecurityContextHolder.getContext().getAuthentication();
    if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt
      && jwt.getSubject() != null && !jwt.getSubject().isBlank()) {
-    RequestQuotaLimiter.Category category = path.startsWith("/api/admin/")
+    RequestQuotaLimiter.Category category = path.startsWith("/api/admin/") || path.equals("/api/audit-events")
      ? RequestQuotaLimiter.Category.ADMIN
      : path.equals("/api/ws-ticket") && request.getMethod().equals("POST")
      ? RequestQuotaLimiter.Category.WS_TICKET
