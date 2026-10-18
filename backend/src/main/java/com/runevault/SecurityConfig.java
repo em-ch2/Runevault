@@ -56,6 +56,8 @@ public class SecurityConfig {
    if (auth) {
     a.requestMatchers(HttpMethod.GET, "/api/audit-events")
      .hasAnyAuthority("PERM_read:audit", "PERM_admin:platform");
+    a.requestMatchers(HttpMethod.GET, "/api/metrics/policy-decisions")
+     .hasAnyAuthority("PERM_read:audit", "PERM_admin:platform");
     a.requestMatchers(HttpMethod.POST, "/api/transactions").hasAuthority("PERM_create:transactions");
     a.requestMatchers(HttpMethod.POST, "/api/transactions/*/authorize").hasAuthority("PERM_create:transactions");
     a.requestMatchers(HttpMethod.GET, "/api/transactions").hasAuthority("PERM_read:transactions");
@@ -140,6 +142,7 @@ public class SecurityConfig {
    if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt
      && jwt.getSubject() != null && !jwt.getSubject().isBlank()) {
     RequestQuotaLimiter.Category category = path.startsWith("/api/admin/") || path.equals("/api/audit-events")
+      || path.equals("/api/metrics/policy-decisions")
      ? RequestQuotaLimiter.Category.ADMIN
      : path.equals("/api/ws-ticket") && request.getMethod().equals("POST")
      ? RequestQuotaLimiter.Category.WS_TICKET

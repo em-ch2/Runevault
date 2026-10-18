@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subscription, interval } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
-import { AuditEventPage, BankBalance, PendingTransactionResponse, PipelineMetrics, TransactionApiService, TransactionRecord, approvalError, transactionError } from '../transactions/transaction-api.service';
+import { AuditEventPage, BankBalance, PendingTransactionResponse, PipelineMetrics, PolicyDecisionMetrics, TransactionApiService, TransactionRecord, approvalError, transactionError } from '../transactions/transaction-api.service';
 import { TransferTransportEvent } from '../feed/feed-event';
 import { ApprovalsChart } from './approvals-chart';
 import { AuthorizationEvidence } from './authorization-evidence';
@@ -187,6 +187,8 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   readonly auditPage = signal<AuditEventPage | null>(null);
   readonly auditLoading = signal(false);
   readonly auditError = signal<string | null>(null);
+  readonly policyMetrics = signal<PolicyDecisionMetrics | null>(null);
+  readonly policyMetricsError = signal<string | null>(null);
   readonly auditFilters = new FormGroup({
     transactionId: new FormControl('', { nonNullable: true }),
     outcome: new FormControl('', { nonNullable: true }),
@@ -367,6 +369,15 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     this.auditOpen.set(true);
     this.landing.set(false);
     this.loadAudit(0);
+    this.loadPolicyMetrics();
+  }
+
+  loadPolicyMetrics(): void {
+    if (!this.canAudit()) return;
+    this.api.policyDecisionMetrics(30).subscribe({
+      next: (metrics) => { this.policyMetrics.set(metrics); this.policyMetricsError.set(null); },
+      error: (error: unknown) => this.policyMetricsError.set(transactionError(error)),
+    });
   }
 
   loadAudit(page = this.auditPage()?.number ?? 0): void {

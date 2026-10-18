@@ -91,6 +91,16 @@ export interface PipelineMetrics {
   policy: { minTranslationConfidence: number; maxRiskScore: number };
 }
 
+export interface PolicyDecisionMetrics {
+  from: string;
+  to: string;
+  source: string;
+  measure: 'gemini-policy-decisions';
+  approved: number;
+  blocked: number;
+  minutes: MinutePoint[];
+}
+
 export interface AuditEventRecord {
   id: number;
   timestamp: string;
@@ -148,6 +158,15 @@ export class TransactionApiService {
       params: { page, size: 20, ...filters },
       headers: new HttpHeaders({ Authorization: `Bearer ${token}` }),
     })));
+  }
+
+  policyDecisionMetrics(minutes = 30) {
+    return this.token().pipe(switchMap((token) => this.http.get<PolicyDecisionMetrics>(
+      '/api/metrics/policy-decisions', {
+        params: { minutes },
+        headers: new HttpHeaders({ Authorization: `Bearer ${token}` }),
+      },
+    )));
   }
 
   create(request: PendingTransactionRequest) {

@@ -61,6 +61,17 @@
 <section id="audit-view" class="audit-view" aria-labelledby="audit-title">
   <h1 id="audit-title">Audit events</h1>
   <p class="muted">Read-only company activity.</p>
+  <section aria-labelledby="audit-policy-title">
+    <h2 id="audit-policy-title">Gemini policy decisions</h2>
+    <p class="muted small">Company-wide approvals and blocks per minute. These are policy decisions, not settled bank transfers.</p>
+    @if (policyMetrics(); as metrics) {
+      <app-approvals-chart [points]="metrics.minutes" subject="Gemini policy decisions" />
+      <p class="muted small">Source: {{ metrics.source }} &middot; Last {{ metrics.minutes.length }} minutes</p>
+    } @else if (policyMetricsError()) {
+      <p class="form-error" role="alert">{{ policyMetricsError() }}</p>
+    } @else { <p role="status">Loading policy decisions…</p> }
+    <button class="btn btn-ghost" type="button" (click)="loadPolicyMetrics()">Refresh chart</button>
+  </section>
   <form [formGroup]="auditFilters" (ngSubmit)="loadAudit(0)" class="audit-filters">
     <label>Transaction ID <input formControlName="transactionId" type="text" maxlength="36" /></label>
     <label>Outcome <select formControlName="outcome"><option value="">All</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option><option value="PENDING">Pending</option><option value="UNKNOWN">Unknown</option></select></label>
