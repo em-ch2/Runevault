@@ -13,7 +13,12 @@ public class ClaimRejectionAuditService {
 
  @Transactional(propagation = Propagation.REQUIRES_NEW)
  public void record(String deviceId, String transactionId, AuditEvent.Reason reason) {
+  record(deviceId, transactionId, reason, null);
+ }
+
+ @Transactional(propagation = Propagation.REQUIRES_NEW)
+ public void record(String deviceId, String transactionId, AuditEvent.Reason reason, String actorSubject) {
   auditEvents.saveAndFlush(new AuditEvent(AuditEvent.Type.EXECUTION_CLAIM, deviceId, transactionId,
-   AuditEvent.Outcome.REJECTED, reason));
+   AuditEvent.Outcome.REJECTED, reason, actorSubject));
  }
 }

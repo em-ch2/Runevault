@@ -25,6 +25,8 @@ export class AuthService {
     ),
     { initialValue: null },
   );
+  // Auth0 user ID, used only to explain why the dashboard locks a self-approval; the backend enforces it.
+  readonly subject = toSignal(this.auth0.user$.pipe(map((profile) => profile?.sub ?? null)), { initialValue: null });
   readonly error = computed(() => this.redirectError() ?? this.sdkError()?.message ?? null);
 
   signIn(): void {
