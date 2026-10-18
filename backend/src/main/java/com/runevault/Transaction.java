@@ -32,6 +32,11 @@ public class Transaction {
  @Column(length = 255)
  private String requesterSubject;
  private Instant executionClaimedAt;
+ // Maker-checker: who released the transfer, when, and whether their token proved MFA.
+ @Column(length = 255)
+ private String approverSubject;
+ private Instant approvedAt;
+ private Boolean approvalStepUp;
  private Instant verifiedAt;
  @Column(columnDefinition = "text")
  private String auditJson;
@@ -94,6 +99,17 @@ public class Transaction {
   status = Status.EXECUTING;
   executionClaimedAt = claimedAt;
  }
+ public void claimForApprovedExecution(String approver, boolean stepUp, Instant claimedAt) {
+  if (approver == null || approver.isBlank() || approver.equals(requesterSubject))
+   throw new IllegalStateException("The approver must be someone other than the requester");
+  claimForExecution(claimedAt);
+  approverSubject = approver;
+  approvedAt = claimedAt;
+  approvalStepUp = stepUp;
+ }
+ public String getApproverSubject() { return approverSubject; }
+ public Instant getApprovedAt() { return approvedAt; }
+ public Boolean getApprovalStepUp() { return approvalStepUp; }
  public Instant getVerifiedAt() { return verifiedAt; }
  public void verifyPhysicalApproval(Instant verifiedAt) {
   if (status != Status.PENDING || verifiedAt == null) throw new IllegalStateException("Transaction is not pending");

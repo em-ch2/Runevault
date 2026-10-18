@@ -17,6 +17,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
 
  Page<Transaction> findByRequesterSubject(String requesterSubject, Pageable pageable);
 
+ // Passed the device and Gemini checks and not yet claimed: what a maker-checker approver can release.
+ Page<Transaction> findByStatusAndGeminiDecisionReasonAndExecutionClaimedAtIsNull(
+   Transaction.Status status, AuditEvent.Reason reason, Pageable pageable);
+
  @Query("select t.deviceId from Transaction t where t.transactionId = :id")
  Optional<String> findAssignedDeviceId(@Param("id") String id);
 

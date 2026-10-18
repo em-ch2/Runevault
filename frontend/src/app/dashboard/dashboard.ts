@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subscription, interval } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
-import { PendingTransactionResponse, PipelineMetrics, TransactionApiService, TransactionRecord, transactionError } from '../transactions/transaction-api.service';
+import { PendingTransactionResponse, PipelineMetrics, TransactionApiService, TransactionRecord, approvalError, transactionError } from '../transactions/transaction-api.service';
 import { TransferTransportEvent } from '../feed/feed-event';
 import { ApprovalsChart } from './approvals-chart';
 import { FolderPanel } from './folder-panel';
@@ -16,7 +16,7 @@ import { Stage, TransferStore } from './transfer-store';
 import { glideTo, slideUp } from './motion';
 
 const STAGE_ORDER: Stage[] = ['received', 'sealed', 'verified', 'executed'];
-type NavSection = 'dashboard' | 'transactions' | 'approvals' | 'history' | 'analytics';
+type NavSection = 'dashboard' | 'transactions' | 'approvals' | 'signoff' | 'history' | 'analytics';
 
 @Component({
   selector: 'app-dashboard',
@@ -138,9 +138,17 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     dest: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern('[A-Za-z0-9_-]{1,64}')] }),
   });
   private poll: Subscription | null = null;
+  private approvalPoll: Subscription | null = null;
   private listRequest: Subscription | null = null;
   private readonly feedSubscriptions: Subscription[] = [];
   readonly metrics = signal<PipelineMetrics | null>(null);
+  // Maker-checker: transfers waiting for a second approver (CFO role, approve:transactions).
+  readonly canApprove = signal(false);
+  readonly approvalQueue = signal<TransactionRecord[]>([]);
+  readonly highValueApprovals = computed(() => this.approvalQueue().filter((transaction) => transaction.stepUpRequired).length);
+  readonly approvingId = signal<string | null>(null);
+  readonly approvalNotice = signal<string | null>(null);
+  readonly approvalProblem = signal<string | null>(null);
   readonly metricsError = signal<string | null>(null);
   readonly liveOpen = computed(() => this.feed.connection() === 'open');
   // Polling is only a fallback: it runs while the live socket is down and a transfer is in flight.
@@ -173,6 +181,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     const view = this.secondaryView();
     if (view === 'live-list-title' || this.historyStep() !== null) return 'history';
     if (view === 'metrics-title') return 'analytics';
+    if (view === 'signoff-title') return 'signoff';
     const choice = this.navChoice();
     return choice === 'transactions' || choice === 'approvals' ? choice : 'dashboard';
   });
@@ -250,11 +259,60 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     );
     this.refresh();
     this.loadMetrics();
+    this.api.permissions().subscribe({
+      next: (permissions) => {
+        this.canApprove.set(permissions.includes('approve:transactions'));
+        if (this.canApprove()) {
+          this.loadApprovals();
+          // The transfer feed is scoped to the requester; refresh the CFO queue independently.
+          this.approvalPoll = interval(15000).subscribe(() => this.loadApprovals());
+        }
+      },
+      error: () => this.canApprove.set(false),
+    });
     this.feed.startLive();
+  }
+
+  openSignoff(): void {
+    this.navTo('signoff', 'signoff-title');
+    this.loadApprovals();
+  }
+
+  loadApprovals(): void {
+    this.api.approvals().subscribe({
+      next: (page) => { this.approvalQueue.set(page.content); this.approvalProblem.set(null); },
+      error: (error: unknown) => this.approvalProblem.set(approvalError(error)),
+    });
+  }
+
+  ownRequest(transaction: TransactionRecord): boolean {
+    return transaction.requesterSubject !== null && transaction.requesterSubject === this.auth.subject();
+  }
+
+  // Called straight from the click so a step-up MFA popup is not blocked by the browser.
+  approve(transaction: TransactionRecord): void {
+    if (this.approvingId() || this.ownRequest(transaction)) return;
+    this.approvingId.set(transaction.transactionId);
+    this.approvalNotice.set(null);
+    this.approvalProblem.set(null);
+    this.api.approve(transaction.transactionId, !!transaction.stepUpRequired).subscribe({
+      next: (result) => {
+        this.approvingId.set(null);
+        this.approvalNotice.set(`Released ${this.money(transaction.amountMinor)} to ${transaction.destination}: ${result.status}.`);
+        this.loadApprovals();
+        this.loadMetrics();
+      },
+      error: (error: unknown) => {
+        this.approvingId.set(null);
+        this.approvalProblem.set(approvalError(error));
+        this.loadApprovals();
+      },
+    });
   }
 
   ngOnDestroy(): void {
     this.poll?.unsubscribe();
+    this.approvalPoll?.unsubscribe();
     this.listRequest?.unsubscribe();
     for (const subscription of this.feedSubscriptions) subscription.unsubscribe();
     this.feed.stop();
@@ -282,9 +340,10 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
       this.refresh(true);
     } else {
       this.records.update((records) => records.map((r) => r.transactionId === event.transactionId ? mergeLiveEvent(r, event) : r));
-      // verifiedAt and the expected balance are not part of events, so fetch once when the tablet's approval
-      // is accepted and once when the transfer completes.
-      if ((event.stage === 'VERIFIED' && event.outcome === 'APPROVED') || event.stage === 'EXECUTED') this.refresh(true);
+      // Verification time, approval state, and expected balance are read from the API.
+      if ((event.stage === 'VERIFIED' && event.outcome === 'APPROVED')
+        || (event.stage === 'GEMINI' && event.outcome === 'APPROVED')
+        || event.stage === 'EXECUTED') this.refresh(true);
     }
     if (event.stage === 'GEMINI' || (event.stage === 'VERIFIED' && event.outcome === 'REJECTED')) this.loadMetrics();
   }
@@ -481,6 +540,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
       case 'EXECUTING': return 'Execution claimed; processing pending';
       case 'VERIFIED': return transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED'
         ? 'Physical approval verified; Gemini policy blocked transfer'
+        : transaction.awaitingApproval ? 'Passed review; waiting for a second approver to release it'
         : 'Physical approval verified';
       case 'SIMULATED': return 'Legacy simulation; physical approval unverified';
       case 'PENDING': return this.approvalExpired(transaction) ? 'Approval window expired' : 'Awaiting physical approval';
