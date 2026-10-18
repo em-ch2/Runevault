@@ -14,7 +14,7 @@ describe('Dashboard live transactions', () => {
     status: 'PENDING' as const, createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 120000).toISOString(), verifiedAt: null,
     requesterSubject: 'auth0|user' };
-  const api = { create: vi.fn(), list: vi.fn(), metrics: vi.fn(), permissions: vi.fn(), approvals: vi.fn(), approve: vi.fn() };
+  const api = { create: vi.fn(), list: vi.fn(), metrics: vi.fn(), bankBalance: vi.fn(), permissions: vi.fn(), approvals: vi.fn(), approve: vi.fn() };
   const metrics = { from: '2026-10-17T12:00:00Z', to: '2026-10-17T12:02:00Z', source: 'pipeline-events', approved: 3, blocked: 2,
     policy: { minTranslationConfidence: 0.8, maxRiskScore: 30 },
     minutes: [
@@ -38,6 +38,8 @@ describe('Dashboard live transactions', () => {
     api.create.mockReset();
     api.list.mockReset().mockReturnValue(of({ content: [] }));
     api.metrics.mockReset().mockReturnValue(of(metrics));
+    api.bankBalance.mockReset().mockReturnValue(of({ reportedBalanceMinor: 50_000_000, sentTransfers: 2,
+      sentTransfersMinor: 100_000, remainingBalanceMinor: 49_900_000, asOf: new Date().toISOString() }));
     api.permissions.mockReset().mockReturnValue(of(['create:transactions', 'read:transactions']));
     api.approvals.mockReset().mockReturnValue(of({ content: [] }));
     api.approve.mockReset();
@@ -119,7 +121,8 @@ describe('Dashboard live transactions', () => {
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
     const dashboard = fixture.componentInstance;
-    dashboard.pendingForm.patchValue({ device: 'slab-01', amount: 50000, dest: 'acct-999' });
+    // The form takes dollars; the request carries cents.
+    dashboard.pendingForm.patchValue({ device: 'slab-01', amount: 500, dest: 'acct-999' });
     api.create.mockReturnValue(of({ tx_id: 'abc123', status: 'PENDING', expires_at: 9999999999,
       glyphs: '0-2-1-2-1' }));
     dashboard.createPending();
@@ -129,6 +132,82 @@ describe('Dashboard live transactions', () => {
     expect(dashboard.pendingGlyphs()).toEqual([0, 2, 1, 2, 1]);
     expect(dashboard.openFolders().has('authorize-title')).toBe(true);
     expect(dashboard.openFolders().has('live-create-title')).toBe(true);
+    fixture.destroy();
+  });
+
+  it('converts dollars and cents exactly and refuses fractions of a cent', () => {
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const dashboard = fixture.componentInstance;
+    api.create.mockReturnValue(of({ tx_id: 'abc123', status: 'PENDING', expires_at: 9999999999, glyphs: '0-1-2' }));
+    dashboard.pendingForm.patchValue({ device: 'slab-01', amount: 12.34, dest: 'acct-999' });
+    dashboard.createPending();
+    expect(api.create).toHaveBeenCalledWith({ device: 'slab-01', amount: 1234, dest: 'acct-999' });
+
+    api.create.mockClear();
+    dashboard.pendingForm.patchValue({ amount: 1.005 });
+    dashboard.createPending();
+    expect(api.create).not.toHaveBeenCalled();
+    expect(dashboard.apiError()).toContain('at most two decimal places');
+    fixture.destroy();
+  });
+
+  it('labels the expected balance as calculated when the bank has not applied the transfer', () => {
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'BANK_PENDING', verifiedAt: new Date().toISOString(),
+      geminiDecisionReason: 'GEMINI_APPROVED', bankProvider: 'nessie', bankStatus: 'pending', bankReceiptId: 'r-1',
+      bankOutcome: 'ACCEPTED_PENDING', newBalanceMinor: null }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    fixture.componentInstance.select('abc123');
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent;
+    expect(api.bankBalance).toHaveBeenCalled();
+    expect(text).toContain('Bank-reported balance');
+    expect(text).toContain('$500,000.00');
+    expect(text).toContain('Remaining balance');
+    expect(text).toContain('$499,000.00');
+    expect(text).toContain('calculated');
+    expect(text).toContain('minus the 2 transfers ($1,000.00) sent from this account');
+    fixture.destroy();
+  });
+
+  it('steps through history transfers with the arrows, keeping the inspected step', () => {
+    api.list.mockReturnValue(of({ content: ['newest', 'middle', 'oldest'].map((id) =>
+      ({ ...pending, transactionId: id, status: 'EXECUTED', verifiedAt: new Date().toISOString() })) }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const dashboard = fixture.componentInstance;
+    dashboard.selectHistory('middle');
+    dashboard.inspectHistoryStep(1);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Transfer 2 of 3');
+    dashboard.stepHistory(1);
+    expect(dashboard.selectedId()).toBe('oldest');
+    expect(dashboard.historyStep()).toBe(1);
+    dashboard.stepHistory(1);
+    expect(dashboard.selectedId()).toBe('oldest');
+    dashboard.stepHistory(-1);
+    dashboard.stepHistory(-1);
+    expect(dashboard.selectedId()).toBe('newest');
+    dashboard.stepHistory(-1);
+    expect(dashboard.selectedId()).toBe('newest');
+    fixture.destroy();
+  });
+
+  it('offers another transfer once the bank has answered', () => {
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'BANK_PENDING', verifiedAt: new Date().toISOString(),
+      geminiDecisionReason: 'GEMINI_APPROVED', bankProvider: 'nessie', bankOutcome: 'ACCEPTED_PENDING' }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const dashboard = fixture.componentInstance;
+    dashboard.select('abc123');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Make another transfer');
+    const button = [...fixture.nativeElement.querySelectorAll('button')]
+      .find((b: HTMLButtonElement) => b.textContent?.includes('Make another transfer')) as HTMLButtonElement;
+    button.click();
+    fixture.detectChanges();
+    expect(dashboard.currentPanel()).toBe('live-create-title');
     fixture.destroy();
   });
 

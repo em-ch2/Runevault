@@ -355,6 +355,21 @@ public class NessieBankGateway implements BankGateway, BankReadGateway {
         return "runevault:" + transactionId + " to " + payeeId;
     }
 
+    @Override
+    public Optional<Long> sourceBalanceMinor() {
+        try {
+            JsonNode balance = unwrap(get("/accounts/" + sourceAccountId)).path("balance");
+            if (!balance.isNumber()) return Optional.empty();
+            return Optional.of(balance.decimalValue().movePointRight(2).setScale(0, java.math.RoundingMode.HALF_UP).longValueExact());
+        } catch (IOException | RuntimeException e) {
+            log.warn("Source balance is unavailable ({})", e.getClass().getSimpleName());
+            return Optional.empty();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
+        }
+    }
+
     private JsonNode get(String path) throws IOException, InterruptedException {
         HttpRequest req = HttpRequest.newBuilder(uri(path))
                 .timeout(Duration.ofSeconds(10))
