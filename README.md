@@ -1,87 +1,153 @@
 # Runevault
+Every treasure needs a seal.
 
-Three-person hackathon starter. Read docs/protocol.md before changing messages.
+Runevault is a physical payment-approval key disguised as an ancient Poneglyph. On the surface, it's a stone tablet straight out of *One Piece*. Underneath, it's a hardware security key that cryptographically signs one exact transfer, sends it through backend verification and a Gemini risk review, and only then lets the payment set sail through Capital One's Nessie sandbox bank.
 
-Team pipeline decision: `TransactionProcessor` is the single live orchestration path. Physical Pico verification commits first; Gemini must return valid JSON with `translation_confidence >= 0.8` and `risk_score <= 30` before the transaction can be claimed for Nessie sandbox banking. Gemini failure, timeout, malformed output, or a missing field blocks banking and records a fixed audit reason. Set `RUNEVAULT_MIN_TRANSLATION_CONFIDENCE` and `RUNEVAULT_MAX_RISK_SCORE` in `.env` to adjust the backend thresholds. An `EXECUTING` claim and an unknown bank outcome are never automatically retried. See [the internal handoff and event contracts](docs/events.md).
+Live site: [sailthedeal.fishing](https://sailthedeal.fishing)
 
-Vultr is the hosting target. Flyway now owns the `pipeline_events` schema and the writer stores pipeline metrics there; Tiger Data hosting remains unprovisioned. PostgreSQL `AuditEvent` records remain the durable security audit. Person C's dashboard event contract is separate from the internal `VerifiedTransaction` handoff.
+Devpost link (with demo video): https://devpost.com/software/runevault
 
-| Owner | Files |
+Built @ SwampHacks 2026.
+
+## Inspiration
+In most companies, sending a large payment is guarded by little more than a username and password. One shared login or compromised account can launch a costly transfer that's hard to undo, and approving a six-figure payment often takes a single click.
+
+We wanted every high-value payment to be approved on purpose, by the right people, with something you can hold that doesn't rely on the internet to sign.
+
+We drew inspiration from the Poneglyphs in *One Piece*: ancient stone tablets that guard secrets only the right reader can unlock. Runevault is a security key disguised as one of those relics. Every important transfer must be sealed by hand before it sets sail.
+
+## Features
+**📜 Physical sign-off:** The requester enters a one-time glyph sequence on the Runevault tablet, with lights confirming each step. The tablet signs that exact transfer (amount, destination, glyphs and a counter) with HMAC-SHA256. The tablet itself has no network connection.
+
+**🔐 Verification:** The backend checks that the signature is genuine, matches the stored transfer, comes from the registered tablet, and has never been used before. Glyph sequences expire after two minutes, and repeated wrong guesses lock the device.
+
+**🧭 AI risk review:** Gemini turns the glyphs into ancient lore and returns a risk score with a plain-English explanation. Gemini advises, but fixed backend rules make the final call: confidence of at least 0.8 and risk of at most 30. If Gemini fails, times out or answers badly, the transfer is blocked. High-risk transfers are flagged for CFO review instead of slipping through.
+
+**👑 Second-person approval:** A CFO must release each verified transfer, and no one can approve their own request, even with the CFO role.
+
+**⚓ Secure transfers:** Only after every check passes does Runevault claim the transfer exactly once and send it through the Nessie API. Nothing is ever resent automatically.
+
+**🗺️ Live captain's log:** The dashboard updates in real time with status, risk gauges, lore, receipts, and an approvals-vs-blocks chart. A read-only **Explain decision** button asks Gemini to explain the recorded result, and it can never change a transfer.
+
+**🛡️ Role-based access:** Every request is checked on the backend against Auth0 permissions:
+
+| Role | What they can do |
 | --- | --- |
-| A: hardware | hardware/, bridge/, docs/protocol.md |
-| B: security/platform | backend/, infra/ |
-| C: AI/transactions/UI | backend integrations, frontend/ |
+| Employee | Create and track their own transfers |
+| CFO | Release other people's verified transfers |
+| Auditor | Read the company audit log and policy charts |
+| Administrator | Revoke devices and recover stuck transfers |
 
-Start in PowerShell: install Docker Desktop, copy `.env.example` to `.env`, fill in the required backend credentials, then run:
+## Architecture & Tech Stack
+Our dashboard is built with Angular and TypeScript, styled with weathered stone, parchment and ocean tones in a navy and gold palette.
 
+The physical key is a Raspberry Pi Pico 2 running MicroPython. It signs each transfer and keeps a counter that blocks replays. A USB bridge carries approvals from the tablet to our backend.
+
+Our Java and Spring Boot backend runs every transfer through one pipeline, so no transfer can skip a check:
+
+1. Verify the signature, device, counter, and rate limits.
+2. Send only transfer metadata and server-computed risk features to Gemini, which returns schema-enforced JSON.
+3. Apply our fixed policy rules, and route the transfer to a CFO for sign-off.
+4. Claim the transfer once under a database lock, call Nessie, and build the receipt.
+5. Push each step live over Spring WebSockets and record it in Tiger Data (TimescaleDB) for charts.
+
+Auth0 handles login and roles. Everything runs in Docker on a Vultr server behind Caddy, at our GoDaddy Registry domain, sailthedeal.fishing.
+
+## Technology Used
+- **Hardware:** Raspberry Pi Pico 2, MicroPython, USB serial bridge (Python) and Web Serial
+- **Frontend:** Angular 21, TypeScript, Auth0 SPA SDK, GSAP
+- **Backend:** Java 25, Spring Boot 3.5, Spring Security, Spring WebSockets, Flyway
+- **AI:** Google Gemini with structured JSON output
+- **Banking:** Capital One Nessie sandbox API
+- **Database:** PostgreSQL locally, Tiger Cloud (TimescaleDB hypertables and continuous aggregates) in the cloud
+- **Identity:** Auth0
+- **Deployment:** Docker Compose on Vultr, Caddy with automatic HTTPS, GoDaddy Registry domain
+
+## Getting Started
+### Prerequisites
+- Docker Desktop
+- An Auth0 tenant with the Runevault API and roles ([setup guide](docs/security-platform.md))
+- A Google Gemini API key
+- A Capital One Nessie API key and account IDs
+- A Raspberry Pi Pico 2 flashed with [hardware/pico_main.py](hardware/pico_main.py) (or use the simulator below)
+- For builds outside Docker: Java 25, Maven 3.9+, and Node.js 22+
+
+### Installation
+Clone the repository:
 ```powershell
-if (!(Test-Path .env)) { Copy-Item .env.example .env }
-# Edit .env: set a strong RUNEVAULT_BRIDGE_TOKEN, Auth0 issuer/audience,
-# PostgreSQL password, Pico key, Gemini key, Nessie key/source account ID,
-# and allowed Nessie destination account UUIDs.
+git clone https://github.com/em-ch2/Runevault.git
+cd Runevault
+```
+
+Set up your environment:
+```powershell
+Copy-Item .env.example .env
+# Fill in your bridge token, Auth0 issuer and audience, PostgreSQL password,
+# Pico key, Gemini key, Nessie key and source account, and allowed destinations.
+```
+
+Launch the fleet:
+```powershell
 docker compose up -d --build
 ```
 
-Compose builds Angular with `npm ci` inside the frontend image; a local `frontend/dist` folder is not needed. To view startup logs, run `docker compose logs -f frontend backend`. Do not use `docker compose down -v` when stopping services, because it deletes the PostgreSQL volume.
-Backend: http://localhost:8080/api/health
-Operational probes: http://localhost:8080/actuator/health/liveness and http://localhost:8080/actuator/health/readiness. Liveness checks the application process only. Readiness also checks PostgreSQL connectivity; neither probe calls Gemini or Nessie. Probe responses contain overall status only. Other Actuator endpoints are unavailable.
+- Dashboard: http://localhost:4200
+- API health: http://localhost:8080/api/health
 
-Inspect startup and health in PowerShell:
+> ⚠️ Never run `docker compose down -v`; it deletes the database volume and all transfer history. Never commit `.env`.
 
+### Seal your first transfer
+1. Sign in to the dashboard and create a transfer to an allowed Nessie destination.
+2. Send it to the Pico through the dashboard's Web Serial connection or the [USB bridge](bridge/README.md).
+3. Enter the glyphs on the tablet and press Enter.
+4. Watch it move through verification and the Gemini review to CFO sign-off and the bank receipt.
+
+No Pico on board? Run the [hardware simulator](bridge/README.md) with `node bridge/simulator.mjs` and the `dev,simulator` profile, which uses a local fake bank only.
+
+### Running tests
 ```powershell
-docker compose ps
-docker compose logs --tail=100 backend
-Invoke-RestMethod http://localhost:8080/actuator/health/liveness
-Invoke-RestMethod http://localhost:8080/actuator/health/readiness
-Invoke-RestMethod http://localhost:8080/api/health
-Invoke-WebRequest http://localhost:4200/login
+mvn -f backend/pom.xml verify          # backend; the PostgreSQL tests need Docker
+cd frontend; npm ci; npx ng test --watch=false; npm run build
 ```
 
-If readiness is unhealthy, inspect `docker compose ps` and `docker compose logs --tail=100 postgres backend`, then check that the PostgreSQL password in `.env` matches the existing volume's initialized password. If liveness is healthy but readiness is not, the backend is running but cannot serve database-backed requests. If the frontend is unhealthy, inspect `docker compose logs --tail=100 frontend` and check `Invoke-WebRequest http://localhost:4200/login`. Compose marks an unhealthy container but does not restart it solely because of that status. A fresh clone still needs private Auth0, Pico, bridge, database, and Nessie settings before normal auth mode can start; do not commit `.env`.
-Dashboard: http://localhost:4200. For Angular development outside Docker, run `npm start` in `frontend/`. See frontend/README.md.
-For a temporary public HTTPS URL used by a USB bridge on another computer, see [the bridge tunnel instructions](bridge/README.md#temporary-public-https-access-for-a-bridge-on-another-computer). Keep the Auth0 audience unchanged.
-Normal demo mode uses the physical Pico to verify a transaction, then Person C's execution pipeline may hand it to Nessie sandbox banking. Nessie is a sandbox; it does not move real money. To replace the Pico for a separate hardware-simulation test, stop the normal backend and explicitly start `dev,simulator`:
+## Security & Deployment
+The cloud sandbox runs `compose.cloud.yaml` on Vultr behind Caddy with automatic HTTPS, using Tiger Cloud as the database ([deployment guide](infra/README.md)). API keys, the bridge token and device secrets live only in server-side environment variables and are never sent to the browser or committed to version control.
 
-```powershell
-docker compose stop backend
-docker compose run --service-ports -e SPRING_PROFILES_ACTIVE=dev,simulator -e NESSIE_ENABLED=false backend
-```
+Runevault fails safe at every step:
+- Bad signatures, replays, expired glyphs, high risk, AI outages and self-approval all stop the transfer, and each rejection writes a fixed-reason audit record.
+- Rate limits are applied per user, per bridge, and per client address.
+- An uncertain bank outcome is never retried automatically and is left for operator review.
+- The `prod` profile deliberately refuses to start, because Runevault is a sandbox and does not move real money.
 
-Keep `NESSIE_ENABLED=false` for hardware simulation; combining `dev,simulator` with Nessie enabled fails startup. In another PowerShell terminal, set `RUNEVAULT_BRIDGE_TOKEN` and `RUNEVAULT_DEVICE_SECRET` to the same values used by Compose, then run `node bridge/simulator.mjs` with Node 22+. Resume the normal Auth0 backend with `docker compose up -d backend`. Hardware-simulator responses are labeled `hardware-simulated` and `local-fake`; persisted `SIMULATED` records cannot enter the physical execution claim pipeline. Simulator routes are unavailable in `auth` mode.
+Want the deep dive? See the [security platform](docs/security-platform.md), [signing protocol](docs/protocol.md), [event contracts](docs/events.md), and [database migrations](docs/database-migrations.md).
 
-The legacy challenge flow uses only a local fake bank adapter. The Angular dashboard uses Auth0 login and can create and read pending backend transactions; its separate demo preview still uses scripted transfer data. Hardware-simulator-to-Nessie testing is unsupported.
+## Challenges We Ran Into
+The tablet and backend had to produce identical signatures down to the byte. Tiny formatting differences broke valid approvals until we wrote a shared signing spec.
 
-Normal `dev` and `auth` application profiles require Nessie sandbox banking. Set `NESSIE_ENABLED=true`, `NESSIE_API_KEY`, and `NESSIE_SOURCE_ACCOUNT_ID` (a Nessie account UUID) privately in `.env`; Compose reads `NESSIE_ENABLED` from that file. Set `RUNEVAULT_ALLOWED_DESTINATIONS` to the permitted Nessie destination account UUIDs for physical demo transactions. Missing banking configuration fails startup. The fake bank runs only in `test` or explicit hardware `simulator` profiles. No live Nessie request is made by the automated tests.
+We started with two approval flows and merged them into one, so no transfer can skip a check.
 
-After the Pico verifies a transaction, the backend validates and persists Gemini's decision, claims it once only if approved, and calls Nessie outside the claim transaction. The selected destination is sent as Nessie's `payee_id`, while the source is `NESSIE_SOURCE_ACCOUNT_ID`. A pending Nessie receipt becomes `BANK_PENDING`, a confirmed completion becomes `EXECUTED`, a definite rejection becomes `FAILED`, and an ambiguous submitted result becomes `OUTCOME_UNKNOWN`. The provider, receipt when available, status, fixed reason, and timestamps persist with a bank-outcome audit event. Nothing is ever resent automatically. Every 30 seconds the backend re-reads the Nessie receipt of each `BANK_PENDING` transfer submitted in the last 24 hours (at most 20 per run): only a provider-reported `completed` marks it `EXECUTED`, and then the source account's balance at settlement is stored as the new balance. Unknown outcomes are never re-checked or marked completed automatically. Admins can query an existing receipt using `POST /api/admin/transactions/{id}/reconcile`; this endpoint never submits a transfer. Set `runevault.bank-settlement.enabled=false` to turn the automatic check off. An unknown submission without a reliable receipt requires operator review. To recover a committed VERIFIED transaction with no execution claim after interrupted processing, an admin may call `POST /api/admin/transactions/{id}/resume`; it reuses the stored Gemini decision and the existing one-claim processor. Never use resume for EXECUTING, BANK_PENDING, or OUTCOME_UNKNOWN. Both operations require an Auth0 token with `admin:platform`. Historical rows created by the older receipt-ID rule are reclassified conservatively without deleting data.
+We had to keep Gemini helpful without letting it make security decisions. Deploying in under 12 hours was its own storm: DNS, HTTPS, Auth0 redirects and WebSockets all had to line up on a brand-new domain.
 
-For an end-to-end sandbox demo, start the configured Compose stack, open the dashboard at `http://localhost:4200`, log in through Auth0, and create a pending transfer for `slab-01` to an **allowed Nessie destination account UUID**. The dashboard shows the transaction ID, assigned glyphs, and stored expiry. Run the existing bridge pickup command from [the Pico bridge guide](bridge/README.md#authorize-a-transaction-already-created-by-the-dashboard) using that ID; the bridge loads amount and destination from PostgreSQL and sends them to the Pico. Enter the displayed glyphs and briefly press Enter on the Pico. The bridge reports whether physical authorization succeeded. Refresh or watch the dashboard for VERIFIED, Gemini decision, and then BANK_PENDING, EXECUTED, FAILED, or OUTCOME_UNKNOWN. A physical approval alone is not banking completion. Test cases using `acct-999` exercise local policy and fake-bank paths; normal Nessie execution requires an actual permitted account UUID.
+## Accomplishments We're Proud Of
+Runevault works end to end. A button press on the tablet travels over USB, gets verified, is reviewed by Gemini, is released by a CFO, goes through Nessie, and shows up live on the dashboard.
 
-If processing was interrupted after VERIFIED but before a claim, or Nessie returned a pending receipt, a platform admin with a private Auth0 access token can inspect and operate on that exact transaction:
+We covered the edge cases so that every failure is a safe one. Bad signatures, replays, high risk, expired glyphs and AI outages are all stopped, and none of them can lead to an accidental payment.
 
-```powershell
-# Set AUTH0_ACCESS_TOKEN privately; it must carry admin:platform.
-$id = '<transaction-id-shown-in-dashboard>'
-$headers = @{ Authorization = "Bearer $env:AUTH0_ACCESS_TOKEN" }
-Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/admin/transactions/$id/resume" -Headers $headers
-Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/admin/transactions/$id/reconcile" -Headers $headers
-Invoke-RestMethod -Uri 'http://localhost:8080/api/transactions' -Headers $headers
-```
+Most of all, we turned payment approval into something that feels like uncovering an ancient artifact, and we built something that isn't purely software.
 
-Use `resume` only for a committed, unclaimed VERIFIED transaction. Use `reconcile` only for BANK_PENDING or OUTCOME_UNKNOWN with a stored reliable receipt. A missing receipt returns `OPERATOR_REVIEW_REQUIRED`; inspect provider records manually and never send a second transfer automatically. The dashboard list includes only the JWT subject's own transactions, even for an admin. The audit endpoint under `/api/admin/audit-events` provides permission-protected operational history.
+## What We Learned
+- **Hardware security:** signatures, counters, replay protection, and how strict byte-level protocols are.
+- **Responsible AI:** getting reliable JSON from Gemini, and letting AI advise rather than decide.
+- **Identity & access:** building role-based access with Auth0 and enforcing it on the backend.
+- **Time-series data:** using TimescaleDB hypertables and aggregates for live charts.
+- **Cloud deployment:** going from localhost to a live HTTPS domain on Vultr.
 
-Successful signed simulations are saved to PostgreSQL in the `transactions` table, with the challenge ID as transaction ID, the USD amount in minor units, destination, status, and creation/update timestamps. Compose starts PostgreSQL before the backend and retains records in the `postgres-data` volume across restarts. `docker compose down -v` deletes that data.
+## What's Next
+If we keep sailing, our roadmap includes:
 
-Set `POSTGRES_PASSWORD` in `.env` before the first startup. For a backend running outside Compose, start the database with `docker compose up -d postgres`, and set `SPRING_DATASOURCE_PASSWORD` to the same password. The default JDBC URL is `jdbc:postgresql://localhost:5432/runevault` with username `runevault`; override with `SPRING_DATASOURCE_URL` and `SPRING_DATASOURCE_USERNAME` as needed. PostgreSQL initialization credentials apply only when the data volume is first created.
+- **Tiered & multi-step approvals:** approval limits per role (Department Head up to $10,000, CFO up to $250,000, CEO any amount), and big transfers that need more than one approver.
+- **More custom glyphs:** more than our current three, for longer sequences and richer lore from Gemini.
+- **Banking integrations:** bringing the physical seal to real corporate banking platforms.
+- **Hardware prototype:** a compact, lightweight token that's easy to carry on every voyage.
 
-Flyway applies versioned PostgreSQL migrations before Hibernate validates the local or cloud application schema. See [the migration and existing-data procedure](docs/database-migrations.md) before connecting an existing database. H2 unit tests remain isolated; the PostgreSQL migration integration test needs Docker. Simulator challenges remain in memory and are available only under `dev,simulator`.
-
-Local Java builds require Java 25 and Maven 3.9+: `mvn -f backend/pom.xml verify`. Docker builds use Java 25. The CI workflow runs Maven verification, Maven dependency scanning, npm audit, and frontend checks; Maven scanning requires the private `NVD_API_KEY` repository secret.
-
-Use small branches such as codex/a-firmware, codex/b-auth0, codex/c-gemini. Keep secrets out of Git. See docs/roadmap.md.
-
-Security foundation and Auth0 setup: [docs/security-platform.md](docs/security-platform.md). Default dev requires the bridge credential; the simulator supplies it. The auth profile validates JWTs. The cloud sandbox deployment procedure is in [infra/README.md](infra/README.md); `prod` remains deliberately blocked for real-money banking.
-
-For the transaction demo, set `RUNEVAULT_MAX_AMOUNT_MINOR` (positive integer cents, at most 100000000), `RUNEVAULT_ALLOWED_DESTINATIONS` (comma-separated account IDs such as `acct-999,harbor`), and `RUNEVAULT_MAX_INCORRECT_GLYPH_ATTEMPTS` (positive integer) in `.env`. The defaults are 100000000 cents, `acct-999,harbor`, and five attempts. The amount and destination policy applies to dashboard and bridge pending-transaction creation and the older bridge challenge route. It is checked again after a valid signature, before approval. Policy rejections are audited with fixed reason codes; rejected creation does not save a transaction. Change these settings and restart the backend to apply them.
-
-For a tighter local demo, use `RUNEVAULT_MAX_AMOUNT_MINOR=50000`, `RUNEVAULT_ALLOWED_DESTINATIONS=acct-999,harbor`, and `RUNEVAULT_MAX_INCORRECT_GLYPH_ATTEMPTS=3`. This permits a $500.00 transfer to `acct-999`, rejects $500.01, and locks the Pico after the third incorrect glyph sequence.
+Made with ⚓ by the Runevault crew: Angelica, Emily, and Leonna

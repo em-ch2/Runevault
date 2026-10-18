@@ -184,6 +184,8 @@ public class DecisionExplanationService {
    case PENDING -> "Physical authorization on the Pico is still required; nothing has been assessed or sent to the bank.";
    case SIMULATED -> "None. This is a simulated record and is not eligible for banking.";
    case VERIFIED -> decision == null ? "Wait for the recorded policy decision; nothing has been sent to the bank."
+    : approvals.escalates(decision)
+    ? "Gemini rated this transfer high risk, so a CFO reviewer other than the requester must review it and decide whether to release it."
     : decision != AuditEvent.Reason.GEMINI_APPROVED
     ? "None in Runevault. Banking is blocked for this transfer; contact your security or compliance team if you believe the decision is wrong."
     : approvals.required()
@@ -238,7 +240,7 @@ public class DecisionExplanationService {
   if (t.getApprovedAt() != null) return "APPROVED_BY_SECOND_PERSON";
   if (t.getExecutionClaimedAt() != null) return "NOT_REQUIRED_WHEN_RELEASED";
   if (approvals.required() && t.getStatus() == Transaction.Status.VERIFIED
-    && t.getGeminiDecisionReason() == AuditEvent.Reason.GEMINI_APPROVED) return "AWAITING_SECOND_APPROVER";
+    && approvals.releasable(t.getGeminiDecisionReason())) return "AWAITING_SECOND_APPROVER";
   return "NOT_REACHED";
  }
 

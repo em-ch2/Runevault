@@ -80,7 +80,9 @@ public class TransactionService {
                 || !assignedDeviceId.equals(transaction.getDeviceId())
                 || transaction.getExpectedGlyphs() == null || transaction.getExpectedGlyphs().isBlank()
                 || transaction.getExecutionClaimedAt() != null
-                || transaction.getGeminiDecisionReason() != AuditEvent.Reason.GEMINI_APPROVED
+                // Gemini-approved, or escalated for high risk and being released by a second approver.
+                || !(transaction.getGeminiDecisionReason() == AuditEvent.Reason.GEMINI_APPROVED
+                    || approver != null && approvals.escalates(transaction.getGeminiDecisionReason()))
                 || transaction.getGeminiDecisionAt() == null
                 || !"USD".equals(transaction.getCurrency())
                 || !policy.allowsAmount(transaction.getAmountMinor())

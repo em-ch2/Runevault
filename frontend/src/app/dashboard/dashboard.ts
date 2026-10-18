@@ -93,7 +93,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     const transaction = this.selected();
     if (!transaction || transaction.status === 'PENDING') return 1;
     if (['EXECUTED', 'FAILED', 'OUTCOME_UNKNOWN', 'SIMULATED'].includes(transaction.status)
-      || (transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED')) return 3;
+      || this.stopped(transaction)) return 3;
     return 2;
   });
   readonly currentPanel = computed(() => this.secondaryView()
@@ -105,8 +105,18 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     const transaction = this.selected();
     if (!this.flowStarted() || !transaction) return false;
     return ['EXECUTED', 'BANK_PENDING', 'FAILED', 'OUTCOME_UNKNOWN', 'SIMULATED'].includes(transaction.status)
-      || (!!transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED');
+      || this.stopped(transaction);
   });
+
+  // Gemini did not approve and nothing more will happen. A high-risk transfer escalated to a second approver
+  // (awaitingApproval) is not stopped: it waits in the Sign-off queue.
+  stopped(transaction: TransactionRecord): boolean {
+    return !!transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED' && !transaction.awaitingApproval;
+  }
+
+  escalated(transaction: TransactionRecord): boolean {
+    return transaction.geminiDecisionReason === 'GEMINI_HIGH_RISK' && !!transaction.awaitingApproval;
+  }
 
   startNewTransfer(): void {
     this.historyStep.set(null);
@@ -626,8 +636,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   private awaitingApproval(): boolean {
     const transaction = this.selected();
     // Keep polling while the bank transfer and Gemini audit run.
-    if (transaction?.status === 'VERIFIED' && transaction.geminiDecisionReason
-      && transaction.geminiDecisionReason !== 'GEMINI_APPROVED') return false;
+    if (transaction?.status === 'VERIFIED' && this.stopped(transaction)) return false;
     if (transaction?.status === 'VERIFIED' || transaction?.status === 'EXECUTING'
       || transaction?.status === 'BANK_PENDING') return true;
     return (transaction?.status === 'PENDING' || (transaction === null && this.createdForSelection() !== null))
@@ -745,7 +754,9 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
       case 'FAILED': return 'Failed';
       case 'OUTCOME_UNKNOWN': return 'Outcome unknown — review required';
       case 'EXECUTING': return 'Execution claimed; processing pending';
-      case 'VERIFIED': return transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED'
+      case 'VERIFIED': return this.escalated(transaction)
+        ? 'Flagged as high risk; waiting for a CFO to sign off'
+        : this.stopped(transaction)
         ? 'Physical approval verified; Gemini policy blocked transfer'
         : transaction.awaitingApproval ? 'Passed review; waiting for a second approver to release it'
         : 'Physical approval verified';

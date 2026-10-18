@@ -72,6 +72,8 @@ public class TransactionProcessor {
    // The decision has committed; reporting it can never change it.
    events.geminiDecision(id, reason);
   }
+  // High risk with maker-checker on: a second approver decides instead of an outright block.
+  if (approvals.escalates(reason)) return Map.of("status", "AWAITING_APPROVAL", "reason", reason.name());
   if (reason != AuditEvent.Reason.GEMINI_APPROVED)
    return Map.of("status", "BLOCKED", "reason", reason.name());
   // Maker-checker: a second person releases it later through approve(); nothing is claimed here.

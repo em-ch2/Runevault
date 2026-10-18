@@ -90,6 +90,13 @@ class DecisionExplanationHttpTest {
   // A CFO reviewer sees what the approval queue shows them, and nothing that left it.
   explain("owned-tx", cfo).andExpect(status().isOk());
   explain("blocked-tx", cfo).andExpect(status().isNotFound());
+  // A high-risk transfer escalated to the CFO queue is visible to the reviewer.
+  Transaction risky = Transaction.pending("risky-tx", 50000, "acct-999", "slab-01", GLYPHS, "auth0|owner-a");
+  risky.verifyPhysicalApproval(Instant.now());
+  risky.recordGeminiDecision(AuditEvent.Reason.GEMINI_HIGH_RISK, ASSESSMENT, "Risk score 12 is above the limit.", Instant.now());
+  transactions.saveAndFlush(risky);
+  explain("risky-tx", cfo).andExpect(status().isOk())
+   .andExpect(jsonPath("$.requiredNextStep").value(org.hamcrest.Matchers.containsString("CFO reviewer")));
   explain("owned-tx", auditor).andExpect(status().isOk());
   explain("blocked-tx", auditor).andExpect(status().isOk());
   explain("blocked-tx", admin).andExpect(status().isOk());
@@ -132,7 +139,7 @@ class DecisionExplanationHttpTest {
    when(gemini.generateJson(anyString(), anyString(), anyMap())).thenReturn(bad.get(i));
    explain("bad-" + i, owner).andExpect(status().isOk())
     .andExpect(jsonPath("$.source").value("recorded-policy-reason"))
-    .andExpect(jsonPath("$.summary").value("Risk score 80 is above the limit of 30, so banking was blocked."))
+    .andExpect(jsonPath("$.summary").value("Translation confidence 0.4 is below the minimum of 0.8, so banking was blocked."))
     .andExpect(jsonPath("$.keyFactors.length()").value(0));
   }
   String other = bearer("auth0|owner-d", "read:transactions");
@@ -141,7 +148,7 @@ class DecisionExplanationHttpTest {
    .thenThrow(new org.springframework.web.client.ResourceAccessException("timeout"));
   explain("down", other).andExpect(status().isOk())
    .andExpect(jsonPath("$.source").value("recorded-policy-reason"))
-   .andExpect(jsonPath("$.recordedReason").value("Risk score 80 is above the limit of 30, so banking was blocked."))
+   .andExpect(jsonPath("$.recordedReason").value("Translation confidence 0.4 is below the minimum of 0.8, so banking was blocked."))
    .andExpect(jsonPath("$.requiredNextStep").value(org.hamcrest.Matchers.containsString("Banking is blocked")));
  }
 
@@ -197,10 +204,12 @@ class DecisionExplanationHttpTest {
  private Transaction blocked(String id, String owner) {
   Transaction tx = Transaction.pending(id, 50000, "acct-999", "slab-01", GLYPHS, owner);
   tx.verifyPhysicalApproval(Instant.now());
-  tx.recordGeminiDecision(AuditEvent.Reason.GEMINI_HIGH_RISK, ASSESSMENT.replace("\"risk_score\":12", "\"risk_score\":80"),
-   "Risk score 80 is above the limit of 30, so banking was blocked.", Instant.now());
+  // Low confidence still blocks; high risk would be escalated to a CFO instead.
+  tx.recordGeminiDecision(AuditEvent.Reason.GEMINI_LOW_CONFIDENCE,
+   ASSESSMENT.replace("\"translation_confidence\":0.9", "\"translation_confidence\":0.4"),
+   "Translation confidence 0.4 is below the minimum of 0.8, so banking was blocked.", Instant.now());
   auditEvents.saveAndFlush(new AuditEvent(AuditEvent.Type.GEMINI_DECISION, "slab-01", id,
-   AuditEvent.Outcome.REJECTED, AuditEvent.Reason.GEMINI_HIGH_RISK));
+   AuditEvent.Outcome.REJECTED, AuditEvent.Reason.GEMINI_LOW_CONFIDENCE));
   return transactions.saveAndFlush(tx);
  }
 

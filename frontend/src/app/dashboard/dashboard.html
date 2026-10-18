@@ -373,18 +373,25 @@
         <div><dt>Created</dt><dd>{{ time(transaction.createdAt) }}</dd></div>
         @if (transaction.verifiedAt) { <div><dt>Verified</dt><dd>{{ time(transaction.verifiedAt) }}</dd></div> }
       </dl>
-      <p class="status" [class.status-wait]="(transaction.status === 'VERIFIED' && (!transaction.geminiDecisionReason || transaction.geminiDecisionReason === 'GEMINI_APPROVED')) || transaction.status === 'EXECUTING' || transaction.status === 'BANK_PENDING' || (transaction.status === 'PENDING' && !approvalExpired(transaction))"
-        [class.status-bad]="transaction.status === 'FAILED' || transaction.status === 'OUTCOME_UNKNOWN' || (transaction.status === 'VERIFIED' && transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED') || (transaction.status === 'PENDING' && approvalExpired(transaction))"
+      <p class="status" [class.status-wait]="(transaction.status === 'VERIFIED' && !stopped(transaction)) || transaction.status === 'EXECUTING' || transaction.status === 'BANK_PENDING' || (transaction.status === 'PENDING' && !approvalExpired(transaction))"
+        [class.status-bad]="transaction.status === 'FAILED' || transaction.status === 'OUTCOME_UNKNOWN' || (transaction.status === 'VERIFIED' && stopped(transaction)) || (transaction.status === 'PENDING' && approvalExpired(transaction))"
         [class.status-good]="transaction.status === 'EXECUTED'"
         role="status">
         {{ transaction.status }} · {{ liveStatus(transaction) }}
       </p>
       <!-- Customer view: the review outcome in plain words. Scores, flags and thresholds stay in the History trace. -->
       @if (transaction.geminiDecisionReason; as reason) {
-        <div class="decision" [class.decision-blocked]="reason !== 'GEMINI_APPROVED'">
-          <p class="decision-title">{{ customerDecision(reason) }}</p>
-          @if (reason !== 'GEMINI_APPROVED') { <p class="small">{{ customerBlockDetail(transaction) }}</p> }
-        </div>
+        @if (escalated(transaction)) {
+          <div class="decision decision-escalated">
+            <p class="decision-title">Flagged for CFO review</p>
+            <p class="small">Our security review rated this transfer high risk, so it was not stopped outright: a CFO must sign it off before anything is sent to the bank. Nothing has moved yet.</p>
+          </div>
+        } @else {
+          <div class="decision" [class.decision-blocked]="reason !== 'GEMINI_APPROVED'">
+            <p class="decision-title">{{ customerDecision(reason) }}</p>
+            @if (reason !== 'GEMINI_APPROVED') { <p class="small">{{ customerBlockDetail(transaction) }}</p> }
+          </div>
+        }
       }
       @if (transaction.bankProvider) {
         <div class="receipt-card" [class.receipt-bad]="transaction.bankOutcome === 'FAILED' || transaction.bankOutcome === 'UNKNOWN'">
@@ -467,14 +474,18 @@
 
   <!-- Maker-checker queue. The backend enforces every rule here; the UI only explains them. -->
     <app-folder-panel class="slab activity live-list folder-light" panelId="signoff-title" title="Second-approver sign-off" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'signoff-title'">
-      <p class="flow-guidance">These transfers were signed on the Pico and passed the Gemini review. Each one needs a second person to release it. You cannot release a transfer you requested.</p>
+      <p class="flow-guidance">These transfers were signed on the Pico. Most passed the Gemini review; any Gemini rated high risk are flagged below for careful review. Each one needs a second person to release it. You cannot release a transfer you requested.</p>
     @if (approvalNotice()) { <p class="status status-good" role="status">{{ approvalNotice() }}</p> }
     @if (approvalProblem()) { <p class="form-error" role="alert">{{ approvalProblem() }}</p> }
     @if (approvalQueue().length === 0) {
       <p class="empty">Nothing is waiting for sign-off.</p>
     } @else {
       @for (transaction of approvalQueue(); track transaction.transactionId) {
-        <div class="receipt-card">
+        <div class="receipt-card" [class.receipt-escalated]="escalated(transaction)">
+          @if (escalated(transaction)) {
+            <p class="escalation-flag" role="note">High risk &middot; escalated by Gemini</p>
+            @if (transaction.riskExplanation) { <p class="small">{{ transaction.riskExplanation }}</p> }
+          }
           <p class="amount">{{ money(transaction.amountMinor) }}</p>
           <dl class="facts">
             <div><dt>Transaction</dt><dd class="mono">{{ shortId(transaction.transactionId) }}</dd></div>
@@ -483,6 +494,7 @@
             @if (transaction.verifiedAt) { <div><dt>Pico verified</dt><dd>{{ time(transaction.verifiedAt) }}</dd></div> }
             @if (transaction.riskScore != null) { <div><dt>Risk score</dt><dd>{{ transaction.riskScore }}</dd></div> }
           </dl>
+          @if (escalated(transaction)) { <p class="muted small">High-risk transfer: Gemini flagged it, so review the risk details before releasing.</p> }
           @if (ownRequest(transaction)) {
             <p class="muted small">You requested this transfer. Another approver must release it.</p>
           } @else {
