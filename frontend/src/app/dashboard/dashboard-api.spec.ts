@@ -234,6 +234,23 @@ describe('Dashboard live transactions', () => {
     fixture.destroy();
   });
 
+  it('shows a high-risk transfer escalated to a CFO as waiting, not stopped', () => {
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'VERIFIED', verifiedAt: new Date().toISOString(),
+      geminiDecisionReason: 'GEMINI_HIGH_RISK', awaitingApproval: true, stepUpRequired: true }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const dashboard = fixture.componentInstance;
+    dashboard.select('abc123');
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Flagged for CFO review');
+    expect(text).toContain('waiting for a CFO to sign off');
+    expect(text).not.toContain('Stopped by our security review');
+    expect(text).not.toContain('Make another transfer');
+    expect(dashboard.flowStep()).toBe(2);
+    fixture.destroy();
+  });
+
   it('offers another transfer once the bank has answered', () => {
     api.list.mockReturnValue(of({ content: [{ ...pending, status: 'BANK_PENDING', verifiedAt: new Date().toISOString(),
       geminiDecisionReason: 'GEMINI_APPROVED', bankProvider: 'nessie', bankOutcome: 'ACCEPTED_PENDING' }] }));

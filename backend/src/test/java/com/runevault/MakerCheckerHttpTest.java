@@ -127,6 +127,51 @@ class MakerCheckerHttpTest {
   verify(bank, times(1)).transfer(id, 150000L, "USD", "acct-999");
  }
 
+ @Test void highRiskTransferIsEscalatedToASecondApproverWhoMustStepUp() throws Exception {
+  gemini(0.9, 65);
+  String id = signedAndReviewed(10000);
+  verifyNoInteractions(bank);
+  assertEquals(AuditEvent.Reason.GEMINI_HIGH_RISK, transactions.findById(id).orElseThrow().getGeminiDecisionReason());
+  // Listed for sign-off, and step-up is required even though $100 is under the step-up amount.
+  mvc.perform(get("/api/transactions/approvals").header("Authorization", "Bearer cfo"))
+   .andExpect(status().isOk())
+   .andExpect(jsonPath("$.content[0].transactionId").value(id))
+   .andExpect(jsonPath("$.content[0].awaitingApproval").value(true))
+   .andExpect(jsonPath("$.content[0].stepUpRequired").value(true));
+  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo"))
+   .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.error").value("step_up_required"));
+  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer maker-as-cfo"))
+   .andExpect(status().isForbidden()).andExpect(jsonPath("$.error").value("self_approval"));
+  verifyNoInteractions(bank);
+  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo-mfa"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("EXECUTED"));
+  verify(bank, times(1)).transfer(id, 10000L, "USD", "acct-999");
+ }
+
+ @Test void lowConfidenceIsStillBlockedNotEscalated() throws Exception {
+  gemini(0.4, 10);
+  var created = mvc.perform(post("/api/transactions").header("Authorization", "Bearer maker")
+    .contentType("application/json").content(mapper.writeValueAsString(Map.of(
+     "device", "slab-01", "amount", 10000, "dest", "acct-999"))))
+   .andExpect(status().isCreated()).andReturn();
+  String id = mapper.readTree(created.getResponse().getContentAsString()).get("tx_id").asText();
+  mvc.perform(post("/api/device/authorize").header("X-Bridge-Token", BRIDGE)
+    .contentType("application/json").content(signed(id, 10000, ++counter)))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.execution.status").value("BLOCKED"));
+  mvc.perform(get("/api/transactions/approvals").header("Authorization", "Bearer cfo"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo-mfa"))
+   .andExpect(status().isConflict());
+  verifyNoInteractions(bank);
+ }
+
+ private void gemini(double confidence, int risk) throws Exception {
+  when(lore.audit(any(Transaction.class), anyString())).thenReturn(mapper.readTree("""
+   {"lore_translation":"Rough seas.","translation_confidence":%s,"risk_score":%d,
+    "risk_flags":["large amount"],"risk_explanation":"Unusual.","security_message":"Review this transfer."}
+   """.formatted(confidence, risk)));
+ }
+
  private String signedAndReviewed(long amount) throws Exception {
   var created = mvc.perform(post("/api/transactions").header("Authorization", "Bearer maker")
     .contentType("application/json").content(mapper.writeValueAsString(Map.of(

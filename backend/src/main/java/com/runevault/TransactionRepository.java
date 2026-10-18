@@ -26,8 +26,8 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
  long countByCreatedAtAfterAndCreatedAtBeforeAndTransactionIdNot(Instant after, Instant before, String transactionId);
 
  // Passed the device and Gemini checks and not yet claimed: what a maker-checker approver can release.
- Page<Transaction> findByStatusAndGeminiDecisionReasonAndExecutionClaimedAtIsNull(
-   Transaction.Status status, AuditEvent.Reason reason, Pageable pageable);
+ Page<Transaction> findByStatusAndGeminiDecisionReasonInAndExecutionClaimedAtIsNull(
+   Transaction.Status status, java.util.Collection<AuditEvent.Reason> reasons, Pageable pageable);
 
  @Query("select t.deviceId from Transaction t where t.transactionId = :id")
  Optional<String> findAssignedDeviceId(@Param("id") String id);

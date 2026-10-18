@@ -87,9 +87,9 @@ public class DashboardTransactionApi {
     transaction.getGeminiDecisionReason(), transaction.getGeminiDecisionExplanation(), transaction.getGeminiDecisionAt(),
     transaction.getApproverSubject(), transaction.getApprovedAt(), transaction.getApprovalStepUp(),
     approvals.required() && transaction.getStatus() == Transaction.Status.VERIFIED
-     && transaction.getGeminiDecisionReason() == AuditEvent.Reason.GEMINI_APPROVED
+     && approvals.releasable(transaction.getGeminiDecisionReason())
      && transaction.getExecutionClaimedAt() == null,
-    approvals.requiresStepUp(transaction.getAmountMinor()));
+    approvals.requiresStepUp(transaction.getAmountMinor(), transaction.getGeminiDecisionReason()));
   }
  }
 
@@ -149,8 +149,11 @@ public class DashboardTransactionApi {
   if (page < 0 || size < 1 || size > 100)
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "page must be nonnegative and size must be 1-100");
   Map<String, Long> expected = expectedBalances();
-  return transactions.findByStatusAndGeminiDecisionReasonAndExecutionClaimedAtIsNull(
-    Transaction.Status.VERIFIED, AuditEvent.Reason.GEMINI_APPROVED,
+  // Gemini-approved transfers, plus high-risk ones escalated to a second approver instead of being blocked.
+  var releasable = approvals.required()
+   ? List.of(AuditEvent.Reason.GEMINI_APPROVED, AuditEvent.Reason.GEMINI_HIGH_RISK) : List.of(AuditEvent.Reason.GEMINI_APPROVED);
+  return transactions.findByStatusAndGeminiDecisionReasonInAndExecutionClaimedAtIsNull(
+    Transaction.Status.VERIFIED, releasable,
     PageRequest.of(page, size, Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("transactionId"))))
    .map(t -> new TransactionView(t, expected.get(t.getTransactionId()), approvals));
  }
@@ -163,7 +166,7 @@ public class DashboardTransactionApi {
   if (!approvals.required()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
   Transaction transaction = transactions.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
   boolean stepUp = mfa(jwt);
-  if (approvals.requiresStepUp(transaction.getAmountMinor()) && !stepUp)
+  if (approvals.requiresStepUp(transaction.getAmountMinor(), transaction.getGeminiDecisionReason()) && !stepUp)
    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
     .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer error=\"insufficient_user_authentication\", "
      + "error_description=\"MFA is required to approve this amount\", acr_values=\"" + MFA_ACR + "\"")

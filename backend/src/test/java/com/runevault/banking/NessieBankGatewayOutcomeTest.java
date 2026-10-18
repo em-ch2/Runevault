@@ -82,6 +82,19 @@ class NessieBankGatewayOutcomeTest {
   assertEquals("/accounts/" + DEST + "/transfers", request.getValue().uri().getPath());
  }
 
+ @Test void destinationWithNoTransfersYetHasAnEmptyHistory() throws Exception {
+  // Nessie answers 404 "No transfers found for this account" for an account that has never sent a transfer.
+  HttpClient none = mock(HttpClient.class);
+  var notFound = response(404, "\"No transfers found for this account\"");
+  when(none.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(notFound);
+  assertEquals(BankReadGateway.TransferHistory.empty(), gateway(none).transferHistory(DEST));
+
+  HttpClient down = mock(HttpClient.class);
+  var serverError = response(503, "{}");
+  when(down.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(serverError);
+  assertThrows(BankReadGateway.Unavailable.class, () -> gateway(down).transferHistory(DEST));
+ }
+
  @Test void providerTransferCarriesSelectedPayeeAndExactCents() throws Exception {
   HttpClient http = mock(HttpClient.class);
   var before = response(200, "{\"balance\":1000}");
