@@ -51,6 +51,15 @@ export interface MinutePoint {
   blocked: number;
 }
 
+// The treasury balance Nessie reports, and the balance Runevault expects once its accepted transfers apply.
+export interface BankBalance {
+  reportedBalanceMinor: number | null;
+  unappliedTransfers: number;
+  unappliedTransfersMinor: number;
+  expectedBalanceMinor: number | null;
+  asOf: string;
+}
+
 export interface PipelineMetrics {
   from: string;
   to: string;
@@ -113,6 +122,12 @@ export class TransactionApiService {
   }
 
   // Approvals versus blocks per minute from the pipeline_events table (Tiger Data).
+  bankBalance() {
+    return this.token().pipe(switchMap((token) => this.http.get<BankBalance>(
+      '/api/bank/balance', { headers: new HttpHeaders({ Authorization: `Bearer ${token}` }) },
+    )));
+  }
+
   metrics(minutes = 30) {
     return this.token().pipe(switchMap((token) => this.http.get<PipelineMetrics>(
       '/api/metrics/pipeline', {

@@ -208,3 +208,22 @@ app-folder-panel:not(.folder-open) { align-self:start; }
 /* Lining numerals (Georgia's old-style 3 sits below the baseline), centred optically in the circle. */
 .landing-steps li::before { font-family:var(--serif); font-variant-numeric:lining-nums; font-weight:600; line-height:1; padding-top:1px; }
 @media(max-width:700px) { .sidebar nav a > span { display:none; } }
+/* Bank-reported vs calculated balance rows on the receipt. */
+.receipt-card .facts div,.history-facts div { grid-template-columns:minmax(120px,190px) minmax(0,1fr); }
+.calculated-tag { margin-left:6px; padding:1px 7px; border:1px solid currentColor; border-radius:10px; font-size:.68rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; opacity:.7; }
+/* History: arrows to step through transfers. */
+.history-pager { display:flex; align-items:center; gap:14px; margin:0 0 18px; padding:10px 12px; border:1px solid var(--slab-edge); border-radius:4px; background:#b7985312; }
+.pager-label { flex:1; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:6px; }
+.pager-label strong { font-family:var(--serif); font-size:1.15rem; }
+.pager-count { flex-basis:100%; font-size:.75rem; color:var(--ink-muted); }
+.pager-arrow { flex-shrink:0; display:grid; place-items:center; width:40px; height:40px; padding:0; border:1px solid var(--gold); border-radius:50%; background:transparent; color:var(--gold); cursor:pointer; transition:background-color .2s,transform .2s; }
+.pager-arrow svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.pager-arrow:hover:not(:disabled) { background:#b7985333; transform:scale(1.06); }
+.pager-arrow:disabled { opacity:.3; cursor:default; }
+.pager-arrow:focus-visible { outline:3px solid #b18e43; outline-offset:2px; }
+/* Landing cards float up a little on hover. */
+.landing-glyphs figure,.landing-steps li { transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease; will-change:transform; }
+.landing-glyphs figure:hover,.landing-steps li:hover { transform:translateY(-5px); box-shadow:0 10px 22px #4a3a1626,0 2px 6px #4a3a1614; border-color:#b69a5e; }
+.landing-glyphs figure:hover .glyph { animation:glyph-bob 1.6s ease-in-out infinite; }
+@keyframes glyph-bob { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-3px); } }
+@media(prefers-reduced-motion:reduce) { .landing-glyphs figure,.landing-steps li,.pager-arrow { transition:none; }.landing-glyphs figure:hover,.landing-steps li:hover { transform:none; }.landing-glyphs figure:hover .glyph { animation:none; } }

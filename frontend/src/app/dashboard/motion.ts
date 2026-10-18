@@ -17,6 +17,14 @@ export function slideUp(targets: Element[], options: { distance?: number; stagge
     { autoAlpha: 1, y: 0, duration: 0.5, ease: 'power3.out', stagger: options.stagger ?? 0.06, clearProps: 'opacity,visibility,transform' });
 }
 
+/** Slides content in from the side it is coming from: +1 from the right (older), -1 from the left (newer). */
+export function slideAcross(target: Element, direction: number): void {
+  gsap.killTweensOf(target);
+  if (reducedMotion()) return;
+  gsap.fromTo(target, { autoAlpha: 0, x: 32 * Math.sign(direction) },
+    { autoAlpha: 1, x: 0, duration: 0.4, ease: 'power3.out', clearProps: 'opacity,visibility,transform' });
+}
+
 /** Rocks the landing ship and rolls the waves past it; returns a function that stops them. */
 export function rockBoat(svg: Element | null): () => void {
   if (!svg || reducedMotion()) return () => {};

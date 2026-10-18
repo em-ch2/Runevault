@@ -1,9 +1,9 @@
-import { AfterViewInit, Component, ElementRef, HostListener, Injector, OnDestroy, OnInit, ViewChild, afterNextRender, computed, effect, inject, signal } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, HostListener, Injector, OnDestroy, OnInit, ViewChild, afterNextRender, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subscription, interval } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
-import { PendingTransactionResponse, PipelineMetrics, TransactionApiService, TransactionRecord, transactionError } from '../transactions/transaction-api.service';
+import { BankBalance, PendingTransactionResponse, PipelineMetrics, TransactionApiService, TransactionRecord, transactionError } from '../transactions/transaction-api.service';
 import { TransferTransportEvent } from '../feed/feed-event';
 import { ApprovalsChart } from './approvals-chart';
 import { FolderPanel } from './folder-panel';
@@ -13,7 +13,7 @@ import { MockScenario } from '../feed/mock-feed';
 import { GLYPH_NAMES, Glyph } from './glyph';
 import { PicoApproval } from './pico-approval';
 import { Stage, TransferStore } from './transfer-store';
-import { glideTo, rockBoat, slideUp } from './motion';
+import { glideTo, rockBoat, slideAcross, slideUp } from './motion';
 
 const STAGE_ORDER: Stage[] = ['received', 'sealed', 'verified', 'executed'];
 type NavSection = 'dashboard' | 'approval' | 'history' | 'analytics';
@@ -40,6 +40,27 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   selectHistory(id: string): void {
     this.select(id);
     this.historyStep.set(3);
+  }
+
+  // Records arrive newest first, so -1 moves to a newer transfer and +1 to an older one.
+  readonly historyIndex = computed(() => this.records().findIndex((r) => r.transactionId === this.selectedId()));
+
+  stepHistory(offset: number): void {
+    const next = this.records().at(this.historyIndex() + offset);
+    if (this.historyIndex() < 0 || this.historyIndex() + offset < 0 || !next) return;
+    this.selectedId.set(next.transactionId);
+    afterNextRender(() => {
+      const panel = this.host.nativeElement.querySelector('.guided-flow > app-folder-panel:not([hidden]) .folder-content');
+      if (panel) slideAcross(panel, offset);
+    }, { injector: this.injector });
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onHistoryKey(event: KeyboardEvent): void {
+    if (this.landing() || this.currentPanel() !== 'history-trace-title') return;
+    if ((event.target as HTMLElement | null)?.closest('input, textarea, select')) return;
+    if (event.key === 'ArrowLeft') this.stepHistory(-1);
+    if (event.key === 'ArrowRight') this.stepHistory(1);
   }
 
   inspectHistoryStep(step: number): void {
@@ -150,6 +171,12 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   readonly liveEvents = signal<TransferTransportEvent[]>([]);
   readonly metrics = signal<PipelineMetrics | null>(null);
   readonly metricsError = signal<string | null>(null);
+  readonly bankBalance = signal<BankBalance | null>(null);
+  // Re-read the bank balance whenever the selected transfer gets (or changes) a bank outcome.
+  private readonly balanceRefresh = effect(() => {
+    const transaction = this.selected();
+    if (transaction?.bankOutcome) untracked(() => this.loadBankBalance());
+  });
   readonly liveOpen = computed(() => this.feed.connection() === 'open');
   // Polling is only a fallback: it runs while the live socket is down and a transfer is in flight.
   private readonly pollingFallback = effect(() => {
@@ -319,6 +346,20 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
       if (event.stage === 'VERIFIED' && event.outcome === 'APPROVED') this.refresh(true);
     }
     if (event.stage === 'GEMINI' || (event.stage === 'VERIFIED' && event.outcome === 'REJECTED')) this.loadMetrics();
+  }
+
+  loadBankBalance(): void {
+    this.api.bankBalance().subscribe({
+      next: (balance) => this.bankBalance.set(balance),
+      error: () => this.bankBalance.set(null),
+    });
+  }
+
+  // Shown instead of "New balance" when the bank accepted the transfer but has not reported the deduction.
+  expectedBalance(transaction: TransactionRecord): BankBalance | null {
+    const balance = this.bankBalance();
+    if (transaction.newBalanceMinor != null || balance?.expectedBalanceMinor == null || balance.reportedBalanceMinor == null) return null;
+    return transaction.bankOutcome === 'ACCEPTED_PENDING' || transaction.bankOutcome === 'COMPLETED' ? balance : null;
   }
 
   loadMetrics(): void {

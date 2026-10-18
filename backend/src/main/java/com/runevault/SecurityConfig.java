@@ -59,6 +59,7 @@ public class SecurityConfig {
     a.requestMatchers(HttpMethod.GET, "/api/transactions").hasAuthority("PERM_read:transactions");
     a.requestMatchers(HttpMethod.POST, "/api/ws-ticket").hasAuthority("PERM_read:transactions");
     a.requestMatchers(HttpMethod.GET, "/api/metrics/pipeline").hasAuthority("PERM_read:transactions");
+    a.requestMatchers(HttpMethod.GET, "/api/bank/balance").hasAuthority("PERM_read:transactions");
    }
    if (auth) a.requestMatchers("/api/admin/**").hasAuthority("PERM_admin:platform").anyRequest().denyAll();
    else a.anyRequest().denyAll();
@@ -138,7 +139,8 @@ public class SecurityConfig {
      ? RequestQuotaLimiter.Category.ADMIN
      : path.equals("/api/ws-ticket") && request.getMethod().equals("POST")
      ? RequestQuotaLimiter.Category.WS_TICKET
-     : (path.equals("/api/transactions") || path.equals("/api/metrics/pipeline")) && request.getMethod().equals("GET")
+     : (path.equals("/api/transactions") || path.equals("/api/metrics/pipeline") || path.equals("/api/bank/balance"))
+       && request.getMethod().equals("GET")
      ? RequestQuotaLimiter.Category.DASHBOARD_READ
      : path.equals("/api/transactions") && request.getMethod().equals("POST")
      ? RequestQuotaLimiter.Category.TRANSACTION_CREATION

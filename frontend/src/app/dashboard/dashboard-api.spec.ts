@@ -14,7 +14,7 @@ describe('Dashboard live transactions', () => {
     status: 'PENDING' as const, createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 120000).toISOString(), verifiedAt: null,
     requesterSubject: 'auth0|user' };
-  const api = { create: vi.fn(), list: vi.fn(), metrics: vi.fn() };
+  const api = { create: vi.fn(), list: vi.fn(), metrics: vi.fn(), bankBalance: vi.fn() };
   const metrics = { from: '2026-10-17T12:00:00Z', to: '2026-10-17T12:02:00Z', source: 'pipeline-events', approved: 3, blocked: 2,
     policy: { minTranslationConfidence: 0.8, maxRiskScore: 30 },
     minutes: [
@@ -38,6 +38,8 @@ describe('Dashboard live transactions', () => {
     api.create.mockReset();
     api.list.mockReset().mockReturnValue(of({ content: [] }));
     api.metrics.mockReset().mockReturnValue(of(metrics));
+    api.bankBalance.mockReset().mockReturnValue(of({ reportedBalanceMinor: 50_000_000, unappliedTransfers: 2,
+      unappliedTransfersMinor: 100_000, expectedBalanceMinor: 49_900_000, asOf: new Date().toISOString() }));
     feed = { liveEnabled: true, connection: signal<FeedConnection>('closed'), startLive: vi.fn(), startDemo: vi.fn(),
       stop: vi.fn(), playMock: vi.fn(), transportEvents: new Subject(), opened: new Subject() };
     TestBed.configureTestingModule({
@@ -144,6 +146,48 @@ describe('Dashboard live transactions', () => {
     dashboard.createPending();
     expect(api.create).not.toHaveBeenCalled();
     expect(dashboard.apiError()).toContain('at most two decimal places');
+    fixture.destroy();
+  });
+
+  it('labels the expected balance as calculated when the bank has not applied the transfer', () => {
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'BANK_PENDING', verifiedAt: new Date().toISOString(),
+      geminiDecisionReason: 'GEMINI_APPROVED', bankProvider: 'nessie', bankStatus: 'pending', bankReceiptId: 'r-1',
+      bankOutcome: 'ACCEPTED_PENDING', newBalanceMinor: null }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    fixture.componentInstance.select('abc123');
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent;
+    expect(api.bankBalance).toHaveBeenCalled();
+    expect(text).toContain('Bank-reported balance');
+    expect(text).toContain('$500,000.00');
+    expect(text).toContain('Remaining balance');
+    expect(text).toContain('$499,000.00');
+    expect(text).toContain('calculated');
+    expect(text).toContain('minus 2 accepted transfers ($1,000.00)');
+    fixture.destroy();
+  });
+
+  it('steps through history transfers with the arrows, keeping the inspected step', () => {
+    api.list.mockReturnValue(of({ content: ['newest', 'middle', 'oldest'].map((id) =>
+      ({ ...pending, transactionId: id, status: 'EXECUTED', verifiedAt: new Date().toISOString() })) }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const dashboard = fixture.componentInstance;
+    dashboard.selectHistory('middle');
+    dashboard.inspectHistoryStep(1);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Transfer 2 of 3');
+    dashboard.stepHistory(1);
+    expect(dashboard.selectedId()).toBe('oldest');
+    expect(dashboard.historyStep()).toBe(1);
+    dashboard.stepHistory(1);
+    expect(dashboard.selectedId()).toBe('oldest');
+    dashboard.stepHistory(-1);
+    dashboard.stepHistory(-1);
+    expect(dashboard.selectedId()).toBe('newest');
+    dashboard.stepHistory(-1);
+    expect(dashboard.selectedId()).toBe('newest');
     fixture.destroy();
   });
 

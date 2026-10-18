@@ -131,6 +131,18 @@
   <app-folder-panel class="slab folder-light" panelId="history-trace-title" [title]="historyStepTitles[historyStep() ?? 3]"
     [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'history-trace-title'">
     @if (selected(); as transaction) {
+      <nav class="history-pager" aria-label="Browse transfers">
+        <button class="pager-arrow" type="button" [disabled]="historyIndex() <= 0" (click)="stepHistory(-1)" aria-label="Newer transfer" title="Newer transfer">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5L8 12L15 19" /></svg>
+        </button>
+        <div class="pager-label">
+          <strong>{{ money(transaction.amountMinor) }}</strong> <span class="muted">to</span> <span class="mono">{{ shortId(transaction.destination) }}</span>
+          <span class="pager-count">Transfer {{ historyIndex() + 1 }} of {{ records().length }} &middot; {{ time(transaction.createdAt) }}</span>
+        </div>
+        <button class="pager-arrow" type="button" [disabled]="historyIndex() >= records().length - 1" (click)="stepHistory(1)" aria-label="Older transfer" title="Older transfer">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5L16 12L9 19" /></svg>
+        </button>
+      </nav>
       <p class="muted small">Read-only receipt history &middot; <span class="mono">{{ transaction.transactionId }}</span></p>
       @switch (historyStep()) {
         @case (0) {
@@ -173,7 +185,12 @@
               <div><dt>Receipt</dt><dd class="mono">{{ transaction.bankReceiptId ?? 'None issued' }}</dd></div>
               <div><dt>Submitted</dt><dd>{{ transaction.bankSubmittedAt ? time(transaction.bankSubmittedAt) : 'Not recorded' }}</dd></div>
               <div><dt>Outcome recorded</dt><dd>{{ transaction.bankOutcomeAt ? time(transaction.bankOutcomeAt) : 'Not recorded' }}</dd></div>
-              <div><dt>New balance</dt><dd>{{ balanceText(transaction) }}</dd></div>
+              @if (expectedBalance(transaction); as balance) {
+                <div><dt>Bank-reported balance</dt><dd>{{ money(balance.reportedBalanceMinor!) }}</dd></div>
+                <div><dt>Remaining balance</dt><dd>{{ money(balance.expectedBalanceMinor!) }} <span class="calculated-tag">calculated</span></dd></div>
+              } @else {
+                <div><dt>New balance</dt><dd>{{ balanceText(transaction) }}</dd></div>
+              }
             </dl>
           } @else { <p class="muted">No bank outcome is recorded. A request or review decision alone does not confirm a transfer.</p> }
         }
@@ -268,9 +285,16 @@
             <div><dt>Receipt</dt><dd class="mono">{{ transaction.bankReceiptId ?? 'None issued' }}</dd></div>
             <div><dt>Submitted</dt><dd>{{ transaction.bankSubmittedAt ? time(transaction.bankSubmittedAt) : 'Not submitted' }}</dd></div>
             @if (transaction.bankOutcomeAt) { <div><dt>Recorded</dt><dd>{{ time(transaction.bankOutcomeAt) }}</dd></div> }
-            <div><dt>New balance</dt><dd>{{ balanceText(transaction) }}</dd></div>
+            @if (expectedBalance(transaction); as balance) {
+              <div><dt>Bank-reported balance</dt><dd>{{ money(balance.reportedBalanceMinor!) }}</dd></div>
+              <div><dt>Remaining balance</dt><dd><strong>{{ money(balance.expectedBalanceMinor!) }}</strong> <span class="calculated-tag">calculated</span></dd></div>
+            } @else {
+              <div><dt>New balance</dt><dd>{{ balanceText(transaction) }}</dd></div>
+            }
           </dl>
-          @if (transaction.newBalanceMinor == null && transaction.bankOutcome === 'ACCEPTED_PENDING') {
+          @if (expectedBalance(transaction); as balance) {
+            <p class="muted small">Calculated by Runevault: the bank-reported balance minus {{ balance.unappliedTransfers }} accepted {{ balance.unappliedTransfers === 1 ? 'transfer' : 'transfers' }} ({{ money(balance.unappliedTransfersMinor) }}) that the Nessie sandbox has not applied to the account yet.</p>
+          } @else if (transaction.newBalanceMinor == null && transaction.bankOutcome === 'ACCEPTED_PENDING') {
             <p class="muted small">The bank deducts the amount from your balance once the transfer settles.</p>
           }
         </div>

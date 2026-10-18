@@ -24,6 +24,12 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
  Optional<Transaction> findFirstByDeviceIdAndStatusAndExpiresAtAfterOrderByCreatedAtAsc(
    String deviceId, Transaction.Status status, Instant now);
 
+ // Transfers the bank accepted but whose deduction it has not confirmed (no recorded new balance).
+ @Query("select count(t), coalesce(sum(t.amountMinor), 0) from Transaction t where t.bankProvider = :provider "
+   + "and t.bankOutcome in :outcomes and t.newBalanceMinor is null")
+ java.util.List<Object[]> unconfirmedTransfers(@Param("provider") String provider,
+   @Param("outcomes") java.util.Collection<com.runevault.banking.BankReceipt.Outcome> outcomes);
+
  @Lock(LockModeType.PESSIMISTIC_WRITE)
  @Query("select t from Transaction t where t.transactionId = :id")
  Optional<Transaction> findForUpdate(@Param("id") String id);
