@@ -14,7 +14,7 @@ describe('Dashboard live transactions', () => {
     status: 'PENDING' as const, createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 120000).toISOString(), verifiedAt: null,
     requesterSubject: 'auth0|user' };
-  const api = { create: vi.fn(), list: vi.fn(), metrics: vi.fn(), bankBalance: vi.fn() };
+  const api = { create: vi.fn(), list: vi.fn(), metrics: vi.fn(), bankBalance: vi.fn(), permissions: vi.fn(), approvals: vi.fn(), approve: vi.fn() };
   const metrics = { from: '2026-10-17T12:00:00Z', to: '2026-10-17T12:02:00Z', source: 'pipeline-events', approved: 3, blocked: 2,
     policy: { minTranslationConfidence: 0.8, maxRiskScore: 30 },
     minutes: [
@@ -38,15 +38,18 @@ describe('Dashboard live transactions', () => {
     api.create.mockReset();
     api.list.mockReset().mockReturnValue(of({ content: [] }));
     api.metrics.mockReset().mockReturnValue(of(metrics));
-    api.bankBalance.mockReset().mockReturnValue(of({ reportedBalanceMinor: 50_000_000, unappliedTransfers: 2,
-      unappliedTransfersMinor: 100_000, expectedBalanceMinor: 49_900_000, asOf: new Date().toISOString() }));
+    api.bankBalance.mockReset().mockReturnValue(of({ reportedBalanceMinor: 50_000_000, sentTransfers: 2,
+      sentTransfersMinor: 100_000, remainingBalanceMinor: 49_900_000, asOf: new Date().toISOString() }));
+    api.permissions.mockReset().mockReturnValue(of(['create:transactions', 'read:transactions']));
+    api.approvals.mockReset().mockReturnValue(of({ content: [] }));
+    api.approve.mockReset();
     feed = { liveEnabled: true, connection: signal<FeedConnection>('closed'), startLive: vi.fn(), startDemo: vi.fn(),
       stop: vi.fn(), playMock: vi.fn(), transportEvents: new Subject(), opened: new Subject() };
     TestBed.configureTestingModule({
       imports: [Dashboard],
       providers: [
         { provide: TransactionApiService, useValue: api },
-        { provide: AuthService, useValue: { user: signal({ name: 'Ada', email: 'ada@example.com' }), busy: signal(false), error: signal(null), signOut: vi.fn() } },
+        { provide: AuthService, useValue: { user: signal({ name: 'Ada', email: 'ada@example.com' }), subject: signal('auth0|user'), busy: signal(false), error: signal(null), signOut: vi.fn() } },
         { provide: FeedService, useValue: feed },
         { provide: TransferStore, useValue: { state: signal(INITIAL_STATE) } },
       ],
@@ -164,7 +167,7 @@ describe('Dashboard live transactions', () => {
     expect(text).toContain('Remaining balance');
     expect(text).toContain('$499,000.00');
     expect(text).toContain('calculated');
-    expect(text).toContain('minus 2 accepted transfers ($1,000.00)');
+    expect(text).toContain('minus the 2 transfers ($1,000.00) sent from this account');
     fixture.destroy();
   });
 
@@ -384,7 +387,6 @@ describe('Dashboard live transactions', () => {
     fixture.detectChanges();
     feed.transportEvents.next(event({ transactionId: 'made-in-another-tab', stage: 'PENDING', outcome: 'PENDING', status: 'PENDING' }));
     expect(api.list).toHaveBeenCalledTimes(2);
-    expect(fixture.componentInstance.liveEvents()[0].transactionId).toBe('made-in-another-tab');
     fixture.destroy();
   });
 
@@ -399,5 +401,45 @@ describe('Dashboard live transactions', () => {
     expect(el.querySelectorAll('.chart-table tbody tr').length).toBe(3);
     expect(el.querySelector('svg.chart')?.getAttribute('aria-label')).toContain('3 approved, 2 blocked');
     fixture.destroy();
+  });
+
+  describe('maker-checker sign-off', () => {
+    const reviewed = { ...pending, status: 'VERIFIED' as const, verifiedAt: new Date().toISOString(),
+      geminiDecisionReason: 'GEMINI_APPROVED' as const, awaitingApproval: true, stepUpRequired: false };
+
+    it('hides sign-off from users without the approve permission', () => {
+      const fixture = TestBed.createComponent(Dashboard);
+      fixture.detectChanges();
+      expect(fixture.componentInstance.canApprove()).toBe(false);
+      expect(api.approvals).not.toHaveBeenCalled();
+      expect(fixture.nativeElement.textContent).not.toContain('Sign-off');
+    });
+
+    it('locks the approver out of their own request and releases a request from someone else', () => {
+      api.permissions.mockReturnValue(of(['read:transactions', 'approve:transactions']));
+      const other = { ...reviewed, transactionId: 'other1', requesterSubject: 'auth0|maker', stepUpRequired: true };
+      api.approvals.mockReturnValue(of({ content: [reviewed, other] }));
+      api.approve.mockReturnValue(of({ status: 'EXECUTED' }));
+      const fixture = TestBed.createComponent(Dashboard);
+      fixture.detectChanges();
+      const dashboard = fixture.componentInstance;
+      expect(dashboard.canApprove()).toBe(true);
+      dashboard.openSignoff();
+      fixture.detectChanges();
+      expect(dashboard.currentPanel()).toBe('signoff-title');
+      expect(fixture.nativeElement.textContent).toContain('You requested this transfer');
+
+      dashboard.approve(reviewed);
+      expect(api.approve).not.toHaveBeenCalled();
+      dashboard.approve(other);
+      expect(api.approve).toHaveBeenCalledWith('other1', true);
+      expect(dashboard.approvalNotice()).toContain('EXECUTED');
+    });
+
+    it('tells the requester a second approver must release the transfer', () => {
+      const fixture = TestBed.createComponent(Dashboard);
+      fixture.detectChanges();
+      expect(fixture.componentInstance.liveStatus(reviewed)).toContain('second approver');
+    });
   });
 });

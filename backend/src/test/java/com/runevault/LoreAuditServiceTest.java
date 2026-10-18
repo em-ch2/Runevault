@@ -1,6 +1,7 @@
 package com.runevault;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.runevault.banking.BankReadGateway;
 import com.runevault.lore.GeminiClient;
 import com.runevault.lore.LoreAuditService;
 import java.util.Map;
@@ -13,7 +14,8 @@ import static org.mockito.Mockito.*;
 
 class LoreAuditServiceTest {
  private final GeminiClient client = mock(GeminiClient.class);
- private final LoreAuditService lore = new LoreAuditService(client, new ObjectMapper());
+ private final BankReadGateway bankReads = mock(BankReadGateway.class);
+ private final LoreAuditService lore = new LoreAuditService(client, new ObjectMapper(), bankReads);
 
  private static final String VALID = """
   {"lore_translation":"The forge is lit to begin the great exchange.","translation_confidence":0.9,
@@ -23,6 +25,7 @@ class LoreAuditServiceTest {
 
  private void answer(String json) {
   when(client.isConfigured()).thenReturn(true);
+  when(bankReads.transferHistory(anyString())).thenReturn(BankReadGateway.TransferHistory.empty());
   when(client.generateJson(anyString(), anyString(), any())).thenReturn(json);
  }
 
@@ -35,12 +38,25 @@ class LoreAuditServiceTest {
  @SuppressWarnings("unchecked")
  @Test void validAnswerPassesAndRequestsTheResponseSchema() throws Exception {
   answer(VALID);
+  when(bankReads.transferHistory("acct-999"))
+   .thenReturn(new BankReadGateway.TransferHistory(4, 2, 150000, 90000, 1, false));
   var result = lore.audit("0-1-2", LoreAuditService.DICTIONARY, 50000, "acct-999");
   assertEquals(10, result.path("risk_score").asInt());
+  ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
   ArgumentCaptor<Map<String, Object>> schema = ArgumentCaptor.forClass(Map.class);
-  verify(client).generateJson(anyString(), anyString(), schema.capture());
+  verify(client).generateJson(anyString(), prompt.capture(), schema.capture());
+  assertTrue(prompt.getValue().contains("transfersInLastThirtyDays: 2"));
+  assertTrue(prompt.getValue().contains("largestHistoricalAmountMinor: 90000"));
   assertEquals(java.util.List.of("lore_translation", "translation_confidence", "risk_score",
    "risk_flags", "risk_explanation", "security_message"), schema.getValue().get("required"));
+ }
+
+ @Test void unavailableHistoryDoesNotCallGemini() {
+  answer(VALID);
+  when(bankReads.transferHistory("acct-999")).thenThrow(new BankReadGateway.Unavailable());
+  assertThrows(BankReadGateway.Unavailable.class,
+   () -> lore.audit("0-1-2", LoreAuditService.DICTIONARY, 50000, "acct-999"));
+  verify(client, never()).generateJson(anyString(), anyString(), any());
  }
 
  @Test void malformedJsonAndMissingFieldsFailClosed() {

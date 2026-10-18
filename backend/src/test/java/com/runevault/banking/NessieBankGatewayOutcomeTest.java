@@ -45,6 +45,43 @@ class NessieBankGatewayOutcomeTest {
   return result.get();
  }
 
+ @Test void accountLookupDistinguishesUnknownFromUnavailable() throws Exception {
+  HttpClient found = mock(HttpClient.class);
+  var foundResponse = response(200, "{\"_id\":\"" + DEST + "\",\"balance\":500}");
+  when(found.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenReturn(foundResponse);
+  assertTrue(gateway(found).destinationExists(DEST));
+
+  HttpClient missing = mock(HttpClient.class);
+  var missingResponse = response(404, "{}");
+  when(missing.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenReturn(missingResponse);
+  assertFalse(gateway(missing).destinationExists(DEST));
+
+  HttpClient unavailable = mock(HttpClient.class);
+  when(unavailable.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenThrow(new IOException("offline"));
+  assertThrows(BankReadGateway.Unavailable.class, () -> gateway(unavailable).destinationExists(DEST));
+ }
+
+ @Test void transferHistoryProducesBoundedRiskFeatures() throws Exception {
+  HttpClient http = mock(HttpClient.class);
+  String today = java.time.LocalDate.now().toString();
+  var historyResponse = response(200, "[{\"amount\":12.34,\"transaction_date\":\"" + today
+   + "\",\"status\":\"completed\"},{\"amount\":50,\"status\":\"failed\"}]");
+  when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenReturn(historyResponse);
+  var history = gateway(http).transferHistory(DEST);
+  assertEquals(2, history.observedTransfers());
+  assertEquals(1, history.recentThirtyDays());
+  assertEquals(6234L, history.totalAmountMinor());
+  assertEquals(5000L, history.largestAmountMinor());
+  assertEquals(1, history.failedTransfers());
+  ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
+  verify(http).send(request.capture(), any(HttpResponse.BodyHandler.class));
+  assertEquals("/accounts/" + DEST + "/transfers", request.getValue().uri().getPath());
+ }
+
  @Test void providerTransferCarriesSelectedPayeeAndExactCents() throws Exception {
   HttpClient http = mock(HttpClient.class);
   var before = response(200, "{\"balance\":1000}");
@@ -178,12 +215,27 @@ class NessieBankGatewayOutcomeTest {
   var matchingResponse = response(200,
    "{\"_id\":\"receipt-1\",\"payer_id\":\"" + SOURCE + "\",\"payee_id\":\"" + DEST
     + "\",\"amount\":500,\"status\":\"completed\"}");
-  when(matching.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(matchingResponse);
-  assertEquals(BankReceipt.Outcome.COMPLETED, gateway(matching).lookup(prior).orElseThrow().outcome());
+  var settledBalance = response(200, "{\"balance\":500}");
+  when(matching.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenReturn(matchingResponse).thenReturn(settledBalance);
+  BankReceipt completed = gateway(matching).lookup(prior).orElseThrow();
+  assertEquals(BankReceipt.Outcome.COMPLETED, completed.outcome());
+  // A completed transfer carries the source account's balance at settlement.
+  assertEquals(50000L, completed.newBalanceMinor());
   ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
-  verify(matching).send(request.capture(), any(HttpResponse.BodyHandler.class));
-  assertEquals("GET", request.getValue().method());
-  assertTrue(request.getValue().uri().getPath().endsWith("/transfers/receipt-1"));
+  verify(matching, org.mockito.Mockito.times(2)).send(request.capture(), any(HttpResponse.BodyHandler.class));
+  assertEquals("GET", request.getAllValues().get(0).method());
+  assertTrue(request.getAllValues().get(0).uri().getPath().endsWith("/transfers/receipt-1"));
+  assertTrue(request.getAllValues().get(1).uri().getPath().endsWith("/accounts/" + SOURCE));
+
+  // Still pending: no balance read, no balance reported.
+  HttpClient pending = mock(HttpClient.class);
+  var pendingResponse = response(200,
+   "{\"_id\":\"receipt-1\",\"payer_id\":\"" + SOURCE + "\",\"payee_id\":\"" + DEST
+    + "\",\"amount\":500,\"status\":\"pending\"}");
+  when(pending.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(pendingResponse);
+  assertNull(gateway(pending).lookup(prior).orElseThrow().newBalanceMinor());
+  verify(pending, org.mockito.Mockito.times(1)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
 
   HttpClient mismatched = mock(HttpClient.class);
   var mismatchedResponse = response(200,

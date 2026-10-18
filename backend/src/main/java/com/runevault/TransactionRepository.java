@@ -17,6 +17,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
 
  Page<Transaction> findByRequesterSubject(String requesterSubject, Pageable pageable);
 
+ // Passed the device and Gemini checks and not yet claimed: what a maker-checker approver can release.
+ Page<Transaction> findByStatusAndGeminiDecisionReasonAndExecutionClaimedAtIsNull(
+   Transaction.Status status, AuditEvent.Reason reason, Pageable pageable);
+
  @Query("select t.deviceId from Transaction t where t.transactionId = :id")
  Optional<String> findAssignedDeviceId(@Param("id") String id);
 
@@ -24,10 +28,17 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
  Optional<Transaction> findFirstByDeviceIdAndStatusAndExpiresAtAfterOrderByCreatedAtAsc(
    String deviceId, Transaction.Status status, Instant now);
 
- // Transfers the bank accepted but whose deduction it has not confirmed (no recorded new balance).
+ java.util.List<Transaction> findByStatusOrderByBankOutcomeAtAscTransactionIdAsc(Transaction.Status status);
+
+ // Recent bank-pending transfers with a receipt, oldest first, for the settlement check.
+ java.util.List<Transaction> findTop20ByStatusAndBankReceiptIdIsNotNullAndBankSubmittedAtAfterOrderByBankSubmittedAtAsc(
+   Transaction.Status status, Instant submittedAfter);
+
+ // Every transfer the bank accepted or completed. The Nessie sandbox never deducts them from the balance it
+ // reports (a completed transfer's recorded balance is still the undeducted one), so all of them count.
  @Query("select count(t), coalesce(sum(t.amountMinor), 0) from Transaction t where t.bankProvider = :provider "
-   + "and t.bankOutcome in :outcomes and t.newBalanceMinor is null")
- java.util.List<Object[]> unconfirmedTransfers(@Param("provider") String provider,
+   + "and t.bankOutcome in :outcomes")
+ java.util.List<Object[]> sentTransfers(@Param("provider") String provider,
    @Param("outcomes") java.util.Collection<com.runevault.banking.BankReceipt.Outcome> outcomes);
 
  @Lock(LockModeType.PESSIMISTIC_WRITE)

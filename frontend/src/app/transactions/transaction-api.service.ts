@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { AuthService as Auth0Service } from '@auth0/auth0-angular';
-import { switchMap } from 'rxjs';
+import { map, switchMap } from 'rxjs';
 import { environment } from '../../environments/environment';
 
 export interface PendingTransactionRequest {
@@ -34,6 +34,8 @@ export interface TransactionRecord {
   bankSubmittedAt?: string | null;
   bankOutcomeAt?: string | null;
   newBalanceMinor?: number | null;
+  // Bank-reported balance minus every completed transfer; the sandbox never deducts transfers itself.
+  expectedBalanceMinor?: number | null;
   lore?: string | null;
   translationConfidence?: number | null;
   riskScore?: number | null;
@@ -43,6 +45,23 @@ export interface TransactionRecord {
   geminiDecisionReason?: 'GEMINI_APPROVED' | 'GEMINI_UNAVAILABLE' | 'GEMINI_INVALID_RESPONSE' | 'GEMINI_LOW_CONFIDENCE' | 'GEMINI_HIGH_RISK' | null;
   geminiDecisionExplanation?: string | null;
   geminiDecisionAt?: string | null;
+  approverSubject?: string | null;
+  approvedAt?: string | null;
+  awaitingApproval?: boolean;
+  stepUpRequired?: boolean;
+}
+
+// OIDC multi-factor policy; asking Auth0 for it makes the step-up Action require MFA.
+const MFA_ACR = 'http://schemas.openid.net/pape/policies/2007/06/multi-factor';
+
+export function approvalError(error: unknown): string {
+  if (error instanceof HttpErrorResponse) {
+    const code = (error.error as { error?: string } | null)?.error;
+    if (code === 'self_approval') return 'You requested this transfer, so a different approver must release it.';
+    if (code === 'step_up_required') return 'This amount needs multi-factor verification. Approve again and complete MFA.';
+    if (code === 'not_eligible' || error.status === 409) return 'This transfer can no longer be approved. Refresh the list.';
+  }
+  return transactionError(error);
 }
 
 export interface MinutePoint {
@@ -51,12 +70,13 @@ export interface MinutePoint {
   blocked: number;
 }
 
-// The treasury balance Nessie reports, and the balance Runevault expects once its accepted transfers apply.
+// The treasury balance Nessie reports now, and the remaining balance Runevault calculates after every transfer
+// it sent (the sandbox never deducts them).
 export interface BankBalance {
   reportedBalanceMinor: number | null;
-  unappliedTransfers: number;
-  unappliedTransfersMinor: number;
-  expectedBalanceMinor: number | null;
+  sentTransfers: number;
+  sentTransfersMinor: number;
+  remainingBalanceMinor: number | null;
   asOf: string;
 }
 
@@ -117,6 +137,46 @@ export class TransactionApiService {
       this.endpoint, {
         params: { page: 0, size: 100 },
         headers: new HttpHeaders({ Authorization: `Bearer ${token}` }),
+      },
+    )));
+  }
+
+  // Display only: the backend checks every permission again on each request.
+  permissions() {
+    return this.token().pipe(map((token) => {
+      if (!token) return [];
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        return Array.isArray(payload.permissions) ? payload.permissions as string[] : [];
+      } catch {
+        return [];
+      }
+    }));
+  }
+
+  approvals() {
+    return this.token().pipe(switchMap((token) => this.http.get<TransactionPage>(
+      `${this.endpoint}/approvals`, {
+        params: { page: 0, size: 100 },
+        headers: new HttpHeaders({ Authorization: `Bearer ${token}` }),
+      },
+    )));
+  }
+
+  // Large transfers open an Auth0 popup that requires MFA first. Subscribe straight from the click
+  // handler so the browser treats the popup as user-initiated.
+  approve(txId: string, stepUp: boolean) {
+    const token = stepUp
+      ? this.auth0.getAccessTokenWithPopup({
+        authorizationParams: { audience: environment.auth0.audience, acr_values: MFA_ACR },
+      }).pipe(map((value) => {
+        if (!value) throw new Error('MFA was not completed');
+        return value;
+      }))
+      : this.token();
+    return token.pipe(switchMap((value) => this.http.post<{ status: string }>(
+      `${this.endpoint}/${encodeURIComponent(txId)}/approve`, null, {
+        headers: new HttpHeaders({ Authorization: `Bearer ${value}` }),
       },
     )));
   }

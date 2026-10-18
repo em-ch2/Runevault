@@ -24,7 +24,7 @@ import java.util.Optional;
 
 @Component
 @Profile("!test & !simulator")
-public class NessieBankGateway implements BankGateway {
+public class NessieBankGateway implements BankGateway, BankReadGateway {
 
     private static final Logger log = LoggerFactory.getLogger(NessieBankGateway.class);
     private static final Pattern ACCOUNT_ID = Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
@@ -54,6 +54,67 @@ public class NessieBankGateway implements BankGateway {
         this.baseUrl = baseUrl.replaceAll("/+$", "");
         this.apiKey = apiKey;
         this.sourceAccountId = sourceAccountId;
+    }
+
+    @Override
+    public boolean destinationExists(String accountId) {
+        if (accountId == null || !ACCOUNT_ID.matcher(accountId).matches() || sourceAccountId.equals(accountId))
+            return false;
+        try {
+            JsonNode account = unwrap(get("/accounts/" + accountId));
+            JsonNode id = account.hasNonNull("_id") ? account.get("_id") : account.path("id");
+            if (!id.isTextual() || !accountId.equals(id.asText())) throw new Unavailable();
+            return true;
+        } catch (NessieException e) {
+            if (e.status == 404) return false;
+            throw new Unavailable();
+        } catch (IOException e) {
+            throw new Unavailable();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new Unavailable();
+        } catch (IllegalArgumentException e) {
+            throw new Unavailable();
+        }
+    }
+
+    @Override
+    public TransferHistory transferHistory(String accountId) {
+        if (accountId == null || !ACCOUNT_ID.matcher(accountId).matches()) throw new Unavailable();
+        try {
+            JsonNode response = get("/accounts/" + accountId + "/transfers");
+            if (response == null) throw new Unavailable();
+            JsonNode transfers = response.isArray() ? response : response.path("transfers");
+            if (!transfers.isArray()) throw new Unavailable();
+            int observed = Math.min(transfers.size(), 1000);
+            int recent = 0;
+            int failed = 0;
+            long total = 0;
+            long largest = 0;
+            LocalDate today = LocalDate.now();
+            LocalDate cutoff = today.minusDays(30);
+            for (int i = 0; i < observed; i++) {
+                JsonNode transfer = transfers.get(i);
+                if (!transfer.isObject() || !transfer.path("amount").isNumber()) throw new Unavailable();
+                long amount = transfer.path("amount").decimalValue().movePointRight(2).longValueExact();
+                if (amount < 0) throw new Unavailable();
+                total = Math.addExact(total, amount);
+                largest = Math.max(largest, amount);
+                String date = transfer.path("transaction_date").asText("");
+                if (!date.isBlank()) {
+                    LocalDate transferDate = LocalDate.parse(date);
+                    if (!transferDate.isBefore(cutoff) && !transferDate.isAfter(today)) recent++;
+                }
+                String status = transfer.path("status").asText("").toLowerCase(java.util.Locale.ROOT);
+                if (status.equals("failed") || status.equals("rejected") || status.equals("declined")) failed++;
+            }
+            return new TransferHistory(observed, recent, total, largest, failed, transfers.size() > observed);
+        } catch (IOException | NessieException | IllegalArgumentException | ArithmeticException | java.time.DateTimeException e) {
+            throw new Unavailable();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new Unavailable();
+        }
     }
 
     @Override
@@ -216,9 +277,11 @@ public class NessieBankGateway implements BankGateway {
                     reason = BankReceipt.Reason.PROVIDER_STATUS_UNKNOWN;
                 }
             }
+            // Once Nessie reports the transfer complete, the source balance reflects it.
+            Long balance = outcome == BankReceipt.Outcome.COMPLETED ? settledBalance(previous.transactionId()) : null;
             return Optional.of(new BankReceipt(previous.receiptId(), previous.transactionId(), "nessie",
                     status, previous.amountMinor(), previous.currency(), previous.destination(), outcome,
-                    reason, previous.submittedAt(), null));
+                    reason, previous.submittedAt(), balance));
         } catch (IOException | RuntimeException e) {
             log.warn("Nessie receipt lookup unavailable for {} ({})", previous.transactionId(), e.getClass().getSimpleName());
             return Optional.empty();
@@ -232,6 +295,22 @@ public class NessieBankGateway implements BankGateway {
             String status, BankReceipt.Reason reason, java.time.Instant submittedAt) {
         return result(txId, amountMinor, currency, destination, null, status,
                 BankReceipt.Outcome.UNKNOWN, reason, submittedAt);
+    }
+
+    // Source balance after a transfer Nessie reports as completed; null when it cannot be read.
+    // Other transfers from the same account may have settled too, so this is the account's balance
+    // at settlement, not a figure derived from this transfer alone.
+    private Long settledBalance(String transactionId) {
+        try {
+            JsonNode balance = unwrap(get("/accounts/" + sourceAccountId)).path("balance");
+            return balance.isNumber() ? balance.decimalValue().movePointRight(2).longValueExact() : null;
+        } catch (IOException | RuntimeException e) {
+            log.warn("Balance after settlement of {} is unavailable ({})", transactionId, e.getClass().getSimpleName());
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
     }
 
     // Reads the source balance after an accepted transfer. Returns it only when it is exactly the

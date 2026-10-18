@@ -13,27 +13,27 @@ class BankBalanceApiTest {
  private final TransactionRepository transactions = mock(TransactionRepository.class);
  private final BankBalanceApi api = new BankBalanceApi(bank, transactions);
 
- private void unapplied(long count, long minor) {
-  when(transactions.unconfirmedTransfers(eq("nessie"), anyCollection()))
+ private void sent(long count, long minor) {
+  when(transactions.sentTransfers(eq("nessie"), anyCollection()))
    .thenReturn(List.<Object[]>of(new Object[] {count, minor}));
  }
 
- @Test void expectedBalanceSubtractsTransfersTheBankHasNotApplied() {
+ @Test void remainingBalanceSubtractsEverySentTransfer() {
   when(bank.sourceBalanceMinor()).thenReturn(Optional.of(50_000_000L));
-  unapplied(3, 150_350);
+  sent(3, 150_350);
   var balance = api.balance();
   assertEquals(50_000_000L, balance.reportedBalanceMinor());
-  assertEquals(3, balance.unappliedTransfers());
-  assertEquals(150_350, balance.unappliedTransfersMinor());
-  assertEquals(49_849_650L, balance.expectedBalanceMinor());
+  assertEquals(3, balance.sentTransfers());
+  assertEquals(150_350, balance.sentTransfersMinor());
+  assertEquals(49_849_650L, balance.remainingBalanceMinor());
  }
 
- @Test void noExpectedBalanceWithoutABankReading() {
+ @Test void noRemainingBalanceWithoutABankReading() {
   when(bank.sourceBalanceMinor()).thenReturn(Optional.empty());
-  unapplied(2, 1_000);
+  sent(2, 1_000);
   var balance = api.balance();
   assertNull(balance.reportedBalanceMinor());
-  assertNull(balance.expectedBalanceMinor());
-  assertEquals(1_000, balance.unappliedTransfersMinor());
+  assertNull(balance.remainingBalanceMinor());
+  assertEquals(1_000, balance.sentTransfersMinor());
  }
 }

@@ -7,6 +7,9 @@
     <span #navIndicator class="nav-indicator" aria-hidden="true"></span>
     <a href="#dashboard-top" [class.nav-current]="activeNav() === 'dashboard'" [attr.aria-current]="activeNav() === 'dashboard' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('dashboard')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="1.8"/><path d="M12 2.5V10.2M12 13.8V21.5M2.5 12H10.2M13.8 12H21.5M5.3 5.3L10.7 10.7M13.3 13.3L18.7 18.7M18.7 5.3L13.3 10.7M10.7 13.3L5.3 18.7"/></svg></span> Dashboard</a>
     <a href="#workflow-title" [class.nav-current]="activeNav() === 'approval'" [attr.aria-current]="activeNav() === 'approval' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('approval')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 15.5L7.5 21.5L10.5 20L12 21.8L13.5 20L16.5 21.5L15 15.5"/><circle cx="12" cy="10" r="6.5"/><path d="M9.2 10.1L11.2 12.1L14.9 8.3"/></svg></span> Approval</a>
+    @if (canApprove()) {
+      <a href="#signoff-title" [class.nav-current]="activeNav() === 'signoff'" [attr.aria-current]="activeNav() === 'signoff' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="openSignoff()"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M20 3C13 4 8.5 8.5 6.5 15L5 21"/><path d="M20 3C19 9 15 13.5 9 14.5"/><path d="M11 12L14 9"/></svg></span> Sign-off @if (approvalQueue().length) { <small class="nav-badge">{{ approvalQueue().length }}</small> } @if (highValueApprovals()) { <small class="nav-badge nav-badge-mfa">{{ highValueApprovals() }} MFA</small> }</a>
+    }
     <a href="#live-list-title" [class.nav-current]="activeNav() === 'history'" [attr.aria-current]="activeNav() === 'history' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('history', 'live-list-title')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M8 4H18A2 2 0 0 1 18 8H16V18A2 2 0 0 1 14 20H5A2 2 0 0 1 5 16H7V6A2 2 0 0 1 9 4"/><path d="M7 16H14V18A2 2 0 0 0 16 18"/><path d="M10 9H13M10 12H13"/></svg></span> History</a>
     <a href="#metrics-title" [class.nav-current]="activeNav() === 'analytics'" [attr.aria-current]="activeNav() === 'analytics' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('analytics', 'metrics-title')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><g transform="rotate(-28 12 11)"><rect x="2.5" y="9.5" width="6" height="3.5" rx="0.8"/><rect x="8.5" y="8.8" width="6" height="5" rx="0.8"/><rect x="14.5" y="8" width="7" height="6.5" rx="0.8"/></g><path d="M11 14.5L8 21.5M12 14.5L15.5 21.5"/></svg></span> Analytics</a>
   </nav>
@@ -128,8 +131,7 @@
   @else if (historyStep() !== null) { <p class="muted">Receipt history &middot; Select a step above to inspect its saved details.</p> }
   @else { <p class="muted">Step {{ flowStep() + 1 }} of 4 &middot; {{ workflowSteps[flowStep()].title }}</p> }
   <div><button class="btn btn-ghost" type="button" [attr.aria-pressed]="secondaryView() === 'live-list-title'" (click)="secondaryView.set('live-list-title')">History</button>
-  <button class="btn btn-ghost" type="button" [attr.aria-pressed]="secondaryView() === 'metrics-title'" (click)="secondaryView.set('metrics-title')">Analytics</button>
-  <button class="btn btn-ghost" type="button" [attr.aria-pressed]="secondaryView() === 'live-events-title'" (click)="secondaryView.set('live-events-title')">Activity</button></div>
+  <button class="btn btn-ghost" type="button" [attr.aria-pressed]="secondaryView() === 'metrics-title'" (click)="secondaryView.set('metrics-title')">Analytics</button></div>
 </div>
 <main class="grid live-grid guided-flow" [hidden]="landing()">
   <app-folder-panel class="slab folder-light" panelId="history-trace-title" [title]="historyStepTitles[historyStep() ?? 3]"
@@ -189,10 +191,13 @@
               <div><dt>Receipt</dt><dd class="mono">{{ transaction.bankReceiptId ?? 'None issued' }}</dd></div>
               <div><dt>Submitted</dt><dd>{{ transaction.bankSubmittedAt ? time(transaction.bankSubmittedAt) : 'Not recorded' }}</dd></div>
               <div><dt>Outcome recorded</dt><dd>{{ transaction.bankOutcomeAt ? time(transaction.bankOutcomeAt) : 'Not recorded' }}</dd></div>
-              @if (expectedBalance(transaction); as balance) {
+              @if (remainingBalance(transaction); as balance) {
                 <div><dt>Bank-reported balance</dt><dd>{{ money(balance.reportedBalanceMinor!) }}</dd></div>
-                <div><dt>Remaining balance</dt><dd>{{ money(balance.expectedBalanceMinor!) }} <span class="calculated-tag">calculated</span></dd></div>
-              } @else {
+                <div><dt>Remaining balance</dt><dd>{{ money(balance.remainingBalanceMinor!) }} <span class="calculated-tag">calculated</span></dd></div>
+              }
+              @if (transaction.expectedBalanceMinor != null) {
+                <div><dt>Balance after this transfer</dt><dd>{{ money(transaction.expectedBalanceMinor) }} <span class="calculated-tag">calculated</span></dd></div>
+              } @else if (transaction.newBalanceMinor != null || !remainingBalance(transaction)) {
                 <div><dt>New balance</dt><dd>{{ balanceText(transaction) }}</dd></div>
               }
             </dl>
@@ -247,7 +252,7 @@
   </app-folder-panel>
 
   <app-folder-panel class="slab activity backend-status folder-light" panelId="live-status-title" [title]="flowStep() === 3 ? 'Your transfer result' : 'Reviewing your transfer'" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'live-status-title'">
-    <p class="flow-guidance" role="status">{{ flowStep() < 2 ? 'This request is awaiting physical approval on your Pico.' : flowStep() === 3 ? (flowBlocked() ? 'This transfer needs attention. Review the outcome below before taking any further action.' : 'Your bank confirmed the transfer. Your receipt is below.') : 'Your physical approval is complete. We are reviewing the request and waiting for the bank. You do not need to submit it again.' }}</p>
+    <p class="flow-guidance" role="status">{{ flowStep() < 2 ? 'This request is awaiting physical approval on your Pico.' : flowStep() === 3 ? (flowBlocked() ? 'This transfer needs attention. Review the outcome below before taking any further action.' : 'Your bank confirmed the transfer. Your receipt is below.') : selected()?.awaitingApproval ? 'Your physical approval is complete and passed review. A second approver must now release it before anything is sent to the bank.' : 'Your physical approval is complete. We are reviewing the request and waiting for the bank. You do not need to submit it again.' }}</p>
     <section class="seal-lore" aria-labelledby="seal-lore-title" aria-live="polite">
       <h3 id="seal-lore-title">Lore of the seal</h3>
       @if (selected()?.lore; as lore) {
@@ -289,15 +294,18 @@
             <div><dt>Receipt</dt><dd class="mono">{{ transaction.bankReceiptId ?? 'None issued' }}</dd></div>
             <div><dt>Submitted</dt><dd>{{ transaction.bankSubmittedAt ? time(transaction.bankSubmittedAt) : 'Not submitted' }}</dd></div>
             @if (transaction.bankOutcomeAt) { <div><dt>Recorded</dt><dd>{{ time(transaction.bankOutcomeAt) }}</dd></div> }
-            @if (expectedBalance(transaction); as balance) {
+            @if (remainingBalance(transaction); as balance) {
               <div><dt>Bank-reported balance</dt><dd>{{ money(balance.reportedBalanceMinor!) }}</dd></div>
-              <div><dt>Remaining balance</dt><dd><strong>{{ money(balance.expectedBalanceMinor!) }}</strong> <span class="calculated-tag">calculated</span></dd></div>
-            } @else {
+              <div><dt>Remaining balance</dt><dd><strong>{{ money(balance.remainingBalanceMinor!) }}</strong> <span class="calculated-tag">calculated</span></dd></div>
+            }
+            @if (transaction.expectedBalanceMinor != null) {
+              <div><dt>Balance after this transfer</dt><dd>{{ money(transaction.expectedBalanceMinor) }} <span class="calculated-tag">calculated</span></dd></div>
+            } @else if (transaction.newBalanceMinor != null || !remainingBalance(transaction)) {
               <div><dt>New balance</dt><dd>{{ balanceText(transaction) }}</dd></div>
             }
           </dl>
-          @if (expectedBalance(transaction); as balance) {
-            <p class="muted small">Calculated by Runevault: the bank-reported balance minus {{ balance.unappliedTransfers }} accepted {{ balance.unappliedTransfers === 1 ? 'transfer' : 'transfers' }} ({{ money(balance.unappliedTransfersMinor) }}) that the Nessie sandbox has not applied to the account yet.</p>
+          @if (remainingBalance(transaction); as balance) {
+            <p class="muted small">Calculated by Runevault: the bank-reported balance minus the {{ balance.sentTransfers }} {{ balance.sentTransfers === 1 ? 'transfer' : 'transfers' }} ({{ money(balance.sentTransfersMinor) }}) sent from this account, which the Nessie sandbox records but does not deduct.</p>
           } @else if (transaction.newBalanceMinor == null && transaction.bankOutcome === 'ACCEPTED_PENDING') {
             <p class="muted small">The bank deducts the amount from your balance once the transfer settles.</p>
           }
@@ -345,22 +353,6 @@
     }
   </app-folder-panel>
 
-  <app-folder-panel class="slab live-events folder-light" panelId="live-events-title" title="Live pipeline" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'live-events-title'">
-    @if (liveEvents().length === 0) {
-      <p class="empty">{{ liveOpen() ? 'Waiting for the next pipeline stage.' : 'Live events appear here once connected.' }}</p>
-    } @else {
-      <ol class="event-list" aria-live="polite">
-        @for (event of liveEvents(); track event.eventId) {
-          <li [class]="'event event-' + eventTone(event)">
-            <span class="event-time">{{ time(event.timestamp) }}</span>
-            <button class="btn-link mono" type="button" (click)="select(event.transactionId)">{{ shortId(event.transactionId) }}</button>
-            <span>{{ eventLabel(event) }}</span>
-          </li>
-        }
-      </ol>
-    }
-  </app-folder-panel>
-
   <app-folder-panel class="slab metrics folder-dark" panelId="metrics-title" title="Approvals vs blocks" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'metrics-title'">
     @if (metrics(); as m) {
       <app-approvals-chart [points]="m.minutes" />
@@ -371,6 +363,39 @@
       <p role="status">Loading metrics…</p>
     }
     <button class="btn btn-ghost" type="button" (click)="loadMetrics()">Reload metrics</button>
+  </app-folder-panel>
+
+  <!-- Maker-checker queue. The backend enforces every rule here; the UI only explains them. -->
+    <app-folder-panel class="slab activity live-list folder-light" panelId="signoff-title" title="Second-approver sign-off" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'signoff-title'">
+      <p class="flow-guidance">These transfers were signed on the Pico and passed the Gemini review. Each one needs a second person to release it. You cannot release a transfer you requested.</p>
+      @if (highValueApprovals()) { <p class="status status-wait" role="status">{{ highValueApprovals() }} high-value request{{ highValueApprovals() === 1 ? '' : 's' }} waiting for MFA-backed approval.</p> }
+    @if (approvalNotice()) { <p class="status status-good" role="status">{{ approvalNotice() }}</p> }
+    @if (approvalProblem()) { <p class="form-error" role="alert">{{ approvalProblem() }}</p> }
+    @if (approvalQueue().length === 0) {
+      <p class="empty">Nothing is waiting for sign-off.</p>
+    } @else {
+      @for (transaction of approvalQueue(); track transaction.transactionId) {
+        <div class="receipt-card">
+          <p class="amount">{{ money(transaction.amountMinor) }}</p>
+          <dl class="facts">
+            <div><dt>Transaction</dt><dd class="mono">{{ shortId(transaction.transactionId) }}</dd></div>
+            <div><dt>Destination</dt><dd class="mono">{{ transaction.destination }}</dd></div>
+            <div><dt>Requested by</dt><dd class="mono">{{ ownRequest(transaction) ? 'You' : (transaction.requesterSubject ?? 'Bridge') }}</dd></div>
+            @if (transaction.verifiedAt) { <div><dt>Pico verified</dt><dd>{{ time(transaction.verifiedAt) }}</dd></div> }
+            @if (transaction.riskScore != null) { <div><dt>Risk score</dt><dd>{{ transaction.riskScore }}</dd></div> }
+          </dl>
+          @if (transaction.stepUpRequired) { <p class="muted small">Large transfer: approving asks you to complete multi-factor verification first.</p> }
+          @if (ownRequest(transaction)) {
+            <p class="muted small">You requested this transfer. Another approver must release it.</p>
+          } @else {
+            <button class="btn btn-primary" type="button" (click)="approve(transaction)" [disabled]="approvingId() !== null">
+              {{ approvingId() === transaction.transactionId ? 'Releasing…' : transaction.stepUpRequired ? 'Verify with MFA and release' : 'Release transfer' }}
+            </button>
+          }
+        </div>
+      }
+    }
+    <button class="btn btn-ghost" type="button" (click)="loadApprovals()">Refresh list</button>
   </app-folder-panel>
 </main>
 }

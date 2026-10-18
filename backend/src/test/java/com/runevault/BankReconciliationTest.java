@@ -4,6 +4,7 @@ import com.runevault.banking.BankGateway;
 import com.runevault.banking.BankReceipt;
 import com.runevault.transactions.BankOutcomeService;
 import com.runevault.transactions.BankReconciliationService;
+import com.runevault.transactions.BankSettlementPoller;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -49,6 +50,37 @@ class BankReconciliationTest {
   assertEquals(2, audits.count());
   assertEquals("NOT_ELIGIBLE", reconciliation.reconcile(id).get("status"));
   assertEquals(2, audits.count());
+  verify(bank, never()).transfer(any(), anyLong(), any(), any());
+ }
+
+ @Test void settlementCheckCompletesRecentPendingTransfersWithBalanceAndLeavesOthers() {
+  Instant submitted = Instant.now();
+  claimed("settle-recent");
+  outcomes.record("settle-recent", new BankReceipt("receipt-r", "settle-recent", "nessie", "pending", 50000, "USD",
+   "acct-999", BankReceipt.Outcome.ACCEPTED_PENDING, BankReceipt.Reason.ACCEPTED_PENDING, submitted, null));
+  claimed("settle-old");
+  outcomes.record("settle-old", new BankReceipt("receipt-o", "settle-old", "nessie", "pending", 50000, "USD",
+   "acct-999", BankReceipt.Outcome.ACCEPTED_PENDING, BankReceipt.Reason.ACCEPTED_PENDING,
+   submitted.minusSeconds(3 * 86400), null));
+  claimed("settle-unknown");
+  outcomes.record("settle-unknown", new BankReceipt("receipt-u", "settle-unknown", "nessie", "weird", 50000, "USD",
+   "acct-999", BankReceipt.Outcome.UNKNOWN, BankReceipt.Reason.PROVIDER_STATUS_UNKNOWN, submitted, null));
+  when(bank.lookup(any())).thenAnswer(call -> {
+   BankReceipt prior = call.getArgument(0);
+   return Optional.of(new BankReceipt(prior.receiptId(), prior.transactionId(), "nessie", "completed",
+    50000, "USD", "acct-999", BankReceipt.Outcome.COMPLETED, BankReceipt.Reason.CONFIRMED_COMPLETED,
+    prior.submittedAt(), 12345L));
+  });
+
+  new BankSettlementPoller(transactions, reconciliation, 24).checkPendingTransfers();
+
+  Transaction recent = transactions.findById("settle-recent").orElseThrow();
+  assertEquals(Transaction.Status.EXECUTED, recent.getStatus());
+  assertEquals(12345L, recent.getNewBalanceMinor());
+  // Outside the window, and OUTCOME_UNKNOWN, stay untouched for an operator.
+  assertEquals(Transaction.Status.BANK_PENDING, transactions.findById("settle-old").orElseThrow().getStatus());
+  assertEquals(Transaction.Status.OUTCOME_UNKNOWN, transactions.findById("settle-unknown").orElseThrow().getStatus());
+  verify(bank, times(1)).lookup(any());
   verify(bank, never()).transfer(any(), anyLong(), any(), any());
  }
 

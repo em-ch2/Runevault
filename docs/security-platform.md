@@ -51,3 +51,30 @@ Request limits use separate fixed-window quotas. `RUNEVAULT_RATE_WINDOW_SECONDS`
 Compromised bridge can request arbitrary challenges; physical buttons alone do not show the amount or destination. Add a trusted display or confirm details through a separate trusted channel. Local simulator contains a public test key and is never production signing infrastructure. The older challenge/approval flow still has in-memory replay state and permits one replica only. Device audit events are durable, but banking idempotency is not implemented. Public-key support must wait for A's agreed algorithm and encoding.
 
 References: https://docs.spring.io/spring-boot/3.4/reference/web/spring-security.html and https://developer.auth0.com/resources/code-samples/api/spring/basic-role-based-access-control
+
+## Maker-checker and step-up MFA
+
+With `RUNEVAULT_APPROVAL_REQUIRED=true` (always on in `compose.cloud.yaml`; CloudDeploymentGuard refuses cloud startup otherwise), a transfer that passed the Pico signature and Gemini policy stays `VERIFIED` until a second person releases it. `GET /api/transactions/approvals` lists waiting transfers and `POST /api/transactions/{id}/approve` releases one; both require `approve:transactions`. The execution claim records the approver and rejects a missing approver (`APPROVER_REQUIRED`), the requester approving their own transfer (`SELF_APPROVAL`), and a large transfer approved without MFA (`STEP_UP_REQUIRED`), all under the same row lock that prevents double execution.
+
+Step-up: approving `RUNEVAULT_STEP_UP_AMOUNT_MINOR` cents or more (1000000 = $10,000 in `compose.cloud.yaml`; the local default is 100000 = $1,000) needs `mfa` in the access token's `amr` (or `https://runevault/amr`) claim. Without it the API answers 401 with `WWW-Authenticate: Bearer error="insufficient_user_authentication"` (RFC 9470), and the dashboard requests a new token with the OIDC multi-factor `acr_values` in an Auth0 popup.
+
+Auth0 setup: add the `approve:transactions` permission to the Runevault API, create a `CFO` role with `approve:transactions` and `read:transactions`, and assign it to someone other than the requester. Auth0 access tokens carry no `amr` by default, so add a Login / Post Login Action and attach it to the post-login trigger:
+
+```js
+exports.onExecutePostLogin = async (event, api) => {
+  const MFA = 'http://schemas.openid.net/pape/policies/2007/06/multi-factor';
+  const stepUp = (event.transaction?.acr_values || []).includes(MFA);
+  const didMfa = (event.authentication?.methods || []).some((m) => m.name === 'mfa');
+  if (stepUp) api.multifactor.enable('any', { allowRememberBrowser: false });
+  if (stepUp || didMfa) {
+    api.accessToken.setCustomClaim('amr', ['mfa']);
+    api.accessToken.setCustomClaim('https://runevault/amr', ['mfa']);
+  }
+};
+```
+
+## Nessie destination and risk reads
+
+Creating a dashboard or bridge transfer first checks the configured destination allowlist and then reads `GET /accounts/{destination}` from Nessie. A 404 or a response for a different account rejects creation with 400; an unavailable or malformed account response returns 503. Neither case creates a pending transfer. The local test and simulator profiles use a fake read gateway.
+
+After the Pico signs a pending transfer, Gemini receives a bounded summary from `GET /accounts/{destination}/transfers`: up to 1000 observed transfers, their total and largest amounts, the count dated within 30 days, failed transfer count, and whether the list was truncated. The prompt receives summary numbers, not raw provider records. If the history read fails, the Gemini decision is unavailable and no execution claim is made. The Nessie endpoint's availability and response shape must be checked against the deployed sandbox before a live demonstration.

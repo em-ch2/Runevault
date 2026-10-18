@@ -61,6 +61,9 @@ public class CloudDeploymentGuard implements EnvironmentPostProcessor, Ordered {
   if (!UUID.matcher(required(env, "NESSIE_SOURCE_ACCOUNT_ID", 36)).matches())
    fail("NESSIE_SOURCE_ACCOUNT_ID must be a UUID");
   positiveLong(env, "RUNEVAULT_MAX_AMOUNT_MINOR");
+  if (!"true".equals(required(env, "RUNEVAULT_APPROVAL_REQUIRED", 4)))
+   fail("RUNEVAULT_APPROVAL_REQUIRED must be true: cloud transfers need a second approver");
+  positiveLong(env, "RUNEVAULT_STEP_UP_AMOUNT_MINOR");
   positiveLong(env, "RUNEVAULT_MAX_INCORRECT_GLYPH_ATTEMPTS");
   for (String name : new String[] {"RUNEVAULT_RATE_WINDOW_SECONDS", "RUNEVAULT_RATE_MAX_ENTRIES",
       "RUNEVAULT_DASHBOARD_READS_PER_WINDOW", "RUNEVAULT_TRANSACTION_CREATION_PER_WINDOW",
