@@ -28,12 +28,8 @@
     <span class="wordmark">Runevault</span><span class="brand-caption">Financial operations dashboard</span>
   </div>
   <div class="topbar-status">
+    <!-- Live mode shows no connection pill: updates arrive over the WebSocket or, failing that, 3 s polling. -->
     @if (mode() === 'live') {
-      <span class="pill" [class.pill-good]="liveOpen()" [class.pill-bad]="feed.connection() === 'closed'">
-        <span class="dot"></span>
-        @if (liveOpen()) { Live updates on } @else if (feed.connection() === 'connecting') { Connecting to live updates… }
-        @else if (feed.liveEnabled) { Live updates offline, checking every 3 s } @else { Live updates off }
-      </span>
     } @else if (tablet(); as tab) {
       <span class="pill" [class.pill-good]="tab.state === 'connected'" [class.pill-bad]="tab.state !== 'connected'">
         <span class="dot"></span>
