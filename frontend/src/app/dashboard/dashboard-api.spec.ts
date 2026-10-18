@@ -14,7 +14,7 @@ describe('Dashboard live transactions', () => {
     status: 'PENDING' as const, createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 120000).toISOString(), verifiedAt: null,
     requesterSubject: 'auth0|user' };
-  const api = { create: vi.fn(), list: vi.fn(), metrics: vi.fn(), bankBalance: vi.fn(), permissions: vi.fn(), approvals: vi.fn(), approve: vi.fn(), auditEvents: vi.fn() };
+  const api = { create: vi.fn(), list: vi.fn(), metrics: vi.fn(), policyDecisionMetrics: vi.fn(), bankBalance: vi.fn(), permissions: vi.fn(), approvals: vi.fn(), approve: vi.fn(), auditEvents: vi.fn() };
   const metrics = { from: '2026-10-17T12:00:00Z', to: '2026-10-17T12:02:00Z', source: 'pipeline-events', approved: 3, blocked: 2,
     policy: { minTranslationConfidence: 0.8, maxRiskScore: 30 },
     minutes: [
@@ -38,6 +38,8 @@ describe('Dashboard live transactions', () => {
     api.create.mockReset();
     api.list.mockReset().mockReturnValue(of({ content: [] }));
     api.metrics.mockReset().mockReturnValue(of(metrics));
+    api.policyDecisionMetrics.mockReset().mockReturnValue(of({ ...metrics,
+      source: 'raw-test-events', measure: 'gemini-policy-decisions' }));
     api.bankBalance.mockReset().mockReturnValue(of({ reportedBalanceMinor: 50_000_000, sentTransfers: 2,
       sentTransfersMinor: 100_000, remainingBalanceMinor: 49_900_000, asOf: new Date().toISOString() }));
     api.permissions.mockReset().mockReturnValue(of(['create:transactions', 'read:transactions']));
@@ -68,6 +70,8 @@ describe('Dashboard live transactions', () => {
     expect(fixture.nativeElement.querySelector('#audit-view form')).not.toBeNull();
     expect(fixture.nativeElement.textContent).not.toContain('Begin a transfer');
     expect(api.auditEvents).toHaveBeenCalledWith(0, {});
+    expect(api.policyDecisionMetrics).toHaveBeenCalledWith(30);
+    expect(fixture.nativeElement.textContent).toContain('not settled bank transfers');
     expect(api.list).not.toHaveBeenCalled();
     expect(api.metrics).not.toHaveBeenCalled();
     expect(api.approvals).not.toHaveBeenCalled();

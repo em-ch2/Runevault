@@ -78,6 +78,18 @@
     }
   </header>
 
+  <section aria-labelledby="audit-policy-title">
+    <h2 id="audit-policy-title">Gemini policy decisions</h2>
+    <p class="muted small">Company-wide approvals and blocks per minute. These are policy decisions, not settled bank transfers.</p>
+    @if (policyMetrics(); as metrics) {
+      <app-approvals-chart [points]="metrics.minutes" subject="Gemini policy decisions" />
+      <p class="muted small">Source: {{ metrics.source }} &middot; Last {{ metrics.minutes.length }} minutes</p>
+    } @else if (policyMetricsError()) {
+      <p class="form-error" role="alert">{{ policyMetricsError() }}</p>
+    } @else { <p role="status">Loading policy decisions…</p> }
+    <button class="btn btn-ghost" type="button" (click)="loadPolicyMetrics()">Refresh chart</button>
+  </section>
+
   <form [formGroup]="auditFilters" (ngSubmit)="loadAudit(0)" class="audit-filters live-form">
     <label>Transaction ID<input formControlName="transactionId" type="text" maxlength="36" placeholder="Any transaction" autocomplete="off" /></label>
     <label>Outcome
@@ -290,6 +302,7 @@
         }
         }
         <app-authorization-evidence [transaction]="transaction" />
+        <app-decision-explanation [transaction]="transaction" />
         <nav class="history-step-navigation" aria-label="Receipt history steps">
         <button class="btn btn-ghost" type="button" [disabled]="historyStep() === 0" (click)="inspectHistoryStep((historyStep() ?? 0) - 1)">Previous step</button>
         <button class="btn btn-ghost" type="button" (click)="secondaryView.set('live-list-title')">Back to history</button>

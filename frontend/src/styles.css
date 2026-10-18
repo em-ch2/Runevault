@@ -313,3 +313,5 @@ code, .mono { font-family: var(--mono); font-size: 0.92em; }
 .authorization-evidence { margin: 1rem 0; padding: 0.85rem 1rem; border: 1px solid var(--slab-edge); border-radius: var(--radius); }
 .authorization-evidence h3 { margin: 0 0 0.65rem; font-size: 1rem; }
 .authorization-evidence .facts { gap: 0.3rem; font-size: 0.85rem; }
+.decision-explanation { margin: 0 0 1rem; font-size: 0.9rem; }
+.decision-explanation ul { margin: 0.4rem 0; padding-left: 1.2rem; }

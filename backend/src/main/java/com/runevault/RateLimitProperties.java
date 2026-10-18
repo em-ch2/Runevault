@@ -15,7 +15,8 @@ public record RateLimitProperties(
  @Min(1) int bridgeOther,
  @Min(1) int adminOperations,
  @Min(1) int unauthenticated,
- @Min(1) int wsTicketIssuancePerWindow) {
+ @Min(1) int wsTicketIssuancePerWindow,
+ @Min(1) int decisionExplanations) {
  int limit(RequestQuotaLimiter.Category category) {
   return switch (category) {
    case DASHBOARD_READ -> dashboardReads;
@@ -25,6 +26,7 @@ public record RateLimitProperties(
    case ADMIN -> adminOperations;
    case UNAUTHENTICATED -> unauthenticated;
    case WS_TICKET -> wsTicketIssuancePerWindow;
+   case DECISION_EXPLANATION -> decisionExplanations;
   };
  }
 }
