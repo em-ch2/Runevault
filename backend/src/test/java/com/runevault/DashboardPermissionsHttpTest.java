@@ -134,6 +134,7 @@ class DashboardPermissionsHttpTest {
    .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
   mvc.perform(get("/api/transactions").header("Authorization", "Bearer employee"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].requesterSubject").value("auth0|employee"))
+   .andExpect(jsonPath("$.content[0].approvalStepUp").value(org.hamcrest.Matchers.nullValue()))
    .andExpect(jsonPath("$.content[0].expectedGlyphs").doesNotExist());
   mvc.perform(get("/api/admin/audit-events").header("Authorization", "Bearer employee"))
    .andExpect(status().isForbidden());
@@ -156,6 +157,7 @@ class DashboardPermissionsHttpTest {
   mvc.perform(get("/api/transactions").header("Authorization", "Bearer employee"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
    .andExpect(jsonPath("$.content[0].transactionId").value("alice-tx"))
+   .andExpect(jsonPath("$.content[0].approverSubject").value(org.hamcrest.Matchers.nullValue()))
    .andExpect(jsonPath("$.content[0].expiresAt").isNotEmpty());
   mvc.perform(get("/api/transactions").header("Authorization", "Bearer admin"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))

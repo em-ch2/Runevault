@@ -265,7 +265,7 @@ describe('Dashboard live transactions', () => {
     fixture.destroy();
   });
 
-  it('shows the lore and a plain review result without operator scores', () => {
+  it('shows a plain review message and keeps detailed scores in the evidence panel', () => {
     api.list.mockReturnValue(of({ content: [{ ...pending, status: 'EXECUTED', verifiedAt: new Date().toISOString(),
       geminiDecisionReason: 'GEMINI_APPROVED',
       lore: 'The forge is lit to begin the great exchange.', translationConfidence: 0.92, riskScore: 12,
@@ -275,8 +275,9 @@ describe('Dashboard live transactions', () => {
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('The forge is lit to begin the great exchange.');
     expect(text).toContain('Passed our security review');
-    // Scores, confidence and flags are operator detail; they stay in the History trace.
-    expect(text).not.toContain('12 / 100');
+    const decision = fixture.nativeElement.querySelector('#live-status-title-body .decision') as HTMLElement;
+    expect(decision.textContent).not.toContain('12 / 100');
+    expect(text).toContain('Risk score 12 / 100');
     expect(text).not.toContain('Translation confidence');
     expect(text).not.toContain('large amount');
     expect(text).not.toContain('This amount is far above earlier transfers.');
@@ -371,8 +372,10 @@ describe('Dashboard live transactions', () => {
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('Stopped by our security review');
     expect(text).toContain('no money moved');
-    expect(text).not.toContain('Risk score 72 is above the limit of 30');
-    expect(text).not.toContain('72 / 100');
+    const decision = fixture.nativeElement.querySelector('#live-status-title-body .decision') as HTMLElement;
+    expect(decision.textContent).not.toContain('Risk score 72 is above the limit of 30');
+    expect(text).toContain('Risk score 72 is above the limit of 30');
+    expect(text).toContain('Risk score 72 / 100');
     vi.advanceTimersByTime(9000);
     expect(api.list).toHaveBeenCalledTimes(1);
     fixture.destroy();

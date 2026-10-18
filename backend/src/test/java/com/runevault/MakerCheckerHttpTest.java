@@ -89,6 +89,13 @@ class MakerCheckerHttpTest {
   Transaction saved = transactions.findById(id).orElseThrow();
   assertEquals("auth0|cfo", saved.getApproverSubject());
   assertNotNull(saved.getApprovedAt());
+  mvc.perform(get("/api/transactions").header("Authorization", "Bearer maker"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].approverSubject").value("auth0|cfo"))
+   .andExpect(jsonPath("$.content[0].approvedAt").isNotEmpty())
+   .andExpect(jsonPath("$.content[0].approvalStepUp").value(false))
+   .andExpect(jsonPath("$.content[0].verifiedAt").isNotEmpty());
+  mvc.perform(get("/api/transactions").header("Authorization", "Bearer cfo"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
   assertTrue(auditEvents.findAll().stream().anyMatch(e -> e.getReason() == AuditEvent.Reason.EXECUTION_CLAIMED
    && "auth0|cfo".equals(e.getActorSubject())));
  }
@@ -115,6 +122,8 @@ class MakerCheckerHttpTest {
   mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo-mfa"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("EXECUTED"));
   assertTrue(transactions.findById(id).orElseThrow().getApprovalStepUp());
+  mvc.perform(get("/api/transactions").header("Authorization", "Bearer maker"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].approvalStepUp").value(true));
   verify(bank, times(1)).transfer(id, 150000L, "USD", "acct-999");
  }
 
