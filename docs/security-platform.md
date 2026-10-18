@@ -72,3 +72,9 @@ exports.onExecutePostLogin = async (event, api) => {
   }
 };
 ```
+
+## Nessie destination and risk reads
+
+Creating a dashboard or bridge transfer first checks the configured destination allowlist and then reads `GET /accounts/{destination}` from Nessie. A 404 or a response for a different account rejects creation with 400; an unavailable or malformed account response returns 503. Neither case creates a pending transfer. The local test and simulator profiles use a fake read gateway.
+
+After the Pico signs a pending transfer, Gemini receives a bounded summary from `GET /accounts/{destination}/transfers`: up to 1000 observed transfers, their total and largest amounts, the count dated within 30 days, failed transfer count, and whether the list was truncated. The prompt receives summary numbers, not raw provider records. If the history read fails, the Gemini decision is unavailable and no execution claim is made. The Nessie endpoint's availability and response shape must be checked against the deployed sandbox before a live demonstration.

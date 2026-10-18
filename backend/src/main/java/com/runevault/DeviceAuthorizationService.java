@@ -1,5 +1,6 @@
 package com.runevault;
 
+import com.runevault.banking.BankReadGateway;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.GeneralSecurityException;
@@ -20,17 +21,19 @@ public class DeviceAuthorizationService {
  private final DeviceStateRepository devices;
  private final AuditEventRepository auditEvents;
  private final TransactionPolicy policy;
+ private final BankReadGateway bankReads;
  private final String deviceId;
  private final byte[] key;
 
  public DeviceAuthorizationService(TransactionRepository transactions, DeviceStateRepository devices,
-   AuditEventRepository auditEvents, TransactionPolicy policy,
+   AuditEventRepository auditEvents, TransactionPolicy policy, BankReadGateway bankReads,
    @Value("${runevault.pico-device-id}") String deviceId,
    @Value("${runevault.pico-key}") String key) {
   this.transactions = transactions;
   this.devices = devices;
   this.auditEvents = auditEvents;
   this.policy = policy;
+  this.bankReads = bankReads;
   this.deviceId = deviceId;
   this.key = key.getBytes(StandardCharsets.UTF_8);
  }
@@ -69,6 +72,15 @@ public class DeviceAuthorizationService {
    auditEvents.save(new AuditEvent(AuditEvent.Type.TRANSACTION_CREATION, request.device(), null,
     AuditEvent.Outcome.REJECTED, AuditEvent.Reason.DESTINATION_NOT_ALLOWED));
    return error(400, "Destination is not allowed");
+  }
+  try {
+   if (!bankReads.destinationExists(request.dest())) {
+    auditEvents.save(new AuditEvent(AuditEvent.Type.TRANSACTION_CREATION, request.device(), null,
+     AuditEvent.Outcome.REJECTED, AuditEvent.Reason.DESTINATION_NOT_ALLOWED));
+    return error(400, "Destination account does not exist");
+   }
+  } catch (BankReadGateway.Unavailable e) {
+   return error(503, "Destination account lookup is unavailable");
   }
   var device = devices.findForUpdate(request.device()).orElseGet(() -> devices.saveAndFlush(new DeviceState(request.device())));
   if (device.isRevoked()) {
