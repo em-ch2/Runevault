@@ -70,7 +70,7 @@ public class LoreAuditService {
   long amountMinor = transaction.getAmountMinor();
   Instant now = Instant.now();
   BankReadGateway.TransferHistory history = bankReads.transferHistory(destination);
-  long balanceMinor = bankReads.sourceBalanceMinor();
+  long balanceMinor = bankReads.verifiedSourceBalanceMinor();
   var completed = List.of(Transaction.Status.EXECUTED);
   long priorPayments = transactions.countByDestinationAndStatusIn(destination, completed);
   Double average = transactions.averageAmountByDestinationAndStatusIn(destination, completed);

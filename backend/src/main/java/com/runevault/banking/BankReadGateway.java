@@ -7,7 +7,7 @@ public interface BankReadGateway {
  TransferHistory transferHistory(String accountId);
 
  /** Current source-account balance in cents, or Unavailable when it cannot be verified. */
- long sourceBalanceMinor();
+ long verifiedSourceBalanceMinor();
 
  record TransferHistory(int observedTransfers, int recentThirtyDays, long totalAmountMinor,
    long largestAmountMinor, int failedTransfers, boolean truncated) {

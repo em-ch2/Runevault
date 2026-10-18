@@ -28,7 +28,7 @@ class LoreAuditServiceTest {
  private void answer(String json) {
   when(client.isConfigured()).thenReturn(true);
   when(bankReads.transferHistory(anyString())).thenReturn(BankReadGateway.TransferHistory.empty());
-  when(bankReads.sourceBalanceMinor()).thenReturn(200000L);
+  when(bankReads.verifiedSourceBalanceMinor()).thenReturn(200000L);
   when(client.generateJson(anyString(), anyString(), any())).thenReturn(json);
  }
 

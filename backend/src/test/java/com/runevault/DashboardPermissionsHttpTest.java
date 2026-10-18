@@ -58,6 +58,38 @@ class DashboardPermissionsHttpTest {
   token("viewer", "auth0|viewer", "read:transactions");
   token("creator", "auth0|creator", "create:transactions");
   token("admin", "auth0|admin", "create:transactions", "read:transactions", "admin:platform");
+  token("auditor", "auth0|auditor", "read:audit");
+ }
+
+ @Test void auditorReadsSafeCompanyAuditsButCannotModifyResources() throws Exception {
+  auditEvents.saveAndFlush(new AuditEvent(AuditEvent.Type.DEVICE_REVOCATION, "slab-01", "tx-one",
+   AuditEvent.Outcome.APPROVED, AuditEvent.Reason.REVOKED_BY_ADMIN, "auth0|admin"));
+  mvc.perform(get("/api/audit-events?transactionId=tx-one&outcome=APPROVED")
+   .header("Authorization", "Bearer auditor"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
+   .andExpect(jsonPath("$.content[0].id").isNumber())
+   .andExpect(jsonPath("$.content[0].timestamp").isNotEmpty())
+   .andExpect(jsonPath("$.content[0].actorSubject").value("auth0|admin"))
+   .andExpect(jsonPath("$.content[0].glyphs").doesNotExist())
+   .andExpect(jsonPath("$.content[0].token").doesNotExist());
+  mvc.perform(get("/api/audit-events").header("Authorization", "Bearer employee"))
+   .andExpect(status().isForbidden());
+  mvc.perform(get("/api/audit-events").header("Authorization", "Bearer admin"))
+   .andExpect(status().isOk());
+  mvc.perform(get("/api/transactions").header("Authorization", "Bearer auditor"))
+   .andExpect(status().isForbidden());
+  mvc.perform(post("/api/transactions").header("Authorization", "Bearer auditor")
+   .contentType("application/json").content(BODY)).andExpect(status().isForbidden());
+  mvc.perform(post("/api/transactions/tx-one/approve").header("Authorization", "Bearer auditor"))
+   .andExpect(status().isForbidden());
+  mvc.perform(post("/api/admin/devices/slab-01/revoke").header("Authorization", "Bearer auditor"))
+   .andExpect(status().isForbidden());
+  mvc.perform(post("/api/admin/transactions/tx-one/resume").header("Authorization", "Bearer auditor"))
+   .andExpect(status().isForbidden());
+  mvc.perform(post("/api/admin/transactions/tx-one/reconcile").header("Authorization", "Bearer auditor"))
+   .andExpect(status().isForbidden());
+  mvc.perform(get("/api/admin/audit-events").header("Authorization", "Bearer auditor"))
+   .andExpect(status().isForbidden());
  }
 
  @Test void simulatorRoutesAreUnavailableButHealthAndDashboardRemain() throws Exception {

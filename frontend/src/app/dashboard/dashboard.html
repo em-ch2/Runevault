@@ -5,6 +5,8 @@
     (click)="turnCompass('click'); navTo('dashboard')"><img #compass src="compass.svg" width="90" height="90" alt="" /></a>
   <nav (mouseleave)="restNavIndicator()" (focusout)="restNavIndicator()">
     <span #navIndicator class="nav-indicator" aria-hidden="true"></span>
+    @if (permissionsLoaded()) {
+    @if (!auditorOnly()) {
     <a href="#dashboard-top" [class.nav-current]="activeNav() === 'dashboard'" [attr.aria-current]="activeNav() === 'dashboard' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('dashboard')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="1.8"/><path d="M12 2.5V10.2M12 13.8V21.5M2.5 12H10.2M13.8 12H21.5M5.3 5.3L10.7 10.7M13.3 13.3L18.7 18.7M18.7 5.3L13.3 10.7M10.7 13.3L5.3 18.7"/></svg></span> Dashboard</a>
     <a href="#workflow-title" [class.nav-current]="activeNav() === 'approval'" [attr.aria-current]="activeNav() === 'approval' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('approval')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 15.5L7.5 21.5L10.5 20L12 21.8L13.5 20L16.5 21.5L15 15.5"/><circle cx="12" cy="10" r="6.5"/><path d="M9.2 10.1L11.2 12.1L14.9 8.3"/></svg></span> Approval</a>
     @if (canApprove()) {
@@ -12,6 +14,9 @@
     }
     <a href="#live-list-title" [class.nav-current]="activeNav() === 'history'" [attr.aria-current]="activeNav() === 'history' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('history', 'live-list-title')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M8 4H18A2 2 0 0 1 18 8H16V18A2 2 0 0 1 14 20H5A2 2 0 0 1 5 16H7V6A2 2 0 0 1 9 4"/><path d="M7 16H14V18A2 2 0 0 0 16 18"/><path d="M10 9H13M10 12H13"/></svg></span> History</a>
     <a href="#metrics-title" [class.nav-current]="activeNav() === 'analytics'" [attr.aria-current]="activeNav() === 'analytics' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('analytics', 'metrics-title')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><g transform="rotate(-28 12 11)"><rect x="2.5" y="9.5" width="6" height="3.5" rx="0.8"/><rect x="8.5" y="8.8" width="6" height="5" rx="0.8"/><rect x="14.5" y="8" width="7" height="6.5" rx="0.8"/></g><path d="M11 14.5L8 21.5M12 14.5L15.5 21.5"/></svg></span> Analytics</a>
+    }
+    @if (canAudit()) { <a href="#audit-view" [class.nav-current]="activeNav() === 'audit'" [attr.aria-current]="activeNav() === 'audit' ? 'page' : null" (click)="openAudit()">Audit</a> }
+    }
   </nav>
   <div class="sidebar-seal" aria-hidden="true">&#10023;</div>
   <span class="sidebar-foot">SEALED IN TRUST</span>
@@ -52,6 +57,31 @@
   <p class="form-error" role="alert">{{ auth.error() }}</p>
 }
 
+@if (auditOpen()) {
+<section id="audit-view" class="audit-view" aria-labelledby="audit-title">
+  <h1 id="audit-title">Audit events</h1>
+  <p class="muted">Read-only company activity.</p>
+  <form [formGroup]="auditFilters" (ngSubmit)="loadAudit(0)" class="audit-filters">
+    <label>Transaction ID <input formControlName="transactionId" type="text" maxlength="36" /></label>
+    <label>Outcome <select formControlName="outcome"><option value="">All</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option><option value="PENDING">Pending</option><option value="UNKNOWN">Unknown</option></select></label>
+    <label>From <input formControlName="from" type="datetime-local" /></label>
+    <label>To <input formControlName="to" type="datetime-local" /></label>
+    <button class="btn btn-primary" type="submit">Apply filters</button>
+  </form>
+  @if (auditError()) { <p class="form-error" role="alert">{{ auditError() }}</p> }
+  @if (auditLoading()) { <p role="status">Loading audit events…</p> }
+  @if (auditPage(); as page) {
+    <p class="muted">{{ page.totalElements }} events</p>
+    <div class="audit-table-wrap"><table class="audit-table"><thead><tr><th>Time</th><th>Event</th><th>Outcome</th><th>Reason</th><th>Transaction</th><th>Device</th><th>Actor</th></tr></thead><tbody>
+      @for (event of page.content; track event.id) { <tr><td>{{ time(event.timestamp) }}</td><td>{{ event.eventType }}</td><td>{{ event.outcome }}</td><td>{{ event.reason }}</td><td class="mono">{{ event.transactionId ?? '—' }}</td><td class="mono">{{ event.deviceId ?? '—' }}</td><td class="mono">{{ event.actorSubject ?? '—' }}</td></tr> }
+    </tbody></table></div>
+    @if (page.content.length === 0) { <p class="empty">No matching audit events.</p> }
+    <div class="audit-pagination"><button class="btn btn-ghost" type="button" [disabled]="page.number === 0 || auditLoading()" (click)="loadAudit(page.number - 1)">Previous</button><span>Page {{ page.number + 1 }} of {{ page.totalPages || 1 }}</span><button class="btn btn-ghost" type="button" [disabled]="page.number + 1 >= page.totalPages || auditLoading()" (click)="loadAudit(page.number + 1)">Next</button></div>
+  }
+</section>
+}
+
+@if (permissionsLoaded() && !auditOpen() && !auditorOnly()) {
 <section class="landing" aria-labelledby="landing-title" [hidden]="!landing()">
   <div class="landing-hero" (mouseenter)="paceBoat(2.4)" (mouseleave)="paceBoat(1)">
     <div class="landing-copy">
@@ -502,6 +532,8 @@
     }
   </app-folder-panel>
 </main>
+}
+
 }
 
 </div>

@@ -11,5 +11,5 @@ public class FakeBankReadGateway implements BankReadGateway {
 
  @Override public TransferHistory transferHistory(String accountId) { return TransferHistory.empty(); }
 
- @Override public long sourceBalanceMinor() { return 1_000_000L; }
+ @Override public long verifiedSourceBalanceMinor() { return 1_000_000L; }
 }

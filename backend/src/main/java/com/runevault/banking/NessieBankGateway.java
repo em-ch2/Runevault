@@ -118,7 +118,7 @@ public class NessieBankGateway implements BankGateway, BankReadGateway {
     }
 
     @Override
-    public long sourceBalanceMinor() {
+    public long verifiedSourceBalanceMinor() {
         try {
             JsonNode balance = unwrap(get("/accounts/" + sourceAccountId)).path("balance");
             if (!balance.isNumber()) throw new Unavailable();
