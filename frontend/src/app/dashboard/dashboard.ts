@@ -138,6 +138,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     dest: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern('[A-Za-z0-9_-]{1,64}')] }),
   });
   private poll: Subscription | null = null;
+  private approvalPoll: Subscription | null = null;
   private listRequest: Subscription | null = null;
   private readonly feedSubscriptions: Subscription[] = [];
   readonly liveEvents = signal<TransferTransportEvent[]>([]);
@@ -145,6 +146,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   // Maker-checker: transfers waiting for a second approver (CFO role, approve:transactions).
   readonly canApprove = signal(false);
   readonly approvalQueue = signal<TransactionRecord[]>([]);
+  readonly highValueApprovals = computed(() => this.approvalQueue().filter((transaction) => transaction.stepUpRequired).length);
   readonly approvingId = signal<string | null>(null);
   readonly approvalNotice = signal<string | null>(null);
   readonly approvalProblem = signal<string | null>(null);
@@ -261,7 +263,11 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     this.api.permissions().subscribe({
       next: (permissions) => {
         this.canApprove.set(permissions.includes('approve:transactions'));
-        if (this.canApprove()) this.loadApprovals();
+        if (this.canApprove()) {
+          this.loadApprovals();
+          // The transfer feed is scoped to the requester; refresh the CFO queue independently.
+          this.approvalPoll = interval(15000).subscribe(() => this.loadApprovals());
+        }
       },
       error: () => this.canApprove.set(false),
     });
@@ -307,6 +313,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.poll?.unsubscribe();
+    this.approvalPoll?.unsubscribe();
     this.listRequest?.unsubscribe();
     for (const subscription of this.feedSubscriptions) subscription.unsubscribe();
     this.feed.stop();

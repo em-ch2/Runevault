@@ -7,7 +7,7 @@
     <a href="#live-create-title" [class.nav-current]="activeNav() === 'transactions'" [attr.aria-current]="activeNav() === 'transactions' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('transactions', 'live-create-title')"><span aria-hidden="true">&#8644;</span> Transactions</a>
     <a href="#authorize-title" [class.nav-current]="activeNav() === 'approvals'" [attr.aria-current]="activeNav() === 'approvals' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('approvals', 'authorize-title')"><span aria-hidden="true">&#9671;</span> Approvals</a>
     @if (canApprove()) {
-      <a href="#signoff-title" [class.nav-current]="activeNav() === 'signoff'" [attr.aria-current]="activeNav() === 'signoff' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="openSignoff()"><span aria-hidden="true">&#10003;</span> Sign-off @if (approvalQueue().length) { ({{ approvalQueue().length }}) }</a>
+      <a href="#signoff-title" [class.nav-current]="activeNav() === 'signoff'" [attr.aria-current]="activeNav() === 'signoff' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="openSignoff()"><span aria-hidden="true">&#10003;</span> Sign-off @if (approvalQueue().length) { ({{ approvalQueue().length }}) } @if (highValueApprovals()) { <span>· {{ highValueApprovals() }} MFA</span> }</a>
     }
     <a href="#live-list-title" [class.nav-current]="activeNav() === 'history'" [attr.aria-current]="activeNav() === 'history' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('history', 'live-list-title')"><span aria-hidden="true">&#9636;</span> History</a>
     <a href="#metrics-title" [class.nav-current]="activeNav() === 'analytics'" [attr.aria-current]="activeNav() === 'analytics' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('analytics', 'metrics-title')"><span aria-hidden="true">&#9637;</span> Analytics</a>
@@ -297,8 +297,9 @@
   </app-folder-panel>
 
   <!-- Maker-checker queue. The backend enforces every rule here; the UI only explains them. -->
-  <app-folder-panel class="slab activity live-list folder-light" panelId="signoff-title" title="Second-approver sign-off" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'signoff-title'">
-    <p class="flow-guidance">These transfers were signed on the Pico and passed the Gemini review. Each one needs a second person to release it. You cannot release a transfer you requested.</p>
+    <app-folder-panel class="slab activity live-list folder-light" panelId="signoff-title" title="Second-approver sign-off" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'signoff-title'">
+      <p class="flow-guidance">These transfers were signed on the Pico and passed the Gemini review. Each one needs a second person to release it. You cannot release a transfer you requested.</p>
+      @if (highValueApprovals()) { <p class="status status-wait" role="status">{{ highValueApprovals() }} high-value request{{ highValueApprovals() === 1 ? '' : 's' }} waiting for MFA-backed approval.</p> }
     @if (approvalNotice()) { <p class="status status-good" role="status">{{ approvalNotice() }}</p> }
     @if (approvalProblem()) { <p class="form-error" role="alert">{{ approvalProblem() }}</p> }
     @if (approvalQueue().length === 0) {
