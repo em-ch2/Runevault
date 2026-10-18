@@ -109,7 +109,12 @@ public class NessieBankGateway implements BankGateway, BankReadGateway {
                 if (status.equals("failed") || status.equals("rejected") || status.equals("declined")) failed++;
             }
             return new TransferHistory(observed, recent, total, largest, failed, transfers.size() > observed);
-        } catch (IOException | NessieException | IllegalArgumentException | ArithmeticException | java.time.DateTimeException e) {
+        } catch (NessieException e) {
+            // This Nessie answers 404 "No transfers found for this account" for an account that has never sent
+            // one (every fresh destination); that is an empty history, not an outage. Other errors still block.
+            if (e.status == 404) return TransferHistory.empty();
+            throw new Unavailable();
+        } catch (IOException | IllegalArgumentException | ArithmeticException | java.time.DateTimeException e) {
             throw new Unavailable();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
