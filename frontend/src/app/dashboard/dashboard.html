@@ -1,6 +1,8 @@
 <div class="vault-shell" id="dashboard-top">
 <aside class="sidebar" aria-label="Main navigation">
-  <a class="compass-logo" href="#dashboard-top" aria-label="Runevault dashboard"><img src="compass.svg" width="90" height="90" alt="" /></a>
+  <a class="compass-logo" href="#dashboard-top" aria-label="Runevault dashboard" title="Back to the dashboard"
+    (mouseenter)="turnCompass('hover')" (mouseleave)="turnCompass('rest')" (focus)="turnCompass('hover')" (blur)="turnCompass('rest')"
+    (click)="turnCompass('click'); navTo('dashboard')"><img #compass src="compass.svg" width="90" height="90" alt="" /></a>
   <nav (mouseleave)="restNavIndicator()" (focusout)="restNavIndicator()">
     <span #navIndicator class="nav-indicator" aria-hidden="true"></span>
     <a href="#dashboard-top" [class.nav-current]="activeNav() === 'dashboard'" [attr.aria-current]="activeNav() === 'dashboard' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('dashboard')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="1.8"/><path d="M12 2.5V10.2M12 13.8V21.5M2.5 12H10.2M13.8 12H21.5M5.3 5.3L10.7 10.7M13.3 13.3L18.7 18.7M18.7 5.3L13.3 10.7M10.7 13.3L5.3 18.7"/></svg></span> Dashboard</a>
@@ -48,7 +50,7 @@
 }
 
 <section class="landing" aria-labelledby="landing-title" [hidden]="!landing()">
-  <div class="landing-hero">
+  <div class="landing-hero" (mouseenter)="paceBoat(2.4)" (mouseleave)="paceBoat(1)">
     <div class="landing-copy">
       <p class="landing-kicker">Runevault &middot; sealed in trust</p>
       <h1 id="landing-title">Sealing the deal.</h1>
@@ -58,6 +60,7 @@
         <button class="btn btn-ghost" type="button" (click)="navTo('history', 'live-list-title')">View past voyages</button>
       </div>
     </div>
+    <div class="landing-sea">
     <svg class="landing-boat" viewBox="0 0 400 230" role="img" aria-label="A ship rocking on the waves">
       <g class="wave wave-back"><path [attr.d]="wavePath(156, 7)" /></g>
       <g class="boat">
@@ -70,6 +73,7 @@
       </g>
       <g class="wave wave-front"><path [attr.d]="wavePath(166, 8)" /></g>
     </svg>
+    </div>
   </div>
 
   <div class="landing-section">

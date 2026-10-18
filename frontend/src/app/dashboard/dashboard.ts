@@ -13,7 +13,7 @@ import { MockScenario } from '../feed/mock-feed';
 import { GLYPH_NAMES, Glyph } from './glyph';
 import { PicoApproval } from './pico-approval';
 import { Stage, TransferStore } from './transfer-store';
-import { glideTo, rockBoat, slideAcross, slideUp } from './motion';
+import { BoatMotion, glideTo, rockBoat, slideAcross, slideUp, swingCompass, wavePath } from './motion';
 
 const STAGE_ORDER: Stage[] = ['received', 'sealed', 'verified', 'executed'];
 type NavSection = 'dashboard' | 'approval' | 'history' | 'analytics';
@@ -27,6 +27,11 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
   private readonly injector = inject(Injector);
   @ViewChild('navIndicator') private navIndicator?: ElementRef<HTMLElement>;
+  @ViewChild('compass') private compass?: ElementRef<HTMLElement>;
+
+  turnCompass(kind: 'hover' | 'rest' | 'click'): void {
+    if (this.compass) swingCompass(this.compass.nativeElement, kind);
+  }
   readonly auth = inject(AuthService);
   readonly feed = inject(FeedService);
   readonly store = inject(TransferStore);
@@ -228,19 +233,16 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     this.secondaryView.set(null);
   }
 
-  // A wave band across twice the frame's width, so sliding it by one frame loops seamlessly.
-  wavePath(level: number, height: number): string {
-    let d = `M0 ${level}`;
-    for (let x = 0; x < 800; x += 100) d += ` Q${x + 25} ${level - height} ${x + 50} ${level} T${x + 100} ${level}`;
-    return `${d} V230 H0 Z`;
-  }
+  readonly wavePath = wavePath;
 
-  private stopBoat: (() => void) | null = null;
+  private boat: BoatMotion | null = null;
+  // The scene speeds up while the pointer is over the hero, and eases back when it leaves.
+  paceBoat(factor: number): void { this.boat?.pace(factor); }
   private readonly boatMotion = effect(() => {
     const showing = this.landing();
     afterNextRender(() => {
-      this.stopBoat?.();
-      this.stopBoat = showing ? rockBoat(this.host.nativeElement.querySelector('.landing-boat')) : null;
+      this.boat?.stop();
+      this.boat = showing ? rockBoat(this.host.nativeElement.querySelector('.landing-boat')) : null;
       if (showing) slideUp([...this.host.nativeElement.querySelectorAll('.landing-hero, .landing-section')], { distance: 24, stagger: 0.08 });
     }, { injector: this.injector });
   });
@@ -312,7 +314,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.stopBoat?.();
+    this.boat?.stop();
     this.poll?.unsubscribe();
     this.listRequest?.unsubscribe();
     for (const subscription of this.feedSubscriptions) subscription.unsubscribe();

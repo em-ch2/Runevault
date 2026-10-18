@@ -1,13 +1,14 @@
 import { Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Glyph } from '../dashboard/glyph';
+import { OceanScene } from '../dashboard/ocean-scene';
 import { AuthService } from './auth.service';
 
 @Component({
   selector: 'app-signup',
-  imports: [RouterLink, Glyph],
+  imports: [RouterLink, Glyph, OceanScene],
   template: `
-    <main class="auth-page"><div class="auth-layout"><aside class="auth-story"><a class="auth-brand" routerLink="/login"><span aria-hidden="true">&#10037;</span> Runevault</a><div class="auth-story-copy"><span class="gold-rule"></span><h2>A steadier course forward.</h2><p>Financial operations, securely charted.</p></div><p class="auth-story-footer">&mdash; &nbsp; A clearer view of what matters.</p></aside>
+    <main class="auth-page"><div class="auth-layout"><aside class="auth-story" (mouseenter)="ocean.pace(2.4)" (mouseleave)="ocean.pace(1)"><a class="auth-brand" routerLink="/login"><span aria-hidden="true">&#10037;</span> Runevault</a><div class="auth-story-copy"><span class="gold-rule"></span><h2>A steadier course forward.</h2><p>Financial operations, securely charted.</p></div><app-ocean-scene #ocean class="auth-ocean" [boat]="false" aria-hidden="true" /></aside>
       <section class="slab auth-card" aria-labelledby="signup-title">
         <div class="auth-glyphs" aria-hidden="true">
           <app-glyph [id]="2" [size]="40" /><app-glyph [id]="1" [size]="40" /><app-glyph [id]="0" [size]="40" />

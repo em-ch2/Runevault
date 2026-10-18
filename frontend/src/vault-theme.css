@@ -227,3 +227,18 @@ app-folder-panel:not(.folder-open) { align-self:start; }
 .landing-glyphs figure:hover .glyph { animation:glyph-bob 1.6s ease-in-out infinite; }
 @keyframes glyph-bob { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-3px); } }
 @media(prefers-reduced-motion:reduce) { .landing-glyphs figure,.landing-steps li,.pager-arrow { transition:none; }.landing-glyphs figure:hover,.landing-steps li:hover { transform:none; }.landing-glyphs figure:hover .glyph { animation:none; } }
+.compass-logo img { transform-origin:50% 50%; }
+.compass-logo:focus-visible { outline-offset:-6px; }
+/* The sea column runs to the hero's top, right and bottom edges and clips the long wave band there, so the
+   water never ends inside the picture; its left edge fades out instead of stopping in a hard line. */
+.landing-sea { align-self:stretch; display:flex; align-items:flex-end; margin:-36px -40px -36px 0; overflow:hidden;
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 18%); mask-image:linear-gradient(to right,transparent,#000 18%); }
+.landing-sea .landing-boat { display:block; overflow:visible; margin:24px auto 0; }
+@media(max-width:1100px) { .landing-sea { margin:0 -28px -28px; -webkit-mask-image:none; mask-image:none; } }
+@media(max-width:700px) { .landing-sea { margin:0 -18px -20px; } }
+/* Login / sign-up: the ship and waves along the bottom of the story panel (.auth-story clips them). */
+.auth-ocean { position:absolute; left:0; right:0; bottom:0; height:30%; z-index:0; pointer-events:none; }
+.auth-ocean .ocean-scene { display:block; width:100%; height:100%; max-height:none; overflow:visible; }
+.auth-story-copy,.auth-brand,.auth-story-footer { position:relative; z-index:1; }
+.auth-story-footer { color:#e6dfcf!important; }
+@media(max-width:700px) { .auth-ocean { height:34%; } }
