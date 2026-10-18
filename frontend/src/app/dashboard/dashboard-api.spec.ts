@@ -236,7 +236,7 @@ describe('Dashboard live transactions', () => {
 
   it('shows a high-risk transfer escalated to a CFO as waiting, not stopped', () => {
     api.list.mockReturnValue(of({ content: [{ ...pending, status: 'VERIFIED', verifiedAt: new Date().toISOString(),
-      geminiDecisionReason: 'GEMINI_HIGH_RISK', awaitingApproval: true, stepUpRequired: true }] }));
+      geminiDecisionReason: 'GEMINI_HIGH_RISK', awaitingApproval: true }] }));
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
     const dashboard = fixture.componentInstance;
@@ -465,7 +465,7 @@ describe('Dashboard live transactions', () => {
 
   describe('maker-checker sign-off', () => {
     const reviewed = { ...pending, status: 'VERIFIED' as const, verifiedAt: new Date().toISOString(),
-      geminiDecisionReason: 'GEMINI_APPROVED' as const, awaitingApproval: true, stepUpRequired: false };
+      geminiDecisionReason: 'GEMINI_APPROVED' as const, awaitingApproval: true };
 
     it('hides sign-off from users without the approve permission', () => {
       const fixture = TestBed.createComponent(Dashboard);
@@ -477,7 +477,8 @@ describe('Dashboard live transactions', () => {
 
     it('locks the approver out of their own request and releases a request from someone else', () => {
       api.permissions.mockReturnValue(of(['read:transactions', 'approve:transactions']));
-      const other = { ...reviewed, transactionId: 'other1', requesterSubject: 'auth0|maker', stepUpRequired: true };
+      // A high-value request releases with the normal token, like any other amount.
+      const other = { ...reviewed, transactionId: 'other1', requesterSubject: 'auth0|maker', amountMinor: 1_500_000 };
       api.approvals.mockReturnValue(of({ content: [reviewed, other] }));
       api.approve.mockReturnValue(of({ status: 'EXECUTED' }));
       const fixture = TestBed.createComponent(Dashboard);
@@ -492,7 +493,8 @@ describe('Dashboard live transactions', () => {
       dashboard.approve(reviewed);
       expect(api.approve).not.toHaveBeenCalled();
       dashboard.approve(other);
-      expect(api.approve).toHaveBeenCalledWith('other1', true);
+      expect(api.approve).toHaveBeenCalledWith('other1');
+      expect(fixture.nativeElement.textContent).not.toContain('MFA');
       expect(dashboard.approvalNotice()).toContain('EXECUTED');
     });
 

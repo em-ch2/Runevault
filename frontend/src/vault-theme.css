@@ -245,7 +245,7 @@ app-folder-panel:not(.folder-open) { align-self:start; }
 /* Sign-off queue counts beside the nav label. */
 .nav-badge { margin-left:auto; padding:1px 7px; border:1px solid currentColor; border-radius:10px; font-size:.66rem; font-weight:700; line-height:1.5; color:var(--gold); }
 .nav-badge + .nav-badge { margin-left:4px; }
-.nav-badge-mfa { color:#f0b9a9; }
+
 /* Audit: same frame as the other tabs — a navy header like the workflow box, a parchment filter card and a
    parchment ledger of events, each row toned by its outcome. */
 .audit-view { margin:8px 16px 32px; display:grid; gap:14px; }

@@ -47,11 +47,11 @@ describe('AuthService', () => {
     const auth = TestBed.inject(AuthService);
     auth.signIn();
     expect(sdk.loginWithRedirect).toHaveBeenCalledWith({
-      appState: { target: '/' }, authorizationParams: { prompt: 'login', max_age: 0 },
+      appState: { target: '/' },
     });
     auth.signUp();
     expect(sdk.loginWithRedirect).toHaveBeenCalledWith({
-      appState: { target: '/' }, authorizationParams: { screen_hint: 'signup', prompt: 'login', max_age: 0 },
+      appState: { target: '/' }, authorizationParams: { screen_hint: 'signup' },
     });
     auth.signOut();
     expect(sdk.logout).toHaveBeenCalledWith({

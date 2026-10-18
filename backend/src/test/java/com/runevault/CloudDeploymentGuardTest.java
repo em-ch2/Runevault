@@ -37,7 +37,6 @@ class CloudDeploymentGuardTest {
   env.setProperty("RUNEVAULT_MIN_TRANSLATION_CONFIDENCE", "0.8");
   env.setProperty("RUNEVAULT_MAX_RISK_SCORE", "30");
   env.setProperty("RUNEVAULT_APPROVAL_REQUIRED", "true");
-  env.setProperty("RUNEVAULT_STEP_UP_AMOUNT_MINOR", "100000");
   for (String name : new String[] {"RUNEVAULT_RATE_WINDOW_SECONDS", "RUNEVAULT_RATE_MAX_ENTRIES",
       "RUNEVAULT_DASHBOARD_READS_PER_WINDOW", "RUNEVAULT_TRANSACTION_CREATION_PER_WINDOW",
       "RUNEVAULT_BRIDGE_AUTHORIZATIONS_PER_WINDOW", "RUNEVAULT_BRIDGE_OTHER_PER_WINDOW",
@@ -76,8 +75,8 @@ class CloudDeploymentGuardTest {
   MockEnvironment env = valid();
   env.setProperty("RUNEVAULT_APPROVAL_REQUIRED", "false");
   assertThrows(IllegalStateException.class, () -> CloudDeploymentGuard.validate(env));
-  MockEnvironment noStepUp = valid();
-  noStepUp.setProperty("RUNEVAULT_STEP_UP_AMOUNT_MINOR", "0");
-  assertThrows(IllegalStateException.class, () -> CloudDeploymentGuard.validate(noStepUp));
+  MockEnvironment missing = valid();
+  missing.setProperty("RUNEVAULT_APPROVAL_REQUIRED", "");
+  assertThrows(IllegalStateException.class, () -> CloudDeploymentGuard.validate(missing));
  }
 }

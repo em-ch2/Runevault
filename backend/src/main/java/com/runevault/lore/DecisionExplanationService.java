@@ -184,6 +184,8 @@ public class DecisionExplanationService {
    case PENDING -> "Physical authorization on the Pico is still required; nothing has been assessed or sent to the bank.";
    case SIMULATED -> "None. This is a simulated record and is not eligible for banking.";
    case VERIFIED -> decision == null ? "Wait for the recorded policy decision; nothing has been sent to the bank."
+    : approvals.escalates(decision)
+    ? "Gemini rated this transfer high risk, so a CFO reviewer other than the requester must review it and decide whether to release it."
     : decision != AuditEvent.Reason.GEMINI_APPROVED
     ? "None in Runevault. Banking is blocked for this transfer; contact your security or compliance team if you believe the decision is wrong."
     : approvals.required()
@@ -219,8 +221,8 @@ public class DecisionExplanationService {
    "decidedAt", iso(t.getGeminiDecisionAt()), "recordedReason", recordedReason(t)));
   evidence.put("cfoApproval", ordered(
    "requiredByConfiguration", approvals.required(), "state", approvalState(t),
-   "approvedAt", iso(t.getApprovedAt()), "mfaStepUpUsed", t.getApprovalStepUp(),
-   "mfaStepUpRequiredForAmount", approvals.requiresStepUp(t.getAmountMinor())));
+   "approvedAt", iso(t.getApprovedAt()),
+   "note", "CFO approval uses the reviewer's normal sign-in at every amount; there is no separate MFA step."));
   evidence.put("bankingSettlement", ordered(
    "outcome", t.getBankOutcome() == null ? "NOT_SUBMITTED" : t.getBankOutcome().name(),
    "reason", t.getBankReason() == null ? null : t.getBankReason().name(),
@@ -238,7 +240,7 @@ public class DecisionExplanationService {
   if (t.getApprovedAt() != null) return "APPROVED_BY_SECOND_PERSON";
   if (t.getExecutionClaimedAt() != null) return "NOT_REQUIRED_WHEN_RELEASED";
   if (approvals.required() && t.getStatus() == Transaction.Status.VERIFIED
-    && t.getGeminiDecisionReason() == AuditEvent.Reason.GEMINI_APPROVED) return "AWAITING_SECOND_APPROVER";
+    && approvals.releasable(t.getGeminiDecisionReason())) return "AWAITING_SECOND_APPROVER";
   return "NOT_REACHED";
  }
 

@@ -55,17 +55,17 @@ public class TransactionService {
     // durable and serialized by device lock, then transaction lock; never retry execution blindly.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public VerifiedTransaction claimPicoAuthorized(String id) {
-        return claim(id, null, false);
+        return claim(id, null);
     }
 
     // Maker-checker: the approver is checked under the same locks as every other claim condition,
     // so a requester can never release their own transfer, even through a race or a direct call.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public VerifiedTransaction claimApproved(String id, String approverSubject, boolean stepUp) {
-        return claim(id, approverSubject, stepUp);
+    public VerifiedTransaction claimApproved(String id, String approverSubject) {
+        return claim(id, approverSubject);
     }
 
-    private VerifiedTransaction claim(String id, String approver, boolean stepUp) {
+    private VerifiedTransaction claim(String id, String approver) {
         String assignedDeviceId = transactions.findAssignedDeviceId(id)
             .orElseThrow(() -> rejected(null, id, AuditEvent.Reason.EXECUTION_INELIGIBLE));
         if (assignedDeviceId.isBlank())
@@ -94,12 +94,10 @@ public class TransactionService {
                 throw rejected(assignedDeviceId, id, AuditEvent.Reason.APPROVER_REQUIRED);
             if (approver.equals(transaction.getRequesterSubject()))
                 throw rejected(assignedDeviceId, id, AuditEvent.Reason.SELF_APPROVAL, approver);
-            if (approvals.requiresStepUp(transaction.getAmountMinor(), transaction.getGeminiDecisionReason()) && !stepUp)
-                throw rejected(assignedDeviceId, id, AuditEvent.Reason.STEP_UP_REQUIRED, approver);
         }
         Instant claimedAt = Instant.now();
         if (approver == null) transaction.claimForExecution(claimedAt);
-        else transaction.claimForApprovedExecution(approver, stepUp, claimedAt);
+        else transaction.claimForApprovedExecution(approver, claimedAt);
         transactions.saveAndFlush(transaction);
         auditEvents.saveAndFlush(new AuditEvent(AuditEvent.Type.EXECUTION_CLAIM,
             transaction.getDeviceId(), transaction.getTransactionId(),

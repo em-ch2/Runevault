@@ -209,7 +209,6 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     to: new FormControl('', { nonNullable: true }),
   });
   readonly approvalQueue = signal<TransactionRecord[]>([]);
-  readonly highValueApprovals = computed(() => this.approvalQueue().filter((transaction) => transaction.stepUpRequired).length);
   readonly approvingId = signal<string | null>(null);
   readonly approvalNotice = signal<string | null>(null);
   readonly approvalProblem = signal<string | null>(null);
@@ -449,7 +448,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
       PROVIDER_STATUS_UNKNOWN: 'Unrecognised bank status', GEMINI_APPROVED: 'Passed the Gemini review',
       GEMINI_UNAVAILABLE: 'Gemini unavailable', GEMINI_INVALID_RESPONSE: 'Gemini answer was invalid',
       GEMINI_LOW_CONFIDENCE: 'Translation confidence too low', GEMINI_HIGH_RISK: 'Risk above the limit',
-      APPROVER_REQUIRED: 'Needs a second approver', SELF_APPROVAL: 'Self-approval refused', STEP_UP_REQUIRED: 'Step-up MFA required',
+      APPROVER_REQUIRED: 'Needs a second approver', SELF_APPROVAL: 'Self-approval refused', STEP_UP_REQUIRED: 'Step-up MFA required (retired rule)',
     };
     return labels[reason] ?? humanize(reason);
   }
@@ -491,13 +490,12 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     return transaction.requesterSubject !== null && transaction.requesterSubject === this.auth.subject();
   }
 
-  // Called straight from the click so a step-up MFA popup is not blocked by the browser.
   approve(transaction: TransactionRecord): void {
     if (this.approvingId() || this.ownRequest(transaction)) return;
     this.approvingId.set(transaction.transactionId);
     this.approvalNotice.set(null);
     this.approvalProblem.set(null);
-    this.api.approve(transaction.transactionId, !!transaction.stepUpRequired).subscribe({
+    this.api.approve(transaction.transactionId).subscribe({
       next: (result) => {
         this.approvingId.set(null);
         this.approvalNotice.set(`Released ${this.money(transaction.amountMinor)} to ${transaction.destination}: ${result.status}.`);

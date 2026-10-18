@@ -19,10 +19,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class DecisionExplanationApi {
  private final TransactionRepository transactions;
  private final DecisionExplanationService explanations;
+ private final ApprovalPolicy approvals;
 
- public DecisionExplanationApi(TransactionRepository transactions, DecisionExplanationService explanations) {
+ public DecisionExplanationApi(TransactionRepository transactions, DecisionExplanationService explanations,
+   ApprovalPolicy approvals) {
   this.transactions = transactions;
   this.explanations = explanations;
+  this.approvals = approvals;
  }
 
  @GetMapping("/api/transactions/{id}/explanation")
@@ -31,20 +34,20 @@ public class DecisionExplanationApi {
   if (!id.matches("[A-Za-z0-9_-]{1,36}"))
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid transaction ID");
   Transaction transaction = transactions.findById(id)
-   .filter(t -> visible(t, authentication))
+   .filter(t -> visible(t, authentication, approvals))
    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
   return explanations.explain(transaction);
  }
 
  // Mirrors the existing views: owners see their own list, CFO reviewers see the approval queue,
  // and auditors and platform admins see company-wide audit history.
- static boolean visible(Transaction t, Authentication authentication) {
+ static boolean visible(Transaction t, Authentication authentication, ApprovalPolicy approvals) {
   Set<String> granted = new java.util.HashSet<>(authentication.getAuthorities().stream()
    .map(GrantedAuthority::getAuthority).toList());
   if (granted.contains("PERM_read:audit") || granted.contains("PERM_admin:platform")) return true;
   if (granted.contains("PERM_read:transactions") && authentication.getName() != null
     && authentication.getName().equals(t.getRequesterSubject())) return true;
   return granted.contains("PERM_approve:transactions") && t.getStatus() == Transaction.Status.VERIFIED
-   && t.getGeminiDecisionReason() == AuditEvent.Reason.GEMINI_APPROVED && t.getExecutionClaimedAt() == null;
+   && approvals.releasable(t.getGeminiDecisionReason()) && t.getExecutionClaimedAt() == null;
  }
 }

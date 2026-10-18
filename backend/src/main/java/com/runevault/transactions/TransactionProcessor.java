@@ -72,7 +72,7 @@ public class TransactionProcessor {
    // The decision has committed; reporting it can never change it.
    events.geminiDecision(id, reason);
   }
-  // High risk with maker-checker on: a second approver decides (with step-up MFA) instead of an outright block.
+  // High risk with maker-checker on: a second approver decides instead of an outright block.
   if (approvals.escalates(reason)) return Map.of("status", "AWAITING_APPROVAL", "reason", reason.name());
   if (reason != AuditEvent.Reason.GEMINI_APPROVED)
    return Map.of("status", "BLOCKED", "reason", reason.name());
@@ -84,11 +84,11 @@ public class TransactionProcessor {
   return execution.executeClaimed(claimed, analysis);
  }
 
- /** Maker-checker release by a second person; the claim enforces approver, self-approval and step-up rules. */
- public Map<String, Object> approve(String id, String approverSubject, boolean stepUp) {
+ /** Maker-checker release by a second person; the claim enforces the approver and self-approval rules. */
+ public Map<String, Object> approve(String id, String approverSubject) {
   if (TransactionSynchronizationManager.isActualTransactionActive())
    throw new IllegalStateException("Approve outside any database transaction");
-  VerifiedTransaction claimed = claims.claimApproved(id, approverSubject, stepUp);
+  VerifiedTransaction claimed = claims.claimApproved(id, approverSubject);
   events.executing(id);
   return execution.executeClaimed(claimed, null);
  }

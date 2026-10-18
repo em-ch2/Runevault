@@ -32,7 +32,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  "runevault.pico-key=maker-checker-test-pico-key",
  "runevault.auto-execute=true",
  "runevault.approval.required=true",
- "runevault.approval.step-up-amount-minor=100000",
  "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://issuer.example.test/",
  "spring.security.oauth2.resourceserver.jwt.audiences=https://api.runevault",
  "spring.datasource.url=jdbc:h2:mem:maker-checker-tests;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"})
@@ -46,6 +45,7 @@ class MakerCheckerHttpTest {
  @Autowired TransactionRepository transactions;
  @Autowired DeviceStateRepository devices;
  @Autowired AuditEventRepository auditEvents;
+ @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
  @MockBean JwtDecoder decoder;
  @MockBean ApprovalCodeGenerator glyphGenerator;
  @MockBean LoreAuditService lore;
@@ -61,10 +61,10 @@ class MakerCheckerHttpTest {
    {"lore_translation":"Safe passage.","translation_confidence":0.9,"risk_score":10,
     "risk_flags":[],"risk_explanation":"Routine.","security_message":"Looks routine."}
    """));
-  token("maker", "auth0|maker", null, "create:transactions", "read:transactions");
-  token("maker-as-cfo", "auth0|maker", List.of("pwd", "mfa"), "create:transactions", "read:transactions", "approve:transactions");
-  token("cfo", "auth0|cfo", null, "read:transactions", "approve:transactions");
-  token("cfo-mfa", "auth0|cfo", List.of("pwd", "mfa"), "read:transactions", "approve:transactions");
+  token("maker", "auth0|maker", "create:transactions", "read:transactions");
+  token("maker-as-cfo", "auth0|maker", "create:transactions", "read:transactions", "approve:transactions");
+  token("cfo", "auth0|cfo", "read:transactions", "approve:transactions");
+  token("viewer", "auth0|viewer", "read:transactions");
  }
 
  @Test void signedTransferWaitsForASecondPersonWhoReleasesItOnce() throws Exception {
@@ -78,7 +78,7 @@ class MakerCheckerHttpTest {
    .andExpect(status().isOk())
    .andExpect(jsonPath("$.content[0].transactionId").value(id))
    .andExpect(jsonPath("$.content[0].awaitingApproval").value(true))
-   .andExpect(jsonPath("$.content[0].stepUpRequired").value(false));
+   .andExpect(jsonPath("$.content[0].stepUpRequired").doesNotExist());
 
   mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("EXECUTED"));
@@ -92,7 +92,7 @@ class MakerCheckerHttpTest {
   mvc.perform(get("/api/transactions").header("Authorization", "Bearer maker"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].approverSubject").value("auth0|cfo"))
    .andExpect(jsonPath("$.content[0].approvedAt").isNotEmpty())
-   .andExpect(jsonPath("$.content[0].approvalStepUp").value(false))
+   .andExpect(jsonPath("$.content[0].approvalStepUp").value(org.hamcrest.Matchers.nullValue()))
    .andExpect(jsonPath("$.content[0].verifiedAt").isNotEmpty());
   mvc.perform(get("/api/transactions").header("Authorization", "Bearer cfo"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
@@ -112,40 +112,55 @@ class MakerCheckerHttpTest {
    && e.getOutcome() == AuditEvent.Outcome.REJECTED && "auth0|maker".equals(e.getActorSubject())));
  }
 
- @Test void largeTransfersNeedAnMfaBackedApprovalToken() throws Exception {
-  String id = signedAndReviewed(150000);
-  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo"))
-   .andExpect(status().isUnauthorized())
-   .andExpect(header().string("WWW-Authenticate", containsString("insufficient_user_authentication")))
-   .andExpect(jsonPath("$.error").value("step_up_required"));
+ @Test void highValueTransferIsReleasedWithANormalCfoToken() throws Exception {
+  // $15,000: above the retired step-up thresholds ($1,000 local, $10,000 cloud).
+  String id = signedAndReviewed(1500000);
+  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer viewer"))
+   .andExpect(status().isForbidden());
+  mvc.perform(post("/api/transactions/" + id + "/approve")).andExpect(status().isUnauthorized());
+  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer maker-as-cfo"))
+   .andExpect(status().isForbidden()).andExpect(jsonPath("$.error").value("self_approval"));
   verifyNoInteractions(bank);
-  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo-mfa"))
+  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("EXECUTED"));
-  assertTrue(transactions.findById(id).orElseThrow().getApprovalStepUp());
-  mvc.perform(get("/api/transactions").header("Authorization", "Bearer maker"))
-   .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].approvalStepUp").value(true));
-  verify(bank, times(1)).transfer(id, 150000L, "USD", "acct-999");
+  verify(bank, times(1)).transfer(id, 1500000L, "USD", "acct-999");
+  Transaction saved = transactions.findById(id).orElseThrow();
+  assertEquals("auth0|cfo", saved.getApproverSubject());
+  // The retired MFA rule is not evaluated, so a new approval never claims MFA either way.
+  assertNull(saved.getApprovalStepUp());
+  assertTrue(auditEvents.findAll().stream().noneMatch(e -> e.getReason() == AuditEvent.Reason.STEP_UP_REQUIRED));
  }
 
- @Test void highRiskTransferIsEscalatedToASecondApproverWhoMustStepUp() throws Exception {
+ @Test void historicalStepUpValuesAreStillReported() throws Exception {
+  String id = signedAndReviewed(50000);
+  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo"))
+   .andExpect(status().isOk());
+  // An approval recorded while the step-up rule applied keeps its stored value.
+  jdbc.update("UPDATE transactions SET approval_step_up = TRUE WHERE transaction_id = ?", id);
+  mvc.perform(get("/api/transactions").header("Authorization", "Bearer maker"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].approvalStepUp").value(true));
+ }
+
+ @Test void highRiskTransferIsEscalatedToASecondApproverWithANormalToken() throws Exception {
   gemini(0.9, 65);
   String id = signedAndReviewed(10000);
   verifyNoInteractions(bank);
   assertEquals(AuditEvent.Reason.GEMINI_HIGH_RISK, transactions.findById(id).orElseThrow().getGeminiDecisionReason());
-  // Listed for sign-off, and step-up is required even though $100 is under the step-up amount.
+  // Listed for sign-off instead of being blocked; no MFA step applies.
   mvc.perform(get("/api/transactions/approvals").header("Authorization", "Bearer cfo"))
    .andExpect(status().isOk())
    .andExpect(jsonPath("$.content[0].transactionId").value(id))
    .andExpect(jsonPath("$.content[0].awaitingApproval").value(true))
-   .andExpect(jsonPath("$.content[0].stepUpRequired").value(true));
-  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo"))
-   .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.error").value("step_up_required"));
+   .andExpect(jsonPath("$.content[0].stepUpRequired").doesNotExist());
+  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer viewer"))
+   .andExpect(status().isForbidden());
   mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer maker-as-cfo"))
    .andExpect(status().isForbidden()).andExpect(jsonPath("$.error").value("self_approval"));
   verifyNoInteractions(bank);
-  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo-mfa"))
+  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("EXECUTED"));
   verify(bank, times(1)).transfer(id, 10000L, "USD", "acct-999");
+  assertNull(transactions.findById(id).orElseThrow().getApprovalStepUp());
  }
 
  @Test void lowConfidenceIsStillBlockedNotEscalated() throws Exception {
@@ -160,7 +175,7 @@ class MakerCheckerHttpTest {
    .andExpect(status().isOk()).andExpect(jsonPath("$.execution.status").value("BLOCKED"));
   mvc.perform(get("/api/transactions/approvals").header("Authorization", "Bearer cfo"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
-  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo-mfa"))
+  mvc.perform(post("/api/transactions/" + id + "/approve").header("Authorization", "Bearer cfo"))
    .andExpect(status().isConflict());
   verifyNoInteractions(bank);
  }
@@ -193,16 +208,10 @@ class MakerCheckerHttpTest {
    amount, "acct-999", GLYPHS, sig));
  }
 
- private void token(String value, String subject, List<String> amr, String... permissions) {
-  var builder = Jwt.withTokenValue(value).header("alg", "RS256")
+ private void token(String value, String subject, String... permissions) {
+  when(decoder.decode(value)).thenReturn(Jwt.withTokenValue(value).header("alg", "RS256")
    .issuer("https://issuer.example.test/").audience(List.of("https://api.runevault"))
    .subject(subject).issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(300))
-   .claim("permissions", List.of(permissions));
-  if (amr != null) builder.claim("amr", amr);
-  when(decoder.decode(value)).thenReturn(builder.build());
- }
-
- private static org.hamcrest.Matcher<String> containsString(String part) {
-  return org.hamcrest.Matchers.containsString(part);
+   .claim("permissions", List.of(permissions)).build());
  }
 }

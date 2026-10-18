@@ -10,7 +10,7 @@
     <a href="#dashboard-top" [class.nav-current]="activeNav() === 'dashboard'" [attr.aria-current]="activeNav() === 'dashboard' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('dashboard')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="1.8"/><path d="M12 2.5V10.2M12 13.8V21.5M2.5 12H10.2M13.8 12H21.5M5.3 5.3L10.7 10.7M13.3 13.3L18.7 18.7M18.7 5.3L13.3 10.7M10.7 13.3L5.3 18.7"/></svg></span> Dashboard</a>
     <a href="#workflow-title" [class.nav-current]="activeNav() === 'approval'" [attr.aria-current]="activeNav() === 'approval' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('approval')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 15.5L7.5 21.5L10.5 20L12 21.8L13.5 20L16.5 21.5L15 15.5"/><circle cx="12" cy="10" r="6.5"/><path d="M9.2 10.1L11.2 12.1L14.9 8.3"/></svg></span> Approval</a>
     @if (canApprove()) {
-      <a href="#signoff-title" [class.nav-current]="activeNav() === 'signoff'" [attr.aria-current]="activeNav() === 'signoff' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="openSignoff()"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M20 3C13 4 8.5 8.5 6.5 15L5 21"/><path d="M20 3C19 9 15 13.5 9 14.5"/><path d="M11 12L14 9"/></svg></span> Sign-off @if (approvalQueue().length) { <small class="nav-badge">{{ approvalQueue().length }}</small> } @if (highValueApprovals()) { <small class="nav-badge nav-badge-mfa">{{ highValueApprovals() }} MFA</small> }</a>
+      <a href="#signoff-title" [class.nav-current]="activeNav() === 'signoff'" [attr.aria-current]="activeNav() === 'signoff' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="openSignoff()"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M20 3C13 4 8.5 8.5 6.5 15L5 21"/><path d="M20 3C19 9 15 13.5 9 14.5"/><path d="M11 12L14 9"/></svg></span> Sign-off @if (approvalQueue().length) { <small class="nav-badge">{{ approvalQueue().length }}</small> }</a>
     }
     <a href="#live-list-title" [class.nav-current]="activeNav() === 'history'" [attr.aria-current]="activeNav() === 'history' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('history', 'live-list-title')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M8 4H18A2 2 0 0 1 18 8H16V18A2 2 0 0 1 14 20H5A2 2 0 0 1 5 16H7V6A2 2 0 0 1 9 4"/><path d="M7 16H14V18A2 2 0 0 0 16 18"/><path d="M10 9H13M10 12H13"/></svg></span> History</a>
     <a href="#metrics-title" [class.nav-current]="activeNav() === 'analytics'" [attr.aria-current]="activeNav() === 'analytics' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('analytics', 'metrics-title')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><g transform="rotate(-28 12 11)"><rect x="2.5" y="9.5" width="6" height="3.5" rx="0.8"/><rect x="8.5" y="8.8" width="6" height="5" rx="0.8"/><rect x="14.5" y="8" width="7" height="6.5" rx="0.8"/></g><path d="M11 14.5L8 21.5M12 14.5L15.5 21.5"/></svg></span> Analytics</a>
@@ -384,7 +384,7 @@
         @if (escalated(transaction)) {
           <div class="decision decision-escalated">
             <p class="decision-title">Flagged for CFO review</p>
-            <p class="small">Our security review rated this transfer high risk, so it was not stopped outright: a CFO must sign it off{{ transaction.stepUpRequired ? ' with multi-factor authentication' : '' }} before anything is sent to the bank. Nothing has moved yet.</p>
+            <p class="small">Our security review rated this transfer high risk, so it was not stopped outright: a CFO must sign it off before anything is sent to the bank. Nothing has moved yet.</p>
           </div>
         } @else {
           <div class="decision" [class.decision-blocked]="reason !== 'GEMINI_APPROVED'">
@@ -474,8 +474,7 @@
 
   <!-- Maker-checker queue. The backend enforces every rule here; the UI only explains them. -->
     <app-folder-panel class="slab activity live-list folder-light" panelId="signoff-title" title="Second-approver sign-off" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'signoff-title'">
-      <p class="flow-guidance">These transfers were signed on the Pico. Most passed the Gemini review; any Gemini rated high risk are flagged below and always need multi-factor verification. Each one needs a second person to release it. You cannot release a transfer you requested.</p>
-      @if (highValueApprovals()) { <p class="status status-wait" role="status">{{ highValueApprovals() }} high-value request{{ highValueApprovals() === 1 ? '' : 's' }} waiting for MFA-backed approval.</p> }
+      <p class="flow-guidance">These transfers were signed on the Pico. Most passed the Gemini review; any Gemini rated high risk are flagged below for careful review. Each one needs a second person to release it. You cannot release a transfer you requested.</p>
     @if (approvalNotice()) { <p class="status status-good" role="status">{{ approvalNotice() }}</p> }
     @if (approvalProblem()) { <p class="form-error" role="alert">{{ approvalProblem() }}</p> }
     @if (approvalQueue().length === 0) {
@@ -495,12 +494,12 @@
             @if (transaction.verifiedAt) { <div><dt>Pico verified</dt><dd>{{ time(transaction.verifiedAt) }}</dd></div> }
             @if (transaction.riskScore != null) { <div><dt>Risk score</dt><dd>{{ transaction.riskScore }}</dd></div> }
           </dl>
-          @if (transaction.stepUpRequired) { <p class="muted small">{{ escalated(transaction) ? 'High-risk transfer' : 'Large transfer' }}: approving asks you to complete multi-factor verification first.</p> }
+          @if (escalated(transaction)) { <p class="muted small">High-risk transfer: Gemini flagged it, so review the risk details before releasing.</p> }
           @if (ownRequest(transaction)) {
             <p class="muted small">You requested this transfer. Another approver must release it.</p>
           } @else {
             <button class="btn btn-primary" type="button" (click)="approve(transaction)" [disabled]="approvingId() !== null">
-              {{ approvingId() === transaction.transactionId ? 'Releasing…' : transaction.stepUpRequired ? 'Verify with MFA and release' : 'Release transfer' }}
+              {{ approvingId() === transaction.transactionId ? 'Releasing…' : 'Release transfer' }}
             </button>
           }
         </div>

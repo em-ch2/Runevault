@@ -25,7 +25,7 @@ class DecisionExplanationServiceTest {
   gemini = mock(GeminiClient.class);
   when(gemini.isConfigured()).thenReturn(true);
   service = new DecisionExplanationService(gemini, new GeminiPolicy(new BigDecimal("0.8"), new BigDecimal("30")),
-   new ApprovalPolicy(true, 100000), mapper);
+   new ApprovalPolicy(true), mapper);
  }
 
  private static Transaction approved(String id) {
@@ -73,7 +73,7 @@ class DecisionExplanationServiceTest {
   service.explain(tx);
   service.explain(tx);
   verify(gemini, times(1)).generateJson(anyString(), anyString(), anyMap());
-  tx.claimForApprovedExecution("auth0|cfo", false, Instant.now());
+  tx.claimForApprovedExecution("auth0|cfo", Instant.now());
   service.explain(tx);
   verify(gemini, times(2)).generateJson(anyString(), anyString(), anyMap());
  }

@@ -32,7 +32,8 @@ public class Transaction {
  @Column(length = 255)
  private String requesterSubject;
  private Instant executionClaimedAt;
- // Maker-checker: who released the transfer, when, and whether their token proved MFA.
+ // Maker-checker: who released the transfer and when. approvalStepUp is historical only: approvals made while
+ // the retired step-up MFA rule applied recorded it; newer approvals leave it null rather than claim either way.
  @Column(length = 255)
  private String approverSubject;
  private Instant approvedAt;
@@ -99,13 +100,12 @@ public class Transaction {
   status = Status.EXECUTING;
   executionClaimedAt = claimedAt;
  }
- public void claimForApprovedExecution(String approver, boolean stepUp, Instant claimedAt) {
+ public void claimForApprovedExecution(String approver, Instant claimedAt) {
   if (approver == null || approver.isBlank() || approver.equals(requesterSubject))
    throw new IllegalStateException("The approver must be someone other than the requester");
   claimForExecution(claimedAt);
   approverSubject = approver;
   approvedAt = claimedAt;
-  approvalStepUp = stepUp;
  }
  public String getApproverSubject() { return approverSubject; }
  public Instant getApprovedAt() { return approvedAt; }

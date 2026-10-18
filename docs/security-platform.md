@@ -23,7 +23,7 @@ Use a non-admin token to confirm the POST returns 403, or omit the token to conf
 
 Auth0 tenant setup (Dashboard > Applications > APIs): create an API named `Runevault API`, identifier `https://api.runevault`, signing algorithm `RS256`. In its Permissions tab add `create:transactions`, `read:transactions`, and `admin:platform`. In Settings enable **RBAC** and **Add Permissions in the Access Token**. Under User Management > Roles create `Employee` with create/read transactions and `Administrator` with all three permissions. Assign the test user `Administrator` in that user's Roles tab. These steps modify the Auth0 tenant and cannot be completed by repository configuration alone.
 
-Set `AUTH0_ISSUER_URI=https://<tenant>.auth0.com/` (the exact Auth0 issuer, including trailing slash), `AUTH0_AUDIENCE=https://api.runevault`, and a random bridge token of at least 32 bytes in local `.env`. Compose runs the backend with the `auth` profile and passes these variables. Keep the bridge token on the backend and USB bridge only. Frontend owner implements Auth0 authorization-code login with PKCE and requests an access token for audience `https://api.runevault`; send it as `Authorization: Bearer <access-token>`, not an ID token. Enable MFA in the Auth0 tenant; this repository does not configure tenant policy or implement browser login.
+Set `AUTH0_ISSUER_URI=https://<tenant>.auth0.com/` (the exact Auth0 issuer, including trailing slash), `AUTH0_AUDIENCE=https://api.runevault`, and a random bridge token of at least 32 bytes in local `.env`. Compose runs the backend with the `auth` profile and passes these variables. Keep the bridge token on the backend and USB bridge only. Frontend owner implements Auth0 authorization-code login with PKCE and requests an access token for audience `https://api.runevault`; send it as `Authorization: Bearer <access-token>`, not an ID token. Tenant-wide MFA for signing in is an Auth0 tenant setting and is independent of Runevault; this repository does not configure tenant policy or implement browser login, and transfer approval no longer requires an extra MFA step.
 
 Dashboard `POST /api/transactions` requires `create:transactions` and accepts `{ "device": "slab-01", "amount": 50000, "dest": "acct-999" }`. The backend generates the six-glyph approval sequence with `SecureRandom` (an LLM is not a source of randomness, and Gemini-generated codes repeated); the creation response returns it to the dashboard user, while bridge polling never exposes it. `GET /api/transactions?page=0&size=20` requires `read:transactions` and lists newest first. The persisted requester identity comes from the verified access token's `sub` claim; a request-body identity is ignored. `GET /api/admin/audit-events` and `GET /api/admin/status` require `admin:platform`. The existing `/api/device/transactions` and `/api/device/authorize` routes continue to use `X-Bridge-Token` independently of dashboard JWT permissions.
 
@@ -52,26 +52,13 @@ Compromised bridge can request arbitrary challenges; physical buttons alone do n
 
 References: https://docs.spring.io/spring-boot/3.4/reference/web/spring-security.html and https://developer.auth0.com/resources/code-samples/api/spring/basic-role-based-access-control
 
-## Maker-checker and step-up MFA
+## Maker-checker approval
 
-With `RUNEVAULT_APPROVAL_REQUIRED=true` (always on in `compose.cloud.yaml`; CloudDeploymentGuard refuses cloud startup otherwise), a transfer that passed the Pico signature and Gemini policy stays `VERIFIED` until a second person releases it. `GET /api/transactions/approvals` lists waiting transfers and `POST /api/transactions/{id}/approve` releases one; both require `approve:transactions`. The execution claim records the approver and rejects a missing approver (`APPROVER_REQUIRED`), the requester approving their own transfer (`SELF_APPROVAL`), and a large transfer approved without MFA (`STEP_UP_REQUIRED`), all under the same row lock that prevents double execution.
+With `RUNEVAULT_APPROVAL_REQUIRED=true` (always on in `compose.cloud.yaml`; CloudDeploymentGuard refuses cloud startup otherwise), a transfer that passed the Pico signature and Gemini policy stays `VERIFIED` until a second person releases it. `GET /api/transactions/approvals` lists waiting transfers and `POST /api/transactions/{id}/approve` releases one; both require `approve:transactions`. The approver uses their normal Auth0 access token at every amount; there is no separate MFA step. The execution claim records the approver and rejects a missing approver (`APPROVER_REQUIRED`) and the requester approving their own transfer (`SELF_APPROVAL`), under the same row lock that prevents double execution.
 
-Step-up: approving `RUNEVAULT_STEP_UP_AMOUNT_MINOR` cents or more (1000000 = $10,000 in `compose.cloud.yaml`; the local default is 100000 = $1,000) needs `mfa` in the access token's `amr` (or `https://runevault/amr`) claim. Without it the API answers 401 with `WWW-Authenticate: Bearer error="insufficient_user_authentication"` (RFC 9470), and the dashboard requests a new token with the OIDC multi-factor `acr_values` in an Auth0 popup.
+Auth0 setup: add the `approve:transactions` permission to the Runevault API, create a `CFO` role with `approve:transactions` and `read:transactions`, and assign it to someone other than the requester.
 
-Auth0 setup: add the `approve:transactions` permission to the Runevault API, create a `CFO` role with `approve:transactions` and `read:transactions`, and assign it to someone other than the requester. Auth0 access tokens carry no `amr` by default, so add a Login / Post Login Action and attach it to the post-login trigger:
-
-```js
-exports.onExecutePostLogin = async (event, api) => {
-  const MFA = 'http://schemas.openid.net/pape/policies/2007/06/multi-factor';
-  const stepUp = (event.transaction?.acr_values || []).includes(MFA);
-  const didMfa = (event.authentication?.methods || []).some((m) => m.name === 'mfa');
-  if (stepUp) api.multifactor.enable('any', { allowRememberBrowser: false });
-  if (stepUp || didMfa) {
-    api.accessToken.setCustomClaim('amr', ['mfa']);
-    api.accessToken.setCustomClaim('https://runevault/amr', ['mfa']);
-  }
-};
-```
+Retired step-up MFA: earlier versions required an MFA-backed token (an `amr` claim containing `mfa`) to approve amounts at or above `RUNEVAULT_STEP_UP_AMOUNT_MINOR`. That rule and setting are removed. Historical rows keep their stored `approval_step_up` value, and historical `STEP_UP_REQUIRED` audit events remain readable. New approvals leave `approval_step_up` empty, because MFA is no longer evaluated, and never record `STEP_UP_REQUIRED`. The dashboard shows a "Historical MFA record" only for approvals that stored a value. If a deployment's `.env` still sets `RUNEVAULT_STEP_UP_AMOUNT_MINOR`, it is ignored and can be deleted.
 
 ## Nessie destination and risk reads
 

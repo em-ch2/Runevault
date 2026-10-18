@@ -18,7 +18,9 @@ import { TransactionRecord } from '../transactions/transaction-api.service';
         <div><dt>Rejection reason</dt><dd>{{ rejectionReason(transaction()) }}</dd></div>
         <div><dt>Independent approver</dt><dd class="mono">{{ transaction().approverSubject ?? (transaction().awaitingApproval ? 'Awaiting approval' : 'Not recorded') }}</dd></div>
         <div><dt>Approved at</dt><dd>{{ transaction().approvedAt ? (transaction().approvedAt | date:'medium') : (transaction().awaitingApproval ? 'Awaiting approval' : 'Not recorded') }}</dd></div>
-        <div><dt>Approval MFA</dt><dd>{{ transaction().approvalStepUp === true ? 'Used' : transaction().approvalStepUp === false ? 'Not used' : 'Not recorded' }}</dd></div>
+        @if (transaction().approvalStepUp != null) {
+          <div><dt>Historical MFA record</dt><dd>{{ transaction().approvalStepUp ? 'MFA used' : 'MFA not used' }} (approved under a retired rule)</dd></div>
+        }
         <div><dt>Banking outcome</dt><dd>{{ transaction().bankOutcome ?? 'Not recorded' }}</dd></div>
         <div><dt>Bank submitted at</dt><dd>{{ transaction().bankSubmittedAt ? (transaction().bankSubmittedAt | date:'medium') : 'Not recorded' }}</dd></div>
         <div><dt>Outcome recorded at</dt><dd>{{ transaction().bankOutcomeAt ? (transaction().bankOutcomeAt | date:'medium') : 'Not recorded' }}</dd></div>

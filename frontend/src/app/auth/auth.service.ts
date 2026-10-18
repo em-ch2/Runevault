@@ -33,10 +33,9 @@ export class AuthService {
     if (this.busy() || this.loading()) return;
     this.redirectError.set(null);
     this.busy.set(true);
-    this.auth0.loginWithRedirect({
-      appState: { target: '/' },
-      authorizationParams: { prompt: 'login', max_age: 0 },
-    }).pipe(
+    // No forced prompt: an existing Auth0 session is reused, so a signed-in user returns without retyping.
+    // Sign out ends the Auth0 session, so switching accounts still works.
+    this.auth0.loginWithRedirect({ appState: { target: '/' } }).pipe(
       finalize(() => this.busy.set(false)),
     ).subscribe({
       error: () => {
@@ -52,7 +51,7 @@ export class AuthService {
     this.busy.set(true);
     this.auth0.loginWithRedirect({
       appState: { target: '/' },
-      authorizationParams: { screen_hint: 'signup', prompt: 'login', max_age: 0 },
+      authorizationParams: { screen_hint: 'signup' },
     }).pipe(finalize(() => this.busy.set(false))).subscribe({
       error: () => {
         this.busy.set(false);
