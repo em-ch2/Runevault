@@ -19,7 +19,7 @@ function minuteLabel(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
-// Approvals versus blocks per minute (Tiger Data continuous aggregate via /api/metrics/pipeline).
+// Reused for owner-scoped pipeline counts and company-wide policy decisions.
 @Component({
   selector: 'app-approvals-chart',
   template: `
@@ -33,7 +33,7 @@ function minuteLabel(iso: string): string {
     </div>
     <div class="chart-scroll">
       <svg class="chart" [attr.viewBox]="'0 0 ' + width + ' ' + height" role="img"
-        [attr.aria-label]="'Approved versus blocked transfers per minute: ' + totals().approved + ' approved, ' + totals().blocked + ' blocked'"
+        [attr.aria-label]="'Approved versus blocked ' + subject() + ' per minute: ' + totals().approved + ' approved, ' + totals().blocked + ' blocked'"
         (mouseleave)="hoverIndex.set(null)">
         @for (t of ticks(); track t.value) {
           <line class="chart-grid" [attr.x1]="pad.left" [attr.x2]="width - pad.right" [attr.y1]="t.y" [attr.y2]="t.y" />
@@ -73,6 +73,7 @@ function minuteLabel(iso: string): string {
 })
 export class ApprovalsChart {
   readonly points = input.required<MinutePoint[]>();
+  readonly subject = input('transfers');
   readonly hoverIndex = signal<number | null>(null);
   readonly width = W;
   readonly height = H;

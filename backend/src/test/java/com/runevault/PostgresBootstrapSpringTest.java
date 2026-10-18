@@ -8,6 +8,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -36,9 +37,22 @@ class PostgresBootstrapSpringTest {
 
  @MockBean JwtDecoder decoder;
  @Autowired JdbcTemplate jdbc;
+ @Autowired com.runevault.events.PipelineMetricsApi metrics;
 
  @Test void emptyPostgresMigratesBeforeHibernateValidation() {
   assertEquals(6, jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class));
   assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM transactions", Integer.class));
+ }
+
+ @Test @WithMockUser(authorities = "PERM_read:audit") void plainPostgresUsesRawPolicyEvents() {
+  var at = java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+  jdbc.update("INSERT INTO pipeline_events (event_id, occurred_at, transaction_id, stage, outcome) VALUES (?, ?, ?, ?, ?)",
+   java.util.UUID.randomUUID(), java.sql.Timestamp.from(at), java.util.UUID.randomUUID().toString(),
+   "GEMINI", "APPROVED");
+  var result = metrics.policyDecisions(2);
+  assertEquals("raw-postgresql-events", result.source());
+  assertEquals(2, result.minutes().size());
+  assertEquals(1, result.approved());
+  assertEquals(0, result.blocked());
  }
 }

@@ -92,6 +92,36 @@ class DashboardPermissionsHttpTest {
    .andExpect(status().isForbidden());
  }
 
+ @Test void companyPolicyMetricsCountOnlyGeminiDecisionsAndRequireAuditPermission() throws Exception {
+  var baseline = mvc.perform(get("/api/metrics/policy-decisions?minutes=5")
+   .header("Authorization", "Bearer auditor")).andExpect(status().isOk()).andReturn();
+  var before = mapper.readTree(baseline.getResponse().getContentAsString());
+  Instant at = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MINUTES).minusSeconds(60);
+  for (String[] event : new String[][] {
+   {"tx-one", "PENDING", "PENDING"}, {"tx-one", "VERIFIED", "APPROVED"},
+   {"tx-one", "GEMINI", "APPROVED"}, {"tx-one", "EXECUTED", "COMPLETED"},
+   {"tx-two", "VERIFIED", "REJECTED"}, {"tx-two", "GEMINI", "REJECTED"}
+  }) pipelineWriter.write(new com.runevault.events.PipelineEventWriter.Row(
+   java.util.UUID.randomUUID(), at, event[0], event[1], event[2], null, null, null, null, null));
+
+  mvc.perform(get("/api/metrics/policy-decisions?minutes=5"))
+   .andExpect(status().isUnauthorized());
+  mvc.perform(get("/api/metrics/policy-decisions?minutes=5").header("Authorization", "Bearer employee"))
+   .andExpect(status().isForbidden());
+  var response = mvc.perform(get("/api/metrics/policy-decisions?minutes=5").header("Authorization", "Bearer auditor"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("raw-test-events"))
+   .andExpect(jsonPath("$.measure").value("gemini-policy-decisions"))
+   .andExpect(jsonPath("$.minutes", org.hamcrest.Matchers.hasSize(5)))
+   .andExpect(jsonPath("$.transactionId").doesNotExist()).andReturn();
+  var after = mapper.readTree(response.getResponse().getContentAsString());
+  assertEquals(before.path("approved").asLong() + 1, after.path("approved").asLong());
+  assertEquals(before.path("blocked").asLong() + 1, after.path("blocked").asLong());
+  mvc.perform(get("/api/metrics/policy-decisions?minutes=5").header("Authorization", "Bearer admin"))
+   .andExpect(status().isOk());
+  mvc.perform(get("/api/metrics/policy-decisions?minutes=1441").header("Authorization", "Bearer auditor"))
+   .andExpect(status().isBadRequest());
+ }
+
  @Test void simulatorRoutesAreUnavailableButHealthAndDashboardRemain() throws Exception {
   mvc.perform(get("/api/health")).andExpect(status().isOk()).andExpect(jsonPath("status").value("ok"));
   mvc.perform(post("/api/challenges").header("Authorization", "Bearer employee")

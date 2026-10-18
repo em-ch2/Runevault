@@ -65,6 +65,18 @@ export function approvalError(error: unknown): string {
   return transactionError(error);
 }
 
+// Read-only explanation of a recorded decision. source 'recorded-policy-reason' means Gemini was unavailable
+// or its answer was rejected, so only the fixed backend reason is shown.
+export interface DecisionExplanation {
+  source: 'gemini' | 'recorded-policy-reason';
+  summary: string;
+  keyFactors: string[];
+  requiredNextStep: string;
+  limitations: string[];
+  recordedReason: string;
+  generatedAt: string;
+}
+
 export interface MinutePoint {
   minute: string;
   approved: number;
@@ -89,6 +101,16 @@ export interface PipelineMetrics {
   blocked: number;
   minutes: MinutePoint[];
   policy: { minTranslationConfidence: number; maxRiskScore: number };
+}
+
+export interface PolicyDecisionMetrics {
+  from: string;
+  to: string;
+  source: string;
+  measure: 'gemini-policy-decisions';
+  approved: number;
+  blocked: number;
+  minutes: MinutePoint[];
 }
 
 export interface AuditEventRecord {
@@ -150,6 +172,15 @@ export class TransactionApiService {
     })));
   }
 
+  policyDecisionMetrics(minutes = 30) {
+    return this.token().pipe(switchMap((token) => this.http.get<PolicyDecisionMetrics>(
+      '/api/metrics/policy-decisions', {
+        params: { minutes },
+        headers: new HttpHeaders({ Authorization: `Bearer ${token}` }),
+      },
+    )));
+  }
+
   create(request: PendingTransactionRequest) {
     return this.token().pipe(switchMap((token) => this.http.post<PendingTransactionResponse>(
       this.endpoint, request, { headers: new HttpHeaders({ Authorization: `Bearer ${token}` }) },
@@ -185,6 +216,13 @@ export class TransactionApiService {
         return [];
       }
     }));
+  }
+
+  explanation(txId: string) {
+    return this.token().pipe(switchMap((token) => this.http.get<DecisionExplanation>(
+      `${this.endpoint}/${encodeURIComponent(txId)}/explanation`,
+      { headers: new HttpHeaders({ Authorization: `Bearer ${token}` }) },
+    )));
   }
 
   approvals() {

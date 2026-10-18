@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class SecurityGateTest {
  private static final String TOKEN = "test-bridge-token-with-enough-characters";
  private static RateLimitProperties limits() {
-  return new RateLimitProperties(10, 2, 2, 2, 1, 2, 2, 2, 2);
+  return new RateLimitProperties(10, 2, 2, 2, 1, 2, 2, 2, 2, 2);
  }
  private MockHttpServletResponse request(SecurityConfig.Gate gate, String token) throws Exception {
   var request = new MockHttpServletRequest("POST", "/api/device/authorize");

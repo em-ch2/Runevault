@@ -9,7 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 @Component
 public class RequestQuotaLimiter {
- public enum Category { DASHBOARD_READ, TRANSACTION_CREATION, BRIDGE_AUTHORIZATION, BRIDGE_OTHER, ADMIN, UNAUTHENTICATED, WS_TICKET }
+ public enum Category { DASHBOARD_READ, TRANSACTION_CREATION, BRIDGE_AUTHORIZATION, BRIDGE_OTHER, ADMIN, UNAUTHENTICATED, WS_TICKET, DECISION_EXPLANATION }
  private record Window(long startedAt, int count) {}
 
  private final RateLimitProperties limits;
