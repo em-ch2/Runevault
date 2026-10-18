@@ -16,7 +16,7 @@ import { Stage, TransferStore } from './transfer-store';
 import { glideTo, rockBoat, slideUp } from './motion';
 
 const STAGE_ORDER: Stage[] = ['received', 'sealed', 'verified', 'executed'];
-type NavSection = 'dashboard' | 'authentication' | 'history' | 'analytics';
+type NavSection = 'dashboard' | 'approval' | 'history' | 'analytics';
 
 @Component({
   selector: 'app-dashboard',
@@ -70,6 +70,13 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     ?? (this.historyStep() !== null ? 'history-trace-title'
       : this.flowStep() === 0 ? 'live-create-title' : this.flowStep() === 1 ? 'authorize-title' : 'live-status-title'));
   readonly flowBlocked = computed(() => this.flowStep() === 3 && this.selected()?.status !== 'EXECUTED');
+  // Nothing more will happen on its own: the bank has answered, or the transfer was stopped before it.
+  readonly transferFinished = computed(() => {
+    const transaction = this.selected();
+    if (!this.flowStarted() || !transaction) return false;
+    return ['EXECUTED', 'BANK_PENDING', 'FAILED', 'OUTCOME_UNKNOWN', 'SIMULATED'].includes(transaction.status)
+      || (!!transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED');
+  });
 
   startNewTransfer(): void {
     this.historyStep.set(null);
@@ -134,7 +141,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   });
   readonly pendingForm = new FormGroup({
     device: new FormControl('slab-01', { nonNullable: true, validators: [Validators.required, Validators.pattern('[A-Za-z0-9_-]{1,64}')] }),
-    amount: new FormControl(50000, { nonNullable: true, validators: [Validators.required, Validators.min(1), Validators.max(100000000)] }),
+    amount: new FormControl(500, { nonNullable: true, validators: [Validators.required, Validators.min(0.01), Validators.max(1000000)] }),
     dest: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern('[A-Za-z0-9_-]{1,64}')] }),
   });
   private poll: Subscription | null = null;
@@ -173,11 +180,11 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   // History and Analytics follow the visible view, so the "Back" buttons also return the highlight.
   readonly activeNav = computed<NavSection>(() => {
     if (this.landing()) return 'dashboard';
-    if (this.mode() === 'demo') return 'authentication';
+    if (this.mode() === 'demo') return 'approval';
     const view = this.secondaryView();
     if (view === 'live-list-title' || this.historyStep() !== null) return 'history';
     if (view === 'metrics-title') return 'analytics';
-    return 'authentication';
+    return 'approval';
   });
   private readonly navMotion = effect(() => {
     this.activeNav();
@@ -188,7 +195,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     this.landing.set(section === 'dashboard');
     if (section === 'dashboard') return;
     if (panelId) { this.openLiveFolder(panelId); return; }
-    // Authentication resumes a transfer in progress, or starts at the form once the last one has finished.
+    // Approval resumes a transfer in progress, or starts at the form once the last one has finished.
     this.switchMode('live');
     if (this.historyStep() !== null || this.flowStep() === 3) this.startNewTransfer();
     this.secondaryView.set(null);
@@ -345,14 +352,16 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
 
   createPending(): void {
     this.pendingForm.markAllAsTouched();
-    const amount = this.pendingForm.controls.amount.value;
-    if (this.pendingForm.invalid || !Number.isInteger(amount)) {
-      this.apiError.set('Enter a whole-cent amount, destination, and device.');
+    // The form takes dollars; the backend works in whole cents.
+    const dollars = this.pendingForm.controls.amount.value;
+    const cents = Math.round(dollars * 100);
+    if (this.pendingForm.invalid || Math.abs(dollars * 100 - cents) > 1e-6) {
+      this.apiError.set('Enter an amount in dollars with at most two decimal places, a destination, and a device.');
       return;
     }
     this.creating.set(true);
     this.apiError.set(null);
-    const request = this.pendingForm.getRawValue();
+    const request = { ...this.pendingForm.getRawValue(), amount: cents };
     this.api.create(request).subscribe({
       next: (created) => {
         this.historyStep.set(null);

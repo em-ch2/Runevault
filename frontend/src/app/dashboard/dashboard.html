@@ -3,10 +3,10 @@
   <a class="compass-logo" href="#dashboard-top" aria-label="Runevault dashboard"><img src="compass.svg" width="90" height="90" alt="" /></a>
   <nav (mouseleave)="restNavIndicator()" (focusout)="restNavIndicator()">
     <span #navIndicator class="nav-indicator" aria-hidden="true"></span>
-    <a href="#dashboard-top" [class.nav-current]="activeNav() === 'dashboard'" [attr.aria-current]="activeNav() === 'dashboard' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('dashboard')"><span aria-hidden="true">&#9638;</span> Dashboard</a>
-    <a href="#workflow-title" [class.nav-current]="activeNav() === 'authentication'" [attr.aria-current]="activeNav() === 'authentication' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('authentication')"><span aria-hidden="true">&#9671;</span> Authentication</a>
-    <a href="#live-list-title" [class.nav-current]="activeNav() === 'history'" [attr.aria-current]="activeNav() === 'history' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('history', 'live-list-title')"><span aria-hidden="true">&#9636;</span> History</a>
-    <a href="#metrics-title" [class.nav-current]="activeNav() === 'analytics'" [attr.aria-current]="activeNav() === 'analytics' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('analytics', 'metrics-title')"><span aria-hidden="true">&#9637;</span> Analytics</a>
+    <a href="#dashboard-top" [class.nav-current]="activeNav() === 'dashboard'" [attr.aria-current]="activeNav() === 'dashboard' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('dashboard')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="1.8"/><path d="M12 2.5V10.2M12 13.8V21.5M2.5 12H10.2M13.8 12H21.5M5.3 5.3L10.7 10.7M13.3 13.3L18.7 18.7M18.7 5.3L13.3 10.7M10.7 13.3L5.3 18.7"/></svg></span> Dashboard</a>
+    <a href="#workflow-title" [class.nav-current]="activeNav() === 'approval'" [attr.aria-current]="activeNav() === 'approval' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('approval')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 15.5L7.5 21.5L10.5 20L12 21.8L13.5 20L16.5 21.5L15 15.5"/><circle cx="12" cy="10" r="6.5"/><path d="M9.2 10.1L11.2 12.1L14.9 8.3"/></svg></span> Approval</a>
+    <a href="#live-list-title" [class.nav-current]="activeNav() === 'history'" [attr.aria-current]="activeNav() === 'history' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('history', 'live-list-title')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M8 4H18A2 2 0 0 1 18 8H16V18A2 2 0 0 1 14 20H5A2 2 0 0 1 5 16H7V6A2 2 0 0 1 9 4"/><path d="M7 16H14V18A2 2 0 0 0 16 18"/><path d="M10 9H13M10 12H13"/></svg></span> History</a>
+    <a href="#metrics-title" [class.nav-current]="activeNav() === 'analytics'" [attr.aria-current]="activeNav() === 'analytics' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('analytics', 'metrics-title')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><g transform="rotate(-28 12 11)"><rect x="2.5" y="9.5" width="6" height="3.5" rx="0.8"/><rect x="8.5" y="8.8" width="6" height="5" rx="0.8"/><rect x="14.5" y="8" width="7" height="6.5" rx="0.8"/></g><path d="M11 14.5L8 21.5M12 14.5L15.5 21.5"/></svg></span> Analytics</a>
   </nav>
   <div class="sidebar-seal" aria-hidden="true">&#10023;</div>
   <span class="sidebar-foot">SEALED IN TRUST</span>
@@ -54,7 +54,7 @@
       <h1 id="landing-title">Sealing the deal.</h1>
       <p class="landing-lead">Every Runevault transfer is sealed twice before it sets sail: once by your own hand on a physical stone, and once by a keeper of lore who reads the seal and judges the voyage. Only then does the vault open and the money leave port.</p>
       <div class="landing-actions">
-        <button class="btn btn-primary" type="button" (click)="navTo('authentication')">Begin a transfer</button>
+        <button class="btn btn-primary" type="button" (click)="navTo('approval')">Begin a transfer</button>
         <button class="btn btn-ghost" type="button" (click)="navTo('history', 'live-list-title')">View past voyages</button>
       </div>
     </div>
@@ -190,8 +190,8 @@
     <form class="live-form" [formGroup]="pendingForm" (ngSubmit)="createPending()">
       <label for="tx-device">Device</label>
       <input id="tx-device" formControlName="device" autocomplete="off" />
-      <label for="tx-amount">Amount (cents)</label>
-      <input id="tx-amount" type="number" min="1" max="100000000" step="1" formControlName="amount" />
+      <label for="tx-amount">Amount (USD)</label>
+      <div class="money-input"><span aria-hidden="true">$</span><input id="tx-amount" type="number" min="0.01" max="1000000" step="0.01" inputmode="decimal" formControlName="amount" /></div>
       <label for="tx-dest">Destination</label>
       <input id="tx-dest" formControlName="dest" autocomplete="off" placeholder="acct-999" />
       <p class="muted small">Your request stays pending until you approve it on the physical authenticator.</p>
@@ -288,7 +288,15 @@
       {{ loadingRecords() ? 'Loading…' : 'Refresh status' }}
     </button>
     <p class="muted small">Updates arrive automatically. Only a completed bank receipt confirms the transfer.</p>
-    @if (flowStep() === 3 && !flowBlocked()) { <button class="btn btn-primary" type="button" (click)="startNewTransfer()">Create another transfer</button> }
+    @if (transferFinished()) {
+      <div class="next-voyage">
+        <p><strong>{{ selected()?.status === 'EXECUTED' || selected()?.status === 'BANK_PENDING' ? 'This deal is sealed.' : 'This voyage has ended.' }}</strong> Ready to chart another course?</p>
+        <div class="next-voyage-actions">
+          <button class="btn btn-primary" type="button" (click)="startNewTransfer()">Make another transfer</button>
+          <button class="btn btn-ghost" type="button" (click)="navTo('history', 'live-list-title')">View history</button>
+        </div>
+      </div>
+    }
   </app-folder-panel>
 
   <app-folder-panel class="slab activity live-list folder-dark" panelId="live-list-title" title="Recent transactions" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'live-list-title'">

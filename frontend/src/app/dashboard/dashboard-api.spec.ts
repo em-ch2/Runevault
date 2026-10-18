@@ -116,7 +116,8 @@ describe('Dashboard live transactions', () => {
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
     const dashboard = fixture.componentInstance;
-    dashboard.pendingForm.patchValue({ device: 'slab-01', amount: 50000, dest: 'acct-999' });
+    // The form takes dollars; the request carries cents.
+    dashboard.pendingForm.patchValue({ device: 'slab-01', amount: 500, dest: 'acct-999' });
     api.create.mockReturnValue(of({ tx_id: 'abc123', status: 'PENDING', expires_at: 9999999999,
       glyphs: '0-2-1-2-1' }));
     dashboard.createPending();
@@ -126,6 +127,40 @@ describe('Dashboard live transactions', () => {
     expect(dashboard.pendingGlyphs()).toEqual([0, 2, 1, 2, 1]);
     expect(dashboard.openFolders().has('authorize-title')).toBe(true);
     expect(dashboard.openFolders().has('live-create-title')).toBe(true);
+    fixture.destroy();
+  });
+
+  it('converts dollars and cents exactly and refuses fractions of a cent', () => {
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const dashboard = fixture.componentInstance;
+    api.create.mockReturnValue(of({ tx_id: 'abc123', status: 'PENDING', expires_at: 9999999999, glyphs: '0-1-2' }));
+    dashboard.pendingForm.patchValue({ device: 'slab-01', amount: 12.34, dest: 'acct-999' });
+    dashboard.createPending();
+    expect(api.create).toHaveBeenCalledWith({ device: 'slab-01', amount: 1234, dest: 'acct-999' });
+
+    api.create.mockClear();
+    dashboard.pendingForm.patchValue({ amount: 1.005 });
+    dashboard.createPending();
+    expect(api.create).not.toHaveBeenCalled();
+    expect(dashboard.apiError()).toContain('at most two decimal places');
+    fixture.destroy();
+  });
+
+  it('offers another transfer once the bank has answered', () => {
+    api.list.mockReturnValue(of({ content: [{ ...pending, status: 'BANK_PENDING', verifiedAt: new Date().toISOString(),
+      geminiDecisionReason: 'GEMINI_APPROVED', bankProvider: 'nessie', bankOutcome: 'ACCEPTED_PENDING' }] }));
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const dashboard = fixture.componentInstance;
+    dashboard.select('abc123');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Make another transfer');
+    const button = [...fixture.nativeElement.querySelectorAll('button')]
+      .find((b: HTMLButtonElement) => b.textContent?.includes('Make another transfer')) as HTMLButtonElement;
+    button.click();
+    fixture.detectChanges();
+    expect(dashboard.currentPanel()).toBe('live-create-title');
     fixture.destroy();
   });
 

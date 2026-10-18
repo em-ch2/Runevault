@@ -193,3 +193,18 @@ app-folder-panel:not(.folder-open) { align-self:start; }
 .landing-glyphs figcaption strong { font-family:var(--serif); font-size:1rem; letter-spacing:.06em; text-transform:uppercase; color:#1b2c3c; }
 @media(max-width:1100px) { .landing-hero { grid-template-columns:1fr; padding:28px; }.landing-boat { max-height:220px; }.landing-steps,.landing-glyphs { grid-template-columns:1fr; } }
 @media(max-width:700px) { .landing { margin:8px 10px 24px; }.landing-hero,.landing-section { padding:20px 18px; } }
+/* Dollar amount field and the "make another transfer" prompt. */
+.money-input { position:relative; display:flex; align-items:center; }
+.money-input > span { position:absolute; left:11px; color:#6c6656; font-size:.9rem; pointer-events:none; }
+.live-form .money-input input { width:100%; padding-left:24px; }
+.next-voyage { margin-top:22px; padding:16px 18px; border:1px solid var(--slab-edge); border-left:3px solid var(--gold); border-radius:4px; background:#b7985314; }
+.next-voyage p { margin:0 0 12px; }
+.next-voyage-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.next-voyage-actions .btn { width:auto; margin:0; padding:10px 18px; }
+/* Drawn nautical nav icons (ship's wheel, wax seal, scroll, spyglass). */
+.sidebar nav a > span { display:grid; place-items:center; }
+.nav-icon { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+@media(max-width:1100px) { .nav-icon { width:19px; height:19px; } }
+/* Lining numerals (Georgia's old-style 3 sits below the baseline), centred optically in the circle. */
+.landing-steps li::before { font-family:var(--serif); font-variant-numeric:lining-nums; font-weight:600; line-height:1; padding-top:1px; }
+@media(max-width:700px) { .sidebar nav a > span { display:none; } }
