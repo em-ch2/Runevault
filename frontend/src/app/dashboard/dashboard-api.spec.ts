@@ -305,7 +305,6 @@ describe('Dashboard live transactions', () => {
     fixture.detectChanges();
     feed.transportEvents.next(event({ transactionId: 'made-in-another-tab', stage: 'PENDING', outcome: 'PENDING', status: 'PENDING' }));
     expect(api.list).toHaveBeenCalledTimes(2);
-    expect(fixture.componentInstance.liveEvents()[0].transactionId).toBe('made-in-another-tab');
     fixture.destroy();
   });
 

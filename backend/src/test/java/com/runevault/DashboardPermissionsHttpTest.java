@@ -1,6 +1,7 @@
 package com.runevault;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.runevault.banking.BankReceipt;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HexFormat;
@@ -44,6 +45,7 @@ class DashboardPermissionsHttpTest {
  @Autowired AuditEventRepository auditEvents;
  @Autowired com.runevault.events.PipelineEventWriter pipelineWriter;
  @Autowired ObjectMapper mapper;
+ @Autowired com.runevault.transactions.BankOutcomeService outcomes;
  @MockBean JwtDecoder decoder;
  @MockBean com.runevault.ApprovalCodeGenerator glyphGenerator;
 
@@ -163,6 +165,30 @@ class DashboardPermissionsHttpTest {
   mvc.perform(get("/api/transactions").header("Authorization", "Bearer employee"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].status").value("VERIFIED"))
    .andExpect(jsonPath("$.content[0].verifiedAt").isNotEmpty());
+ }
+
+ private void settled(String id, long amount, Instant at, BankReceipt.Outcome outcome, Long reportedBalance) {
+  Transaction tx = Transaction.pending(id, amount, "acct-999", "slab-01", "0-1-2", "auth0|employee");
+  tx.verifyPhysicalApproval(at);
+  tx.claimForExecution(at);
+  transactions.saveAndFlush(tx);
+  outcomes.record(id, new BankReceipt("r-" + id, id, "nessie",
+   outcome == BankReceipt.Outcome.COMPLETED ? "completed" : "pending", amount, "USD", "acct-999", outcome,
+   outcome == BankReceipt.Outcome.COMPLETED ? BankReceipt.Reason.CONFIRMED_COMPLETED : BankReceipt.Reason.ACCEPTED_PENDING,
+   at, reportedBalance));
+ }
+
+ @Test void expectedBalanceSubtractsEveryCompletedTransferFromTheFlatSandboxBalance() throws Exception {
+  // The sandbox reports $500,000.00 throughout; two $500.00 transfers complete, a third is still pending.
+  settled("first", 50000, Instant.now().minusSeconds(60), BankReceipt.Outcome.COMPLETED, 50000000L);
+  settled("second", 50000, Instant.now().minusSeconds(30), BankReceipt.Outcome.COMPLETED, 50000000L);
+  settled("waiting", 50000, Instant.now(), BankReceipt.Outcome.ACCEPTED_PENDING, null);
+  mvc.perform(get("/api/transactions").header("Authorization", "Bearer employee"))
+   .andExpect(status().isOk())
+   .andExpect(jsonPath("$.content[?(@.transactionId=='first')].expectedBalanceMinor").value(49950000))
+   .andExpect(jsonPath("$.content[?(@.transactionId=='second')].expectedBalanceMinor").value(49900000))
+   .andExpect(jsonPath("$.content[?(@.transactionId=='second')].newBalanceMinor").value(50000000))
+   .andExpect(jsonPath("$.content[?(@.transactionId=='waiting')].expectedBalanceMinor").value(org.hamcrest.Matchers.contains((Object) null)));
  }
 
  @Test void creatorRelaysPicoApprovalWithoutBridgeToken() throws Exception {

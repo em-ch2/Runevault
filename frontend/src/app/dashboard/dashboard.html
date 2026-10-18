@@ -80,8 +80,7 @@
   @else if (historyStep() !== null) { <p class="muted">Receipt history &middot; Select a step above to inspect its saved details.</p> }
   @else { <p class="muted">Step {{ flowStep() + 1 }} of 4 &middot; {{ workflowSteps[flowStep()].title }}</p> }
   <div><button class="btn btn-ghost" type="button" [attr.aria-pressed]="secondaryView() === 'live-list-title'" (click)="secondaryView.set('live-list-title')">History</button>
-  <button class="btn btn-ghost" type="button" [attr.aria-pressed]="secondaryView() === 'metrics-title'" (click)="secondaryView.set('metrics-title')">Analytics</button>
-  <button class="btn btn-ghost" type="button" [attr.aria-pressed]="secondaryView() === 'live-events-title'" (click)="secondaryView.set('live-events-title')">Activity</button></div>
+  <button class="btn btn-ghost" type="button" [attr.aria-pressed]="secondaryView() === 'metrics-title'" (click)="secondaryView.set('metrics-title')">Analytics</button></div>
 </div>
 <main class="grid live-grid guided-flow">
   <app-folder-panel class="slab folder-light" panelId="history-trace-title" [title]="historyStepTitles[historyStep() ?? 3]"
@@ -129,7 +128,7 @@
               <div><dt>Receipt</dt><dd class="mono">{{ transaction.bankReceiptId ?? 'None issued' }}</dd></div>
               <div><dt>Submitted</dt><dd>{{ transaction.bankSubmittedAt ? time(transaction.bankSubmittedAt) : 'Not recorded' }}</dd></div>
               <div><dt>Outcome recorded</dt><dd>{{ transaction.bankOutcomeAt ? time(transaction.bankOutcomeAt) : 'Not recorded' }}</dd></div>
-              <div><dt>New balance</dt><dd>{{ balanceText(transaction) }}</dd></div>
+              <div><dt>{{ transaction.expectedBalanceMinor != null ? 'Expected balance' : 'New balance' }}</dt><dd>{{ balanceText(transaction) }}</dd></div>
             </dl>
           } @else { <p class="muted">No bank outcome is recorded. A request or review decision alone does not confirm a transfer.</p> }
         }
@@ -224,7 +223,7 @@
             <div><dt>Receipt</dt><dd class="mono">{{ transaction.bankReceiptId ?? 'None issued' }}</dd></div>
             <div><dt>Submitted</dt><dd>{{ transaction.bankSubmittedAt ? time(transaction.bankSubmittedAt) : 'Not submitted' }}</dd></div>
             @if (transaction.bankOutcomeAt) { <div><dt>Recorded</dt><dd>{{ time(transaction.bankOutcomeAt) }}</dd></div> }
-            <div><dt>New balance</dt><dd>{{ balanceText(transaction) }}</dd></div>
+            <div><dt>{{ transaction.expectedBalanceMinor != null ? 'Expected balance' : 'New balance' }}</dt><dd>{{ balanceText(transaction) }}</dd></div>
           </dl>
           @if (transaction.newBalanceMinor == null && transaction.bankOutcome === 'ACCEPTED_PENDING') {
             <p class="muted small">The bank deducts the amount from your balance once the transfer settles.</p>
@@ -262,22 +261,6 @@
           </li>
         }
       </ul>
-    }
-  </app-folder-panel>
-
-  <app-folder-panel class="slab live-events folder-light" panelId="live-events-title" title="Live pipeline" [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'live-events-title'">
-    @if (liveEvents().length === 0) {
-      <p class="empty">{{ liveOpen() ? 'Waiting for the next pipeline stage.' : 'Live events appear here once connected.' }}</p>
-    } @else {
-      <ol class="event-list" aria-live="polite">
-        @for (event of liveEvents(); track event.eventId) {
-          <li [class]="'event event-' + eventTone(event)">
-            <span class="event-time">{{ time(event.timestamp) }}</span>
-            <button class="btn-link mono" type="button" (click)="select(event.transactionId)">{{ shortId(event.transactionId) }}</button>
-            <span>{{ eventLabel(event) }}</span>
-          </li>
-        }
-      </ol>
     }
   </app-folder-panel>
 

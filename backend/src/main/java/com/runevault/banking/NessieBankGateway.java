@@ -216,9 +216,11 @@ public class NessieBankGateway implements BankGateway {
                     reason = BankReceipt.Reason.PROVIDER_STATUS_UNKNOWN;
                 }
             }
+            // Once Nessie reports the transfer complete, the source balance reflects it.
+            Long balance = outcome == BankReceipt.Outcome.COMPLETED ? settledBalance(previous.transactionId()) : null;
             return Optional.of(new BankReceipt(previous.receiptId(), previous.transactionId(), "nessie",
                     status, previous.amountMinor(), previous.currency(), previous.destination(), outcome,
-                    reason, previous.submittedAt(), null));
+                    reason, previous.submittedAt(), balance));
         } catch (IOException | RuntimeException e) {
             log.warn("Nessie receipt lookup unavailable for {} ({})", previous.transactionId(), e.getClass().getSimpleName());
             return Optional.empty();
@@ -232,6 +234,22 @@ public class NessieBankGateway implements BankGateway {
             String status, BankReceipt.Reason reason, java.time.Instant submittedAt) {
         return result(txId, amountMinor, currency, destination, null, status,
                 BankReceipt.Outcome.UNKNOWN, reason, submittedAt);
+    }
+
+    // Source balance after a transfer Nessie reports as completed; null when it cannot be read.
+    // Other transfers from the same account may have settled too, so this is the account's balance
+    // at settlement, not a figure derived from this transfer alone.
+    private Long settledBalance(String transactionId) {
+        try {
+            JsonNode balance = unwrap(get("/accounts/" + sourceAccountId)).path("balance");
+            return balance.isNumber() ? balance.decimalValue().movePointRight(2).longValueExact() : null;
+        } catch (IOException | RuntimeException e) {
+            log.warn("Balance after settlement of {} is unavailable ({})", transactionId, e.getClass().getSimpleName());
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
     }
 
     // Reads the source balance after an accepted transfer. Returns it only when it is exactly the

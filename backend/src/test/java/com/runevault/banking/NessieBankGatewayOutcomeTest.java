@@ -178,12 +178,27 @@ class NessieBankGatewayOutcomeTest {
   var matchingResponse = response(200,
    "{\"_id\":\"receipt-1\",\"payer_id\":\"" + SOURCE + "\",\"payee_id\":\"" + DEST
     + "\",\"amount\":500,\"status\":\"completed\"}");
-  when(matching.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(matchingResponse);
-  assertEquals(BankReceipt.Outcome.COMPLETED, gateway(matching).lookup(prior).orElseThrow().outcome());
+  var settledBalance = response(200, "{\"balance\":500}");
+  when(matching.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenReturn(matchingResponse).thenReturn(settledBalance);
+  BankReceipt completed = gateway(matching).lookup(prior).orElseThrow();
+  assertEquals(BankReceipt.Outcome.COMPLETED, completed.outcome());
+  // A completed transfer carries the source account's balance at settlement.
+  assertEquals(50000L, completed.newBalanceMinor());
   ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
-  verify(matching).send(request.capture(), any(HttpResponse.BodyHandler.class));
-  assertEquals("GET", request.getValue().method());
-  assertTrue(request.getValue().uri().getPath().endsWith("/transfers/receipt-1"));
+  verify(matching, org.mockito.Mockito.times(2)).send(request.capture(), any(HttpResponse.BodyHandler.class));
+  assertEquals("GET", request.getAllValues().get(0).method());
+  assertTrue(request.getAllValues().get(0).uri().getPath().endsWith("/transfers/receipt-1"));
+  assertTrue(request.getAllValues().get(1).uri().getPath().endsWith("/accounts/" + SOURCE));
+
+  // Still pending: no balance read, no balance reported.
+  HttpClient pending = mock(HttpClient.class);
+  var pendingResponse = response(200,
+   "{\"_id\":\"receipt-1\",\"payer_id\":\"" + SOURCE + "\",\"payee_id\":\"" + DEST
+    + "\",\"amount\":500,\"status\":\"pending\"}");
+  when(pending.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(pendingResponse);
+  assertNull(gateway(pending).lookup(prior).orElseThrow().newBalanceMinor());
+  verify(pending, org.mockito.Mockito.times(1)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
 
   HttpClient mismatched = mock(HttpClient.class);
   var mismatchedResponse = response(200,

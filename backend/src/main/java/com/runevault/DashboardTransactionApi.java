@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.data.domain.Page;
@@ -49,23 +50,24 @@ public class DashboardTransactionApi {
    String bankReceiptId, String bankStatus, String bankProvider,
    com.runevault.banking.BankReceipt.Outcome bankOutcome,
    com.runevault.banking.BankReceipt.Reason bankReason,
-   Instant bankSubmittedAt, Instant bankOutcomeAt, Long newBalanceMinor,
+   Instant bankSubmittedAt, Instant bankOutcomeAt, Long newBalanceMinor, Long expectedBalanceMinor,
    String lore, Double translationConfidence, Double riskScore, List<String> riskFlags,
    String riskExplanation, String securityMessage,
    AuditEvent.Reason geminiDecisionReason, String geminiDecisionExplanation, Instant geminiDecisionAt) {
 
-  TransactionView(Transaction transaction) {
-   this(transaction, SafeAssessment.of(transaction));
+  TransactionView(Transaction transaction, Long expectedBalanceMinor) {
+   this(transaction, SafeAssessment.of(transaction), expectedBalanceMinor);
   }
 
   // Gemini text goes through SafeAssessment: plain, capped, and never the approval glyphs.
-  private TransactionView(Transaction transaction, SafeAssessment audit) {
+  private TransactionView(Transaction transaction, SafeAssessment audit, Long expectedBalanceMinor) {
    this(transaction.getTransactionId(), transaction.getAmountMinor(), transaction.getDestination(),
     transaction.getStatus(), transaction.getCreatedAt(), transaction.getExpiresAt(),
     transaction.getVerifiedAt(), transaction.getRequesterSubject(),
     transaction.getBankReceiptId(), transaction.getBankStatus(), transaction.getBankProvider(),
     transaction.getBankOutcome(), transaction.getBankReason(),
     transaction.getBankSubmittedAt(), transaction.getBankOutcomeAt(), transaction.getNewBalanceMinor(),
+    expectedBalanceMinor,
     audit.lore(), audit.translationConfidence(), audit.riskScore(), audit.riskFlags(),
     audit.riskExplanation(), audit.securityMessage(),
     transaction.getGeminiDecisionReason(), transaction.getGeminiDecisionExplanation(), transaction.getGeminiDecisionAt());
@@ -101,8 +103,22 @@ public class DashboardTransactionApi {
    @RequestParam(defaultValue = "20") int size, @AuthenticationPrincipal Jwt jwt) {
   if (page < 0 || size < 1 || size > 100)
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "page must be nonnegative and size must be 1-100");
+  Map<String, Long> expected = expectedBalances();
   return transactions.findByRequesterSubject(jwt.getSubject(), PageRequest.of(page, size,
     Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("transactionId"))))
-   .map(TransactionView::new);
+   .map(t -> new TransactionView(t, expected.get(t.getTransactionId())));
+ }
+
+ // The Nessie sandbox marks transfers completed but never deducts them, so the balance it reports stays
+ // flat. Each executed transfer's expected balance is the balance reported at its settlement minus every
+ // transfer executed up to and including it, across all users of the shared source account.
+ private Map<String, Long> expectedBalances() {
+  Map<String, Long> expected = new HashMap<>();
+  long settled = 0;
+  for (Transaction t : transactions.findByStatusOrderByBankOutcomeAtAscTransactionIdAsc(Transaction.Status.EXECUTED)) {
+   settled += t.getAmountMinor();
+   if (t.getNewBalanceMinor() != null) expected.put(t.getTransactionId(), t.getNewBalanceMinor() - settled);
+  }
+  return expected;
  }
 }
