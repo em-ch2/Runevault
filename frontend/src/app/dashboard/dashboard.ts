@@ -211,7 +211,9 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   readonly approvalQueue = signal<TransactionRecord[]>([]);
   readonly approvingId = signal<string | null>(null);
   readonly approvalNotice = signal<string | null>(null);
+  // A failed release keeps its message until the next release attempt; list refreshes never clear it.
   readonly approvalProblem = signal<string | null>(null);
+  readonly approvalListProblem = signal<string | null>(null);
   readonly metricsError = signal<string | null>(null);
   readonly bankBalance = signal<BankBalance | null>(null);
   // Re-read the bank balance whenever the selected transfer gets (or changes) a bank outcome.
@@ -481,8 +483,8 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
 
   loadApprovals(): void {
     this.api.approvals().subscribe({
-      next: (page) => { this.approvalQueue.set(page.content); this.approvalProblem.set(null); },
-      error: (error: unknown) => this.approvalProblem.set(approvalError(error)),
+      next: (page) => { this.approvalQueue.set(page.content); this.approvalListProblem.set(null); },
+      error: (error: unknown) => this.approvalListProblem.set(approvalError(error)),
     });
   }
 

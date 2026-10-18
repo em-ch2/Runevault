@@ -1,6 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
 import { afterEach, vi } from 'vitest';
 import { AuthService } from '../auth/auth.service';
 import { FeedConnection, FeedService } from '../feed/feed.service';
@@ -496,6 +497,31 @@ describe('Dashboard live transactions', () => {
       expect(api.approve).toHaveBeenCalledWith('other1');
       expect(fixture.nativeElement.textContent).not.toContain('MFA');
       expect(dashboard.approvalNotice()).toContain('EXECUTED');
+    });
+
+    it('keeps a failed release message on screen after the list refreshes', () => {
+      api.permissions.mockReturnValue(of(['read:transactions', 'approve:transactions']));
+      const other = { ...reviewed, transactionId: 'other1', requesterSubject: 'auth0|maker' };
+      api.approvals.mockReturnValue(of({ content: [other] }));
+      api.approve.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
+      const fixture = TestBed.createComponent(Dashboard);
+      fixture.detectChanges();
+      const dashboard = fixture.componentInstance;
+      dashboard.openSignoff();
+      dashboard.approve(other);
+      fixture.detectChanges();
+      // The failure triggers a list refresh; the refresh must not wipe the error.
+      expect(api.approvals.mock.calls.length).toBeGreaterThan(1);
+      expect(fixture.nativeElement.textContent).toContain('Sign-off is not enabled on this server, or this transfer no longer exists.');
+      dashboard.loadApprovals();
+      fixture.detectChanges();
+      expect(dashboard.approvalProblem()).toContain('Sign-off is not enabled');
+      // The next attempt starts clean.
+      api.approve.mockReturnValue(of({ status: 'EXECUTED' }));
+      dashboard.approve(other);
+      expect(dashboard.approvalProblem()).toBeNull();
+      expect(dashboard.approvalNotice()).toContain('EXECUTED');
+      fixture.destroy();
     });
 
     it('tells the requester a second approver must release the transfer', () => {
