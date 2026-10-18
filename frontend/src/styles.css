@@ -309,3 +309,7 @@ code, .mono { font-family: var(--mono); font-size: 0.92em; }
 .audit-table { width: 100%; border-collapse: collapse; text-align: left; }
 .audit-table th, .audit-table td { padding: 0.65rem; border-bottom: 1px solid var(--slab-edge); }
 .audit-pagination { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; }
+
+.authorization-evidence { margin: 1rem 0; padding: 0.85rem 1rem; border: 1px solid var(--slab-edge); border-radius: var(--radius); }
+.authorization-evidence h3 { margin: 0 0 0.65rem; font-size: 1rem; }
+.authorization-evidence .facts { gap: 0.3rem; font-size: 0.85rem; }

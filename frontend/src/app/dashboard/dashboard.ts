@@ -6,6 +6,7 @@ import { AuthService } from '../auth/auth.service';
 import { AuditEventPage, BankBalance, PendingTransactionResponse, PipelineMetrics, TransactionApiService, TransactionRecord, approvalError, transactionError } from '../transactions/transaction-api.service';
 import { TransferTransportEvent } from '../feed/feed-event';
 import { ApprovalsChart } from './approvals-chart';
+import { AuthorizationEvidence } from './authorization-evidence';
 import { FolderPanel } from './folder-panel';
 import { mergeLiveEvent } from './live-merge';
 import { FeedService } from '../feed/feed.service';
@@ -20,7 +21,7 @@ type NavSection = 'dashboard' | 'approval' | 'signoff' | 'history' | 'analytics'
 
 @Component({
   selector: 'app-dashboard',
-  imports: [ApprovalsChart, Glyph, FolderPanel, PicoApproval, ReactiveFormsModule],
+  imports: [ApprovalsChart, AuthorizationEvidence, Glyph, FolderPanel, PicoApproval, ReactiveFormsModule],
   templateUrl: './dashboard.html',
 })
 export class Dashboard implements OnInit, AfterViewInit, OnDestroy {

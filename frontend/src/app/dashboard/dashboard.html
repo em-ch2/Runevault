@@ -180,7 +180,7 @@
         </button>
       </nav>
       <p class="muted small">Read-only receipt history &middot; <span class="mono">{{ transaction.transactionId }}</span></p>
-      @switch (historyStep()) {
+        @switch (historyStep()) {
         @case (0) {
           <dl class="facts history-facts">
             <div><dt>Created</dt><dd>{{ time(transaction.createdAt) }}</dd></div>
@@ -233,8 +233,9 @@
             </dl>
           } @else { <p class="muted">No bank outcome is recorded. A request or review decision alone does not confirm a transfer.</p> }
         }
-      }
-      <nav class="history-step-navigation" aria-label="Receipt history steps">
+        }
+        <app-authorization-evidence [transaction]="transaction" />
+        <nav class="history-step-navigation" aria-label="Receipt history steps">
         <button class="btn btn-ghost" type="button" [disabled]="historyStep() === 0" (click)="inspectHistoryStep((historyStep() ?? 0) - 1)">Previous step</button>
         <button class="btn btn-ghost" type="button" (click)="secondaryView.set('live-list-title')">Back to history</button>
         <button class="btn btn-ghost" type="button" [disabled]="historyStep() === 3" (click)="inspectHistoryStep((historyStep() ?? 0) + 1)">Next step</button>
@@ -295,9 +296,10 @@
         <p class="muted small">The story of your seal appears here after physical approval and Gemini review.</p>
       }
     </section>
-    @if (selected(); as transaction) {
-      <p class="amount">{{ money(transaction.amountMinor) }}</p>
-      <dl class="facts">
+      @if (selected(); as transaction) {
+        <p class="amount">{{ money(transaction.amountMinor) }}</p>
+        <app-authorization-evidence [transaction]="transaction" />
+        <dl class="facts">
         <div><dt>Transaction</dt><dd class="mono">{{ transaction.transactionId }}</dd></div>
         <div><dt>Destination</dt><dd class="mono">{{ transaction.destination }}</dd></div>
         <div><dt>Created</dt><dd>{{ time(transaction.createdAt) }}</dd></div>

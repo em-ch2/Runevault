@@ -66,7 +66,8 @@ public class DashboardTransactionApi {
    String lore, Double translationConfidence, Double riskScore, List<String> riskFlags,
    String riskExplanation, String securityMessage,
    AuditEvent.Reason geminiDecisionReason, String geminiDecisionExplanation, Instant geminiDecisionAt,
-   String approverSubject, Instant approvedAt, boolean awaitingApproval, boolean stepUpRequired) {
+   String approverSubject, Instant approvedAt, Boolean approvalStepUp,
+   boolean awaitingApproval, boolean stepUpRequired) {
 
   TransactionView(Transaction transaction, Long expectedBalanceMinor, ApprovalPolicy approvals) {
    this(transaction, SafeAssessment.of(transaction), expectedBalanceMinor, approvals);
@@ -84,7 +85,7 @@ public class DashboardTransactionApi {
     audit.lore(), audit.translationConfidence(), audit.riskScore(), audit.riskFlags(),
     audit.riskExplanation(), audit.securityMessage(),
     transaction.getGeminiDecisionReason(), transaction.getGeminiDecisionExplanation(), transaction.getGeminiDecisionAt(),
-    transaction.getApproverSubject(), transaction.getApprovedAt(),
+    transaction.getApproverSubject(), transaction.getApprovedAt(), transaction.getApprovalStepUp(),
     approvals.required() && transaction.getStatus() == Transaction.Status.VERIFIED
      && transaction.getGeminiDecisionReason() == AuditEvent.Reason.GEMINI_APPROVED
      && transaction.getExecutionClaimedAt() == null,

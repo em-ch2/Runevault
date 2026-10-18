@@ -47,6 +47,7 @@ export interface TransactionRecord {
   geminiDecisionAt?: string | null;
   approverSubject?: string | null;
   approvedAt?: string | null;
+  approvalStepUp?: boolean | null;
   awaitingApproval?: boolean;
   stepUpRequired?: boolean;
 }
