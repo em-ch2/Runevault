@@ -149,8 +149,8 @@
     <form class="live-form" [formGroup]="pendingForm" (ngSubmit)="createPending()">
       <label for="tx-device">Device</label>
       <input id="tx-device" formControlName="device" autocomplete="off" />
-      <label for="tx-amount">Amount (USD)</label>
-      <input id="tx-amount" type="number" min="0.01" max="1000000" step="0.01" inputmode="decimal" formControlName="amount" />
+      <label for="tx-amount">Amount (cents)</label>
+      <input id="tx-amount" type="number" min="1" max="100000000" step="1" formControlName="amount" />
       <label for="tx-dest">Destination</label>
       <input id="tx-dest" formControlName="dest" autocomplete="off" placeholder="acct-999" />
       <p class="muted small">Your request stays pending until you approve it on the physical authenticator.</p>

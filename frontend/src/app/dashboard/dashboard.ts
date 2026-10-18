@@ -134,8 +134,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   });
   readonly pendingForm = new FormGroup({
     device: new FormControl('slab-01', { nonNullable: true, validators: [Validators.required, Validators.pattern('[A-Za-z0-9_-]{1,64}')] }),
-    // Dollars in the form; the API and database keep whole cents.
-    amount: new FormControl(500, { nonNullable: true, validators: [Validators.required, Validators.min(0.01), Validators.max(1000000)] }),
+    amount: new FormControl(50000, { nonNullable: true, validators: [Validators.required, Validators.min(1), Validators.max(100000000)] }),
     dest: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern('[A-Za-z0-9_-]{1,64}')] }),
   });
   private poll: Subscription | null = null;
@@ -375,16 +374,14 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
 
   createPending(): void {
     this.pendingForm.markAllAsTouched();
-    const dollars = this.pendingForm.controls.amount.value;
-    const cents = Math.round(dollars * 100);
-    // Reject fractions of a cent instead of silently rounding them away.
-    if (this.pendingForm.invalid || !Number.isFinite(dollars) || Math.abs(dollars * 100 - cents) > 1e-6) {
-      this.apiError.set('Enter a dollar amount with at most two decimal places, a destination, and a device.');
+    const amount = this.pendingForm.controls.amount.value;
+    if (this.pendingForm.invalid || !Number.isInteger(amount)) {
+      this.apiError.set('Enter a whole-cent amount, destination, and device.');
       return;
     }
     this.creating.set(true);
     this.apiError.set(null);
-    const request = { ...this.pendingForm.getRawValue(), amount: cents };
+    const request = this.pendingForm.getRawValue();
     this.api.create(request).subscribe({
       next: (created) => {
         this.historyStep.set(null);
