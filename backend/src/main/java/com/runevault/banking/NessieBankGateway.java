@@ -118,6 +118,22 @@ public class NessieBankGateway implements BankGateway, BankReadGateway {
     }
 
     @Override
+    public long sourceBalanceMinor() {
+        try {
+            JsonNode balance = unwrap(get("/accounts/" + sourceAccountId)).path("balance");
+            if (!balance.isNumber()) throw new Unavailable();
+            long minor = balance.decimalValue().movePointRight(2).longValueExact();
+            if (minor < 0) throw new Unavailable();
+            return minor;
+        } catch (IOException | NessieException | IllegalArgumentException | ArithmeticException e) {
+            throw new Unavailable();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new Unavailable();
+        }
+    }
+
+    @Override
     public BankReceipt transfer(String transactionId, long amountMinor, String currency, String destination) {
         if (!"USD".equals(currency)) {
             return result(transactionId, amountMinor, currency, destination, null,

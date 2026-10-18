@@ -47,8 +47,7 @@ public class TransactionProcessor {
   if (reason == null) {
    String json = null;
    try {
-    analysis = lore.audit(transaction.getExpectedGlyphs(), LoreAuditService.DICTIONARY,
-     transaction.getAmountMinor(), transaction.getDestination());
+    analysis = lore.audit(transaction, LoreAuditService.DICTIONARY);
     reason = policy.decide(analysis);
     json = analysis.toString();
    } catch (LoreAuditService.InvalidResponse | com.fasterxml.jackson.core.JsonProcessingException e) {

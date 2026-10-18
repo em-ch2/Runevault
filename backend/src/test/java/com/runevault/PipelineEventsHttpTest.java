@@ -77,7 +77,7 @@ class PipelineEventsHttpTest {
  }
 
  private void ai(String confidence, String risk) throws Exception {
-  when(lore.audit(anyString(), anyString(), anyLong(), anyString())).thenReturn(mapper.readTree("""
+  when(lore.audit(any(Transaction.class), anyString())).thenReturn(mapper.readTree("""
    {"lore_translation":"Safe passage.","translation_confidence":%s,"risk_score":%s,
     "risk_flags":["known destination"],"risk_explanation":"Routine.","security_message":"Looks routine."}
    """.formatted(confidence, risk)));
@@ -169,7 +169,7 @@ class PipelineEventsHttpTest {
  }
 
  @Test void geminiFailuresBlockWithoutScoresOrBanking() throws Exception {
-  when(lore.audit(anyString(), anyString(), anyLong(), anyString())).thenThrow(new IllegalStateException("timeout"));
+  when(lore.audit(any(Transaction.class), anyString())).thenThrow(new IllegalStateException("timeout"));
   String unavailable = bridgePending();
   authorize(sign(unavailable, "0-1-2")).andExpect(jsonPath("$.execution.reason").value("GEMINI_UNAVAILABLE"));
   Row row = row(unavailable, "GEMINI", "REJECTED");
@@ -179,7 +179,7 @@ class PipelineEventsHttpTest {
   assertTrue(transactions.findById(unavailable).orElseThrow().getGeminiDecisionExplanation().contains("unavailable"));
 
   doReturn(mapper.readTree("{\"lore_translation\":\"Missing every score.\"}"))
-   .when(lore).audit(anyString(), anyString(), anyLong(), anyString());
+   .when(lore).audit(any(Transaction.class), anyString());
   String malformed = bridgePending();
   authorize(sign(malformed, "0-1-2")).andExpect(jsonPath("$.execution.reason").value("GEMINI_INVALID_RESPONSE"));
   verify(publisher).publish(malformed, Stage.GEMINI, Outcome.REJECTED,

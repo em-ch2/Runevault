@@ -1,15 +1,21 @@
 package com.runevault.lore;
 
 import com.runevault.banking.BankReadGateway;
+import com.runevault.Transaction;
+import com.runevault.TransactionRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import org.springframework.stereotype.Service;
 
 @Service
 public class LoreAuditService {
- public static final String PROMPT_VERSION = "lore-risk-v2";
+ public static final String PROMPT_VERSION = "lore-risk-v3";
 
  // Matches the dashboard's glyph artwork (frontend/src/app/dashboard/glyph.ts).
  public static final String DICTIONARY = """
@@ -48,16 +54,33 @@ public class LoreAuditService {
  private final GeminiClient gemini;
  private final ObjectMapper mapper;
  private final BankReadGateway bankReads;
+ private final TransactionRepository transactions;
 
- public LoreAuditService(GeminiClient gemini, ObjectMapper mapper, BankReadGateway bankReads) {
+ public LoreAuditService(GeminiClient gemini, ObjectMapper mapper, BankReadGateway bankReads,
+   TransactionRepository transactions) {
   this.gemini = gemini;
   this.mapper = mapper;
   this.bankReads = bankReads;
+  this.transactions = transactions;
  }
 
- public JsonNode audit(String glyphs, String dictionaryText, long amountMinor, String destination) throws Exception {
+ public JsonNode audit(Transaction transaction, String dictionaryText) throws Exception {
   if (!gemini.isConfigured()) throw new IllegalStateException("Gemini is not configured");
+  String destination = transaction.getDestination();
+  long amountMinor = transaction.getAmountMinor();
+  Instant now = Instant.now();
   BankReadGateway.TransferHistory history = bankReads.transferHistory(destination);
+  long balanceMinor = bankReads.sourceBalanceMinor();
+  var completed = List.of(Transaction.Status.EXECUTED);
+  long priorPayments = transactions.countByDestinationAndStatusIn(destination, completed);
+  Double average = transactions.averageAmountByDestinationAndStatusIn(destination, completed);
+  long lastHour = transactions.countByCreatedAtAfterAndCreatedAtBeforeAndTransactionIdNot(
+    now.minusSeconds(3600), now, transaction.getTransactionId());
+  String amountToAverage = average == null || average <= 0 ? "unknown" :
+    BigDecimal.valueOf(amountMinor).divide(BigDecimal.valueOf(average), 2, RoundingMode.HALF_UP).toPlainString();
+  String balancePercent = balanceMinor == 0 ? "unknown" :
+    BigDecimal.valueOf(amountMinor).multiply(BigDecimal.valueOf(100))
+      .divide(BigDecimal.valueOf(balanceMinor), 2, RoundingMode.HALF_UP).toPlainString();
   String user = """
     Glyph dictionary:
     %s
@@ -69,6 +92,14 @@ public class LoreAuditService {
     currency: USD
     destination: %s
 
+    Server-computed risk features (UTC, completed prior payments only):
+    recipientPaidBefore: %s
+    priorRecipientPaymentCount: %d
+    amountToPriorRecipientAverageRatio: %s
+    transferRequestsInLastHour: %d
+    amountPercentOfCurrentSourceBalance: %s
+    transferHourUtc: %d
+
     Destination account transfer history (observed records only; amounts in minor units):
     observedTransfers: %d
     transfersInLastThirtyDays: %d
@@ -76,7 +107,8 @@ public class LoreAuditService {
     largestHistoricalAmountMinor: %d
     failedTransfers: %d
     historyTruncated: %s
-    """.formatted(dictionaryText, glyphs, amountMinor, destination,
+    """.formatted(dictionaryText, transaction.getExpectedGlyphs(), amountMinor, destination,
+     priorPayments > 0, priorPayments, amountToAverage, lastHour, balancePercent, now.atZone(ZoneOffset.UTC).getHour(),
      history.observedTransfers(), history.recentThirtyDays(), history.totalAmountMinor(),
      history.largestAmountMinor(), history.failedTransfers(), history.truncated());
   JsonNode result = mapper.readTree(gemini.generateJson(SYSTEM, user, RESPONSE_SCHEMA));

@@ -35,7 +35,7 @@ public class LoreController {
     return Map.of("tx_id", id, "ai_generated", true, "cached", true,
       "result", mapper.readTree(tx.getAuditJson()));
    }
-   JsonNode result = lore.audit(tx.getExpectedGlyphs(), LoreAuditService.DICTIONARY, tx.getAmountMinor(), tx.getDestination());
+   JsonNode result = lore.audit(tx, LoreAuditService.DICTIONARY);
    transactions.storeAudit(id, result.toString(), "gemini", LoreAuditService.PROMPT_VERSION, Instant.now());
    return Map.of("tx_id", id, "ai_generated", true, "cached", false, "result", result);
   } catch (Exception e) {
