@@ -13,10 +13,10 @@ import { MockScenario } from '../feed/mock-feed';
 import { GLYPH_NAMES, Glyph } from './glyph';
 import { PicoApproval } from './pico-approval';
 import { Stage, TransferStore } from './transfer-store';
-import { glideTo, slideUp } from './motion';
+import { glideTo, rockBoat, slideUp } from './motion';
 
 const STAGE_ORDER: Stage[] = ['received', 'sealed', 'verified', 'executed'];
-type NavSection = 'dashboard' | 'transactions' | 'approvals' | 'history' | 'analytics';
+type NavSection = 'dashboard' | 'authentication' | 'history' | 'analytics';
 
 @Component({
   selector: 'app-dashboard',
@@ -155,6 +155,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   // Slides the visible panel up whenever it changes; a mode switch also staggers in the bars above it.
   private lastMode: 'live' | 'demo' | null = null;
   private readonly panelMotion = effect(() => {
+    this.landing();
     const mode = this.mode();
     if (mode === 'live') this.currentPanel(); else this.demoPanel();
     const modeChanged = this.lastMode !== null && this.lastMode !== mode;
@@ -167,15 +168,16 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     }, { injector: this.injector });
   });
 
+  // The Dashboard tab is a landing page; the transfer flow, History and Analytics share the area below it.
+  readonly landing = signal(true);
   // History and Analytics follow the visible view, so the "Back" buttons also return the highlight.
-  private readonly navChoice = signal<NavSection>('dashboard');
   readonly activeNav = computed<NavSection>(() => {
-    if (this.mode() === 'demo') return 'dashboard';
+    if (this.landing()) return 'dashboard';
+    if (this.mode() === 'demo') return 'authentication';
     const view = this.secondaryView();
     if (view === 'live-list-title' || this.historyStep() !== null) return 'history';
     if (view === 'metrics-title') return 'analytics';
-    const choice = this.navChoice();
-    return choice === 'transactions' || choice === 'approvals' ? choice : 'dashboard';
+    return 'authentication';
   });
   private readonly navMotion = effect(() => {
     this.activeNav();
@@ -183,10 +185,31 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   });
 
   navTo(section: NavSection, panelId?: string): void {
-    this.navChoice.set(section);
-    if (panelId) this.openLiveFolder(panelId);
-    else { this.switchMode('live'); this.historyStep.set(null); this.secondaryView.set(null); }
+    this.landing.set(section === 'dashboard');
+    if (section === 'dashboard') return;
+    if (panelId) { this.openLiveFolder(panelId); return; }
+    // Authentication resumes a transfer in progress, or starts at the form once the last one has finished.
+    this.switchMode('live');
+    if (this.historyStep() !== null || this.flowStep() === 3) this.startNewTransfer();
+    this.secondaryView.set(null);
   }
+
+  // A wave band across twice the frame's width, so sliding it by one frame loops seamlessly.
+  wavePath(level: number, height: number): string {
+    let d = `M0 ${level}`;
+    for (let x = 0; x < 800; x += 100) d += ` Q${x + 25} ${level - height} ${x + 50} ${level} T${x + 100} ${level}`;
+    return `${d} V230 H0 Z`;
+  }
+
+  private stopBoat: (() => void) | null = null;
+  private readonly boatMotion = effect(() => {
+    const showing = this.landing();
+    afterNextRender(() => {
+      this.stopBoat?.();
+      this.stopBoat = showing ? rockBoat(this.host.nativeElement.querySelector('.landing-boat')) : null;
+      if (showing) slideUp([...this.host.nativeElement.querySelectorAll('.landing-hero, .landing-section')], { distance: 24, stagger: 0.08 });
+    }, { injector: this.injector });
+  });
 
   ngAfterViewInit(): void {
     this.restNavIndicator(true);
@@ -255,6 +278,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.stopBoat?.();
     this.poll?.unsubscribe();
     this.listRequest?.unsubscribe();
     for (const subscription of this.feedSubscriptions) subscription.unsubscribe();

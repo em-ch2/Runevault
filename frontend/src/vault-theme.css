@@ -159,3 +159,37 @@ app-folder-panel:not(.folder-open) { align-self:start; }
 .sidebar { position:sticky; top:0; height:100vh; height:100dvh; align-self:start; overflow-y:auto; scrollbar-width:none; }
 @media(max-width:1100px) { .wordmark { font-size:1.7rem; } }
 @media(max-width:700px) { .sidebar { position:static; height:auto; overflow:visible; }.wordmark { font-size:1.4rem; } }
+/* Landing page: the Dashboard tab. Flow blocks hide while it shows (they keep their state). */
+.vault-content > [hidden] { display:none!important; }
+.landing { margin:8px 16px 32px; display:grid; gap:16px; }
+.landing-hero { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); align-items:center; gap:24px; padding:36px 40px; border:1px solid #6b5c3c; border-radius:4px; background:radial-gradient(circle at 85% 30%,#28405b66,transparent 55%),#0c1c2e; box-shadow:inset 0 0 0 3px #18283a; overflow:hidden; }
+.landing-kicker { margin:0 0 10px; font-family:var(--serif); font-size:.72rem; letter-spacing:.2em; text-transform:uppercase; color:#cdbb92; }
+.landing h1 { margin:0 0 16px; font-family:var(--serif); font-size:clamp(2.2rem,4vw,3.4rem); font-weight:500; letter-spacing:.02em; color:var(--gold); }
+.landing-lead { margin:0 0 26px; max-width:52ch; font-size:1rem; line-height:1.75; color:#e6dfcf; }
+.landing-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.landing-actions .btn { width:auto; margin:0; padding:11px 20px; }
+.landing-actions .btn-primary { background:linear-gradient(100deg,#d8bd7c,#b18f4c); color:#132235; border-color:#c7a969; font-family:var(--serif); letter-spacing:.04em; }
+.landing-actions .btn-primary:hover { background:#e2c88a; }
+.landing-boat { width:100%; height:auto; max-height:280px; }
+.landing-boat .boat-hull { fill:#152a40; stroke:var(--gold); stroke-width:2.5; stroke-linejoin:round; }
+.landing-boat .boat-mast { stroke:#d2b574; stroke-width:3; stroke-linecap:round; }
+.landing-boat .boat-sail { fill:#f4ead6; stroke:#b69a5e; stroke-width:1.5; stroke-linejoin:round; }
+.landing-boat .boat-flag { fill:var(--gold); }
+.landing-boat .boat-port { fill:#d2b574; }
+.landing-boat .wave-back path { fill:#1d3b55; opacity:.85; }
+.landing-boat .wave-front path { fill:#2b5374; stroke:#7fa7c4; stroke-width:1.5; stroke-opacity:.5; }
+.landing-section { padding:26px 30px; border:1px solid #c6b389; border-radius:4px; color:#1b2c3c; background:linear-gradient(130deg,#faf5e9,#eee3cd); box-shadow:inset 0 0 0 3px #fff8,0 4px 12px #0002; }
+.landing-section h2 { margin:0 0 16px; padding-bottom:12px; border-bottom:1px solid #d5c8ae; font-family:var(--serif); font-size:1.1rem; letter-spacing:.06em; text-transform:uppercase; color:#3f4037; }
+.landing-note { margin:0 0 20px; max-width:70ch; line-height:1.7; color:#4a4a40; }
+.landing-steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:0; padding:0; list-style:none; counter-reset:step; }
+.landing-steps li { counter-increment:step; display:grid; gap:6px; padding:16px 16px 18px; border:1px solid #d5c8ae; border-radius:4px; background:#fffaf0aa; line-height:1.6; }
+.landing-steps li::before { content:counter(step); display:grid; place-items:center; width:30px; height:30px; margin-bottom:4px; border-radius:50%; background:#132235; color:var(--gold); font-family:Georgia,serif; font-size:16px; }
+.landing-steps strong { font-family:var(--serif); letter-spacing:.03em; }
+.landing-steps span { font-size:.88rem; color:#55544a; }
+.landing-glyphs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.landing-glyphs figure { display:flex; align-items:center; gap:14px; margin:0; padding:14px 16px; border:1px solid #c8b17f; border-radius:4px; background:linear-gradient(135deg,#fffbef,#e9d9b9); }
+.landing-glyphs .glyph .cartouche { fill:#fffaed; }.landing-glyphs .glyph .stroke { stroke:#233b4c; }
+.landing-glyphs figcaption { display:grid; gap:4px; font-size:.85rem; line-height:1.5; color:#55544a; }
+.landing-glyphs figcaption strong { font-family:var(--serif); font-size:1rem; letter-spacing:.06em; text-transform:uppercase; color:#1b2c3c; }
+@media(max-width:1100px) { .landing-hero { grid-template-columns:1fr; padding:28px; }.landing-boat { max-height:220px; }.landing-steps,.landing-glyphs { grid-template-columns:1fr; } }
+@media(max-width:700px) { .landing { margin:8px 10px 24px; }.landing-hero,.landing-section { padding:20px 18px; } }

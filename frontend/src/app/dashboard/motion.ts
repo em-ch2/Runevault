@@ -17,6 +17,18 @@ export function slideUp(targets: Element[], options: { distance?: number; stagge
     { autoAlpha: 1, y: 0, duration: 0.5, ease: 'power3.out', stagger: options.stagger ?? 0.06, clearProps: 'opacity,visibility,transform' });
 }
 
+/** Rocks the landing ship and rolls the waves past it; returns a function that stops them. */
+export function rockBoat(svg: Element | null): () => void {
+  if (!svg || reducedMotion()) return () => {};
+  const boat = svg.querySelector('.boat'), back = svg.querySelector('.wave-back'), front = svg.querySelector('.wave-front');
+  const tweens = [
+    gsap.fromTo(boat, { rotation: -3, y: 0 }, { rotation: 3, y: 4, svgOrigin: '200 160', duration: 2.4, ease: 'sine.inOut', yoyo: true, repeat: -1 }),
+    gsap.fromTo(back, { x: 0 }, { x: -400, duration: 14, ease: 'none', repeat: -1 }),
+    gsap.fromTo(front, { x: -400 }, { x: 0, duration: 9, ease: 'none', repeat: -1 }),
+  ];
+  return () => tweens.forEach((tween) => tween.kill());
+}
+
 /** Moves a highlight so it covers `target`, measured relative to their shared positioned parent. */
 export function glideTo(indicator: HTMLElement, target: HTMLElement | null, instant = false): void {
   if (!target) {

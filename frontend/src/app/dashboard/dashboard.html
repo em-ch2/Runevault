@@ -4,8 +4,7 @@
   <nav (mouseleave)="restNavIndicator()" (focusout)="restNavIndicator()">
     <span #navIndicator class="nav-indicator" aria-hidden="true"></span>
     <a href="#dashboard-top" [class.nav-current]="activeNav() === 'dashboard'" [attr.aria-current]="activeNav() === 'dashboard' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('dashboard')"><span aria-hidden="true">&#9638;</span> Dashboard</a>
-    <a href="#live-create-title" [class.nav-current]="activeNav() === 'transactions'" [attr.aria-current]="activeNav() === 'transactions' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('transactions', 'live-create-title')"><span aria-hidden="true">&#8644;</span> Transactions</a>
-    <a href="#authorize-title" [class.nav-current]="activeNav() === 'approvals'" [attr.aria-current]="activeNav() === 'approvals' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('approvals', 'authorize-title')"><span aria-hidden="true">&#9671;</span> Approvals</a>
+    <a href="#workflow-title" [class.nav-current]="activeNav() === 'authentication'" [attr.aria-current]="activeNav() === 'authentication' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('authentication')"><span aria-hidden="true">&#9671;</span> Authentication</a>
     <a href="#live-list-title" [class.nav-current]="activeNav() === 'history'" [attr.aria-current]="activeNav() === 'history' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('history', 'live-list-title')"><span aria-hidden="true">&#9636;</span> History</a>
     <a href="#metrics-title" [class.nav-current]="activeNav() === 'analytics'" [attr.aria-current]="activeNav() === 'analytics' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('analytics', 'metrics-title')"><span aria-hidden="true">&#9637;</span> Analytics</a>
   </nav>
@@ -48,12 +47,57 @@
   <p class="form-error" role="alert">{{ auth.error() }}</p>
 }
 
-<div class="mode-switch" role="group" aria-label="Dashboard mode">
+<section class="landing" aria-labelledby="landing-title" [hidden]="!landing()">
+  <div class="landing-hero">
+    <div class="landing-copy">
+      <p class="landing-kicker">Runevault &middot; sealed in trust</p>
+      <h1 id="landing-title">Sealing the deal.</h1>
+      <p class="landing-lead">Every Runevault transfer is sealed twice before it sets sail: once by your own hand on a physical stone, and once by a keeper of lore who reads the seal and judges the voyage. Only then does the vault open and the money leave port.</p>
+      <div class="landing-actions">
+        <button class="btn btn-primary" type="button" (click)="navTo('authentication')">Begin a transfer</button>
+        <button class="btn btn-ghost" type="button" (click)="navTo('history', 'live-list-title')">View past voyages</button>
+      </div>
+    </div>
+    <svg class="landing-boat" viewBox="0 0 400 230" role="img" aria-label="A ship rocking on the waves">
+      <g class="wave wave-back"><path [attr.d]="wavePath(156, 7)" /></g>
+      <g class="boat">
+        <path class="boat-flag" d="M200 44 L220 50 L200 56 Z" />
+        <line class="boat-mast" x1="200" y1="44" x2="200" y2="134" />
+        <path class="boat-sail" d="M205 58 L205 126 L258 126 Z" />
+        <path class="boat-sail" d="M195 64 L195 126 L150 126 Z" />
+        <path class="boat-hull" d="M124 134 H276 L252 166 H148 Z" />
+        <circle class="boat-port" cx="176" cy="150" r="3.5" /><circle class="boat-port" cx="200" cy="150" r="3.5" /><circle class="boat-port" cx="224" cy="150" r="3.5" />
+      </g>
+      <g class="wave wave-front"><path [attr.d]="wavePath(166, 8)" /></g>
+    </svg>
+  </div>
+
+  <div class="landing-section">
+    <h2>How a deal is sealed</h2>
+    <ol class="landing-steps">
+      <li><strong>Chart your course</strong><span>Choose the destination and the amount. Your request waits in the harbour, pending.</span></li>
+      <li><strong>Press the seal</strong><span>Six glyphs appear. Press them in order on your Pico; it signs the approval on the device itself.</span></li>
+      <li><strong>Set sail</strong><span>Gemini reads your seal and checks the voyage for danger. If the waters are safe, the bank sends the money.</span></li>
+    </ol>
+  </div>
+
+  <div class="landing-section">
+    <h2>The glyphs and their lore</h2>
+    <p class="landing-note">Every seal is made of three ancient glyphs. Once your transfer clears, the keeper of lore writes a short tale from the glyphs you pressed, so no two seals tell quite the same story.</p>
+    <div class="landing-glyphs">
+      <figure><app-glyph [id]="0" [size]="54" /><figcaption><strong>Will</strong><span>Unique dreams, individuality, and the inherited will to change the world.</span></figcaption></figure>
+      <figure><app-glyph [id]="1" [size]="54" /><figcaption><strong>Crew</strong><span>Friendship and the bonds that carry you forward.</span></figcaption></figure>
+      <figure><app-glyph [id]="2" [size]="54" /><figcaption><strong>Sea</strong><span>The open ocean, adventure, and the voyage ahead.</span></figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<div class="mode-switch" role="group" aria-label="Dashboard mode" [hidden]="landing()">
   <button class="btn btn-ghost" type="button" [attr.aria-pressed]="mode() === 'live'" (click)="switchMode('live')">Live API</button>
   <button class="btn btn-ghost" type="button" [attr.aria-pressed]="mode() === 'demo'" (click)="switchMode('demo')">Demo preview</button>
 </div>
 
-<section class="workflow" aria-labelledby="workflow-title">
+<section class="workflow" aria-labelledby="workflow-title" [hidden]="landing()">
   <div class="section-heading"><h2 id="workflow-title">Transfer workflow</h2><span class="small">{{ mode() === 'demo' ? 'Demo preview' : 'Physical approval / verified execution' }}</span></div>
   <ol class="workflow-track">
     @for (step of workflowSteps; track $index) {
@@ -66,16 +110,16 @@
 </section>
 
 @if (mode() === 'demo') {
-<div class="mock-bar">
+<div class="mock-bar" [hidden]="landing()">
   Demo preview uses scripted data only. It does not create backend transactions.
 </div>
-<div class="mock-bar">
+<div class="mock-bar" [hidden]="landing()">
   <span>Demo mode: playing a scripted transfer.</span>
   <button class="btn btn-ghost" type="button" (click)="replay('approved')">Replay transfer</button>
   <button class="btn btn-ghost" type="button" (click)="replay('rejected')">Replay rejected</button>
 </div>
 } @else {
-<div class="flow-navigation">
+<div class="flow-navigation" [hidden]="landing()">
   @if (secondaryView()) { <button class="btn btn-ghost" type="button" (click)="secondaryView.set(null)">{{ historyStep() !== null ? 'Back to receipt timeline' : 'Back to current transfer' }}</button> }
   @else if (historyStep() !== null) { <p class="muted">Receipt history &middot; Select a step above to inspect its saved details.</p> }
   @else { <p class="muted">Step {{ flowStep() + 1 }} of 4 &middot; {{ workflowSteps[flowStep()].title }}</p> }
@@ -83,7 +127,7 @@
   <button class="btn btn-ghost" type="button" [attr.aria-pressed]="secondaryView() === 'metrics-title'" (click)="secondaryView.set('metrics-title')">Analytics</button>
   <button class="btn btn-ghost" type="button" [attr.aria-pressed]="secondaryView() === 'live-events-title'" (click)="secondaryView.set('live-events-title')">Activity</button></div>
 </div>
-<main class="grid live-grid guided-flow">
+<main class="grid live-grid guided-flow" [hidden]="landing()">
   <app-folder-panel class="slab folder-light" panelId="history-trace-title" [title]="historyStepTitles[historyStep() ?? 3]"
     [open]="true" [collapsible]="false" [hidden]="currentPanel() !== 'history-trace-title'">
     @if (selected(); as transaction) {
@@ -296,11 +340,11 @@
 }
 
 @if (mode() === 'demo') {
-<div class="flow-navigation"><p class="muted">Scripted preview &middot; follows the transfer automatically</p><div>
+<div class="flow-navigation" [hidden]="landing()"><p class="muted">Scripted preview &middot; follows the transfer automatically</p><div>
 <button class="btn btn-ghost" type="button" (click)="demoView.set(null)">Current step</button>
 @if (transfer()?.executed) { <button class="btn btn-ghost" type="button" (click)="demoView.set('lore-title')">Read the lore</button> }
 <button class="btn btn-ghost" type="button" (click)="demoView.set('activity-title')">Activity</button></div></div>
-<main class="grid demo-grid guided-flow">
+<main class="grid demo-grid guided-flow" [hidden]="landing()">
   <app-folder-panel class="slab pending folder-light" panelId="pending-title" title="Pending transfer" [open]="true" [collapsible]="false" [hidden]="demoPanel() !== 'pending-title'">
     @if (transfer(); as t) {
       <p class="amount">{{ money(t.amount) }}</p>
