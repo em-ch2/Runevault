@@ -119,7 +119,7 @@ describe('Dashboard live transactions', () => {
     const fixture = TestBed.createComponent(Dashboard);
     fixture.detectChanges();
     const dashboard = fixture.componentInstance;
-    dashboard.pendingForm.patchValue({ device: 'slab-01', amount: 50000, dest: 'acct-999' });
+    dashboard.pendingForm.patchValue({ device: 'slab-01', amount: 500, dest: 'acct-999' });
     api.create.mockReturnValue(of({ tx_id: 'abc123', status: 'PENDING', expires_at: 9999999999,
       glyphs: '0-2-1-2-1' }));
     dashboard.createPending();
@@ -129,6 +129,21 @@ describe('Dashboard live transactions', () => {
     expect(dashboard.pendingGlyphs()).toEqual([0, 2, 1, 2, 1]);
     expect(dashboard.openFolders().has('authorize-title')).toBe(true);
     expect(dashboard.openFolders().has('live-create-title')).toBe(true);
+    fixture.destroy();
+  });
+
+  it('converts dollars and cents to whole cents and rejects fractions of a cent', () => {
+    const fixture = TestBed.createComponent(Dashboard);
+    fixture.detectChanges();
+    const dashboard = fixture.componentInstance;
+    api.create.mockReturnValue(of({ tx_id: 'abc123', status: 'PENDING', expires_at: 9999999999, glyphs: '0-2-1-2-1' }));
+    dashboard.pendingForm.patchValue({ device: 'slab-01', amount: 1.005, dest: 'acct-999' });
+    dashboard.createPending();
+    expect(api.create).not.toHaveBeenCalled();
+    expect(dashboard.apiError()).toContain('two decimal places');
+    dashboard.pendingForm.patchValue({ amount: 12.34 });
+    dashboard.createPending();
+    expect(api.create).toHaveBeenCalledWith({ device: 'slab-01', amount: 1234, dest: 'acct-999' });
     fixture.destroy();
   });
 
