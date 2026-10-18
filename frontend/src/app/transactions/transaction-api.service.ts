@@ -34,6 +34,8 @@ export interface TransactionRecord {
   bankSubmittedAt?: string | null;
   bankOutcomeAt?: string | null;
   newBalanceMinor?: number | null;
+  // Bank-reported balance minus every completed transfer; the sandbox never deducts transfers itself.
+  expectedBalanceMinor?: number | null;
   lore?: string | null;
   translationConfidence?: number | null;
   riskScore?: number | null;

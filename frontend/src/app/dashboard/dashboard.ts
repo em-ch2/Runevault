@@ -140,7 +140,6 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   private poll: Subscription | null = null;
   private listRequest: Subscription | null = null;
   private readonly feedSubscriptions: Subscription[] = [];
-  readonly liveEvents = signal<TransferTransportEvent[]>([]);
   readonly metrics = signal<PipelineMetrics | null>(null);
   readonly metricsError = signal<string | null>(null);
   readonly liveOpen = computed(() => this.feed.connection() === 'open');
@@ -278,14 +277,14 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
 
   applyLiveEvent(event: TransferTransportEvent): void {
     if (this.mode() !== 'live') return;
-    this.liveEvents.update((events) => [event, ...events.filter((e) => e.eventId !== event.eventId)].slice(0, 12));
     const known = this.records().some((r) => r.transactionId === event.transactionId);
     if (!known) {
       this.refresh(true);
     } else {
       this.records.update((records) => records.map((r) => r.transactionId === event.transactionId ? mergeLiveEvent(r, event) : r));
-      // verifiedAt is not part of the event, so fetch it once when the tablet's approval is accepted.
-      if (event.stage === 'VERIFIED' && event.outcome === 'APPROVED') this.refresh(true);
+      // verifiedAt and the expected balance are not part of events, so fetch once when the tablet's approval
+      // is accepted and once when the transfer completes.
+      if ((event.stage === 'VERIFIED' && event.outcome === 'APPROVED') || event.stage === 'EXECUTED') this.refresh(true);
     }
     if (event.stage === 'GEMINI' || (event.stage === 'VERIFIED' && event.outcome === 'REJECTED')) this.loadMetrics();
   }
@@ -451,6 +450,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
 
   // Nessie only lowers the balance once a transfer settles, so a pending transfer has no new balance yet.
   balanceText(transaction: TransactionRecord): string {
+    if (transaction.expectedBalanceMinor != null) return this.money(transaction.expectedBalanceMinor);
     if (transaction.newBalanceMinor != null) return this.money(transaction.newBalanceMinor);
     if (transaction.bankOutcome === 'FAILED') return 'Unchanged, nothing moved';
     if (transaction.bankOutcome === 'COMPLETED') return 'Not yet reported by the bank';
@@ -466,26 +466,6 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
       case 'UNKNOWN': return 'Outcome unknown, check Nessie before any retry';
       default: return 'Not sent to the bank';
     }
-  }
-
-  eventLabel(event: TransferTransportEvent): string {
-    const code = event.payload.reasonCode;
-    switch (event.stage) {
-      case 'PENDING': return 'Transfer created, waiting for the tablet';
-      case 'VERIFIED': return event.outcome === 'APPROVED' ? 'Tablet signature verified'
-        : `Tablet approval rejected${code ? ` (${code})` : ''}`;
-      case 'GEMINI': return event.outcome === 'APPROVED' ? 'Gemini review passed policy' : this.decisionLabel(code);
-      case 'EXECUTING': return 'Sending to the bank';
-      case 'BANK_PENDING': return 'Bank accepted, settlement pending';
-      case 'EXECUTED': return 'Bank confirmed the transfer';
-      case 'FAILED': return 'Bank rejected the transfer';
-      case 'OUTCOME_UNKNOWN': return 'Bank outcome unknown, review required';
-    }
-  }
-
-  eventTone(event: TransferTransportEvent): 'good' | 'bad' | 'wait' {
-    if (event.payload.errorState !== null) return 'bad';
-    return event.stage === 'EXECUTED' || (event.stage === 'GEMINI' && event.outcome === 'APPROVED') ? 'good' : 'wait';
   }
 
   shortId(id: string): string {

@@ -24,6 +24,12 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
  Optional<Transaction> findFirstByDeviceIdAndStatusAndExpiresAtAfterOrderByCreatedAtAsc(
    String deviceId, Transaction.Status status, Instant now);
 
+ java.util.List<Transaction> findByStatusOrderByBankOutcomeAtAscTransactionIdAsc(Transaction.Status status);
+
+ // Recent bank-pending transfers with a receipt, oldest first, for the settlement check.
+ java.util.List<Transaction> findTop20ByStatusAndBankReceiptIdIsNotNullAndBankSubmittedAtAfterOrderByBankSubmittedAtAsc(
+   Transaction.Status status, Instant submittedAfter);
+
  @Lock(LockModeType.PESSIMISTIC_WRITE)
  @Query("select t from Transaction t where t.transactionId = :id")
  Optional<Transaction> findForUpdate(@Param("id") String id);
