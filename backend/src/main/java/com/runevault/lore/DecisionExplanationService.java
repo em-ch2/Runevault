@@ -219,8 +219,8 @@ public class DecisionExplanationService {
    "decidedAt", iso(t.getGeminiDecisionAt()), "recordedReason", recordedReason(t)));
   evidence.put("cfoApproval", ordered(
    "requiredByConfiguration", approvals.required(), "state", approvalState(t),
-   "approvedAt", iso(t.getApprovedAt()), "mfaStepUpUsed", t.getApprovalStepUp(),
-   "mfaStepUpRequiredForAmount", approvals.requiresStepUp(t.getAmountMinor())));
+   "approvedAt", iso(t.getApprovedAt()),
+   "note", "CFO approval uses the reviewer's normal sign-in at every amount; there is no separate MFA step."));
   evidence.put("bankingSettlement", ordered(
    "outcome", t.getBankOutcome() == null ? "NOT_SUBMITTED" : t.getBankOutcome().name(),
    "reason", t.getBankReason() == null ? null : t.getBankReason().name(),

@@ -82,11 +82,11 @@ public class TransactionProcessor {
   return execution.executeClaimed(claimed, analysis);
  }
 
- /** Maker-checker release by a second person; the claim enforces approver, self-approval and step-up rules. */
- public Map<String, Object> approve(String id, String approverSubject, boolean stepUp) {
+ /** Maker-checker release by a second person; the claim enforces the approver and self-approval rules. */
+ public Map<String, Object> approve(String id, String approverSubject) {
   if (TransactionSynchronizationManager.isActualTransactionActive())
    throw new IllegalStateException("Approve outside any database transaction");
-  VerifiedTransaction claimed = claims.claimApproved(id, approverSubject, stepUp);
+  VerifiedTransaction claimed = claims.claimApproved(id, approverSubject);
   events.executing(id);
   return execution.executeClaimed(claimed, null);
  }

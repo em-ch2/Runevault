@@ -47,19 +47,15 @@ export interface TransactionRecord {
   geminiDecisionAt?: string | null;
   approverSubject?: string | null;
   approvedAt?: string | null;
+  // Historical only: recorded by approvals made under the retired step-up MFA rule; null for newer approvals.
   approvalStepUp?: boolean | null;
   awaitingApproval?: boolean;
-  stepUpRequired?: boolean;
 }
-
-// OIDC multi-factor policy; asking Auth0 for it makes the step-up Action require MFA.
-const MFA_ACR = 'http://schemas.openid.net/pape/policies/2007/06/multi-factor';
 
 export function approvalError(error: unknown): string {
   if (error instanceof HttpErrorResponse) {
     const code = (error.error as { error?: string } | null)?.error;
     if (code === 'self_approval') return 'You requested this transfer, so a different approver must release it.';
-    if (code === 'step_up_required') return 'This amount needs multi-factor verification. Approve again and complete MFA.';
     if (code === 'not_eligible' || error.status === 409) return 'This transfer can no longer be approved. Refresh the list.';
   }
   return transactionError(error);
@@ -234,20 +230,11 @@ export class TransactionApiService {
     )));
   }
 
-  // Large transfers open an Auth0 popup that requires MFA first. Subscribe straight from the click
-  // handler so the browser treats the popup as user-initiated.
-  approve(txId: string, stepUp: boolean) {
-    const token = stepUp
-      ? this.auth0.getAccessTokenWithPopup({
-        authorizationParams: { audience: environment.auth0.audience, acr_values: MFA_ACR },
-      }).pipe(map((value) => {
-        if (!value) throw new Error('MFA was not completed');
-        return value;
-      }))
-      : this.token();
-    return token.pipe(switchMap((value) => this.http.post<{ status: string }>(
+  // Every amount uses the approver's normal access token; the backend checks approve:transactions and self-approval.
+  approve(txId: string) {
+    return this.token().pipe(switchMap((token) => this.http.post<{ status: string }>(
       `${this.endpoint}/${encodeURIComponent(txId)}/approve`, null, {
-        headers: new HttpHeaders({ Authorization: `Bearer ${value}` }),
+        headers: new HttpHeaders({ Authorization: `Bearer ${token}` }),
       },
     )));
   }

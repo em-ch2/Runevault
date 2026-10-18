@@ -16,7 +16,7 @@ describe('Authorization evidence', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  it('renders recorded physical, policy, approver, MFA, and banking evidence', () => {
+  it('renders recorded physical, policy, approver, historical MFA, and banking evidence', () => {
     const panel = render({ ...base, status: 'EXECUTED', requesterSubject: 'auth0|maker',
       verifiedAt: '2026-10-18T10:01:00Z', riskScore: 12,
       geminiDecisionReason: 'GEMINI_APPROVED', approverSubject: 'auth0|cfo',
@@ -28,8 +28,8 @@ describe('Authorization evidence', () => {
     expect(panel.textContent).toContain('Risk score 12 / 100');
     expect(panel.textContent).toContain('Approved by policy');
     expect(panel.textContent).toContain('auth0|cfo');
-    expect(panel.textContent).toContain('Approval MFA');
-    expect(panel.textContent).toContain('Used');
+    expect(panel.textContent).toContain('Historical MFA record');
+    expect(panel.textContent).toContain('MFA used');
     expect(panel.textContent).toContain('COMPLETED');
     expect(panel.querySelectorAll('dd').length).toBe(12);
   });
@@ -40,6 +40,13 @@ describe('Authorization evidence', () => {
     expect(panel.textContent).toContain('Not recorded');
     expect(panel.querySelectorAll('dd')[1].textContent).toBe('Not recorded');
     expect(panel.textContent).not.toContain('receipt-1');
+  });
+
+  it('does not mention MFA for approvals made without the retired rule', () => {
+    const panel = render({ ...base, status: 'EXECUTED', approverSubject: 'auth0|cfo',
+      approvedAt: '2026-10-18T10:03:00Z', approvalStepUp: null });
+    expect(panel.textContent).not.toContain('MFA');
+    expect(panel.querySelectorAll('dd').length).toBe(11);
   });
 
   it('shows the persisted policy rejection reason', () => {

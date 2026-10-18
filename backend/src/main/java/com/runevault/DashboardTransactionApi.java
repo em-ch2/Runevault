@@ -11,13 +11,11 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -36,9 +34,6 @@ public class DashboardTransactionApi {
  private final DeviceApi device;
  private final TransactionProcessor processor;
  private final ApprovalPolicy approvals;
-
- // OIDC's multi-factor policy URI: Auth0 enforces MFA when a token request carries it (see the step-up Action).
- static final String MFA_ACR = "http://schemas.openid.net/pape/policies/2007/06/multi-factor";
 
  public DashboardTransactionApi(DeviceAuthorizationService authorization, TransactionRepository transactions,
    ApprovalCodeGenerator glyphGenerator, PipelineEvents events, DeviceApi device, TransactionProcessor processor,
@@ -66,8 +61,10 @@ public class DashboardTransactionApi {
    String lore, Double translationConfidence, Double riskScore, List<String> riskFlags,
    String riskExplanation, String securityMessage,
    AuditEvent.Reason geminiDecisionReason, String geminiDecisionExplanation, Instant geminiDecisionAt,
-   String approverSubject, Instant approvedAt, Boolean approvalStepUp,
-   boolean awaitingApproval, boolean stepUpRequired) {
+   String approverSubject, Instant approvedAt,
+   // Historical only: set by approvals made under the retired step-up MFA rule, null for newer approvals.
+   Boolean approvalStepUp,
+   boolean awaitingApproval) {
 
   TransactionView(Transaction transaction, Long expectedBalanceMinor, ApprovalPolicy approvals) {
    this(transaction, SafeAssessment.of(transaction), expectedBalanceMinor, approvals);
@@ -88,8 +85,7 @@ public class DashboardTransactionApi {
     transaction.getApproverSubject(), transaction.getApprovedAt(), transaction.getApprovalStepUp(),
     approvals.required() && transaction.getStatus() == Transaction.Status.VERIFIED
      && transaction.getGeminiDecisionReason() == AuditEvent.Reason.GEMINI_APPROVED
-     && transaction.getExecutionClaimedAt() == null,
-    approvals.requiresStepUp(transaction.getAmountMinor()));
+     && transaction.getExecutionClaimedAt() == null);
   }
  }
 
@@ -155,34 +151,19 @@ public class DashboardTransactionApi {
    .map(t -> new TransactionView(t, expected.get(t.getTransactionId()), approvals));
  }
 
- // Maker-checker release. Step-up follows RFC 9470: a token without MFA gets 401 insufficient_user_authentication.
- // The claim re-checks self-approval and step-up under the transaction lock; these early answers are only for the UI.
+ // Maker-checker release with the approver's normal access token at every amount. The claim re-checks
+ // the approver and self-approval under the transaction lock.
  @PostMapping("/{id}/approve")
  @PreAuthorize("hasAuthority('PERM_approve:transactions')")
  public ResponseEntity<Map<String, Object>> approve(@PathVariable String id, @AuthenticationPrincipal Jwt jwt) {
   if (!approvals.required()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-  Transaction transaction = transactions.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-  boolean stepUp = mfa(jwt);
-  if (approvals.requiresStepUp(transaction.getAmountMinor()) && !stepUp)
-   return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-    .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer error=\"insufficient_user_authentication\", "
-     + "error_description=\"MFA is required to approve this amount\", acr_values=\"" + MFA_ACR + "\"")
-    .body(Map.of("error", "step_up_required"));
+  if (transactions.findById(id).isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
   try {
-   return ResponseEntity.ok(processor.approve(id, jwt.getSubject(), stepUp));
+   return ResponseEntity.ok(processor.approve(id, jwt.getSubject()));
   } catch (TransactionService.ClaimRejected e) {
-   return switch (e.reason()) {
-    case SELF_APPROVAL -> ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "self_approval"));
-    case STEP_UP_REQUIRED -> ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "step_up_required"));
-    default -> ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "not_eligible"));
-   };
+   return e.reason() == AuditEvent.Reason.SELF_APPROVAL
+    ? ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "self_approval"))
+    : ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "not_eligible"));
   }
- }
-
- // Auth0 access tokens carry no amr by default; the step-up Action adds it once MFA has been performed.
- static boolean mfa(Jwt jwt) {
-  for (String claim : new String[] {"amr", "https://runevault/amr"})
-   if (jwt.getClaims().get(claim) instanceof Collection<?> methods && methods.contains("mfa")) return true;
-  return false;
  }
 }
