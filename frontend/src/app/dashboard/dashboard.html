@@ -477,6 +477,7 @@
       <p class="flow-guidance">These transfers were signed on the Pico. Most passed the Gemini review; any Gemini rated high risk are flagged below for careful review. Each one needs a second person to release it. You cannot release a transfer you requested.</p>
     @if (approvalNotice()) { <p class="status status-good" role="status">{{ approvalNotice() }}</p> }
     @if (approvalProblem()) { <p class="form-error" role="alert">{{ approvalProblem() }}</p> }
+    @if (approvalListProblem()) { <p class="form-error" role="alert">Could not load the sign-off list: {{ approvalListProblem() }}</p> }
     @if (approvalQueue().length === 0) {
       <p class="empty">Nothing is waiting for sign-off.</p>
     } @else {

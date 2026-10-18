@@ -57,6 +57,8 @@ export function approvalError(error: unknown): string {
     const code = (error.error as { error?: string } | null)?.error;
     if (code === 'self_approval') return 'You requested this transfer, so a different approver must release it.';
     if (code === 'not_eligible' || error.status === 409) return 'This transfer can no longer be approved. Refresh the list.';
+    // The approve route answers 404 when maker-checker is off on this server, or the transfer is gone.
+    if (error.status === 404) return 'Sign-off is not enabled on this server, or this transfer no longer exists.';
   }
   return transactionError(error);
 }
