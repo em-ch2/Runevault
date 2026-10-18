@@ -1,5 +1,6 @@
 package com.runevault.lore;
 
+import com.runevault.banking.BankReadGateway;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -46,14 +47,17 @@ public class LoreAuditService {
 
  private final GeminiClient gemini;
  private final ObjectMapper mapper;
+ private final BankReadGateway bankReads;
 
- public LoreAuditService(GeminiClient gemini, ObjectMapper mapper) {
+ public LoreAuditService(GeminiClient gemini, ObjectMapper mapper, BankReadGateway bankReads) {
   this.gemini = gemini;
   this.mapper = mapper;
+  this.bankReads = bankReads;
  }
 
  public JsonNode audit(String glyphs, String dictionaryText, long amountMinor, String destination) throws Exception {
   if (!gemini.isConfigured()) throw new IllegalStateException("Gemini is not configured");
+  BankReadGateway.TransferHistory history = bankReads.transferHistory(destination);
   String user = """
     Glyph dictionary:
     %s
@@ -64,7 +68,17 @@ public class LoreAuditService {
     amountMinor: %d
     currency: USD
     destination: %s
-    """.formatted(dictionaryText, glyphs, amountMinor, destination);
+
+    Destination account transfer history (observed records only; amounts in minor units):
+    observedTransfers: %d
+    transfersInLastThirtyDays: %d
+    totalHistoricalAmountMinor: %d
+    largestHistoricalAmountMinor: %d
+    failedTransfers: %d
+    historyTruncated: %s
+    """.formatted(dictionaryText, glyphs, amountMinor, destination,
+     history.observedTransfers(), history.recentThirtyDays(), history.totalAmountMinor(),
+     history.largestAmountMinor(), history.failedTransfers(), history.truncated());
   JsonNode result = mapper.readTree(gemini.generateJson(SYSTEM, user, RESPONSE_SCHEMA));
   validate(result);
   return result;

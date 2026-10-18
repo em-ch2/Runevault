@@ -45,6 +45,43 @@ class NessieBankGatewayOutcomeTest {
   return result.get();
  }
 
+ @Test void accountLookupDistinguishesUnknownFromUnavailable() throws Exception {
+  HttpClient found = mock(HttpClient.class);
+  var foundResponse = response(200, "{\"_id\":\"" + DEST + "\",\"balance\":500}");
+  when(found.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenReturn(foundResponse);
+  assertTrue(gateway(found).destinationExists(DEST));
+
+  HttpClient missing = mock(HttpClient.class);
+  var missingResponse = response(404, "{}");
+  when(missing.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenReturn(missingResponse);
+  assertFalse(gateway(missing).destinationExists(DEST));
+
+  HttpClient unavailable = mock(HttpClient.class);
+  when(unavailable.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenThrow(new IOException("offline"));
+  assertThrows(BankReadGateway.Unavailable.class, () -> gateway(unavailable).destinationExists(DEST));
+ }
+
+ @Test void transferHistoryProducesBoundedRiskFeatures() throws Exception {
+  HttpClient http = mock(HttpClient.class);
+  String today = java.time.LocalDate.now().toString();
+  var historyResponse = response(200, "[{\"amount\":12.34,\"transaction_date\":\"" + today
+   + "\",\"status\":\"completed\"},{\"amount\":50,\"status\":\"failed\"}]");
+  when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+   .thenReturn(historyResponse);
+  var history = gateway(http).transferHistory(DEST);
+  assertEquals(2, history.observedTransfers());
+  assertEquals(1, history.recentThirtyDays());
+  assertEquals(6234L, history.totalAmountMinor());
+  assertEquals(5000L, history.largestAmountMinor());
+  assertEquals(1, history.failedTransfers());
+  ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
+  verify(http).send(request.capture(), any(HttpResponse.BodyHandler.class));
+  assertEquals("/accounts/" + DEST + "/transfers", request.getValue().uri().getPath());
+ }
+
  @Test void providerTransferCarriesSelectedPayeeAndExactCents() throws Exception {
   HttpClient http = mock(HttpClient.class);
   var before = response(200, "{\"balance\":1000}");
