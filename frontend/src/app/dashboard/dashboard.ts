@@ -17,6 +17,8 @@ import { Stage, TransferStore } from './transfer-store';
 import { BoatMotion, glideTo, rockBoat, slideAcross, slideUp, swingCompass, wavePath } from './motion';
 
 const STAGE_ORDER: Stage[] = ['received', 'sealed', 'verified', 'executed'];
+// "SOME_CODE" → "Some code", for audit codes without a hand-written label.
+const humanize = (code: string): string => code.charAt(0) + code.slice(1).toLowerCase().replaceAll('_', ' ');
 type NavSection = 'dashboard' | 'approval' | 'signoff' | 'history' | 'analytics' | 'audit';
 
 @Component({
@@ -370,6 +372,8 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     this.landing.set(false);
     this.loadAudit(0);
     this.loadPolicyMetrics();
+    afterNextRender(() => slideUp([...this.host.nativeElement.querySelectorAll('.audit-header, .audit-filters, .audit-log')],
+      { distance: 24, stagger: 0.07 }), { injector: this.injector });
   }
 
   loadPolicyMetrics(): void {
@@ -378,6 +382,71 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
       next: (metrics) => { this.policyMetrics.set(metrics); this.policyMetricsError.set(null); },
       error: (error: unknown) => this.policyMetricsError.set(transactionError(error)),
     });
+  }
+
+  clearAuditFilters(): void {
+    this.auditFilters.reset();
+    this.loadAudit(0);
+  }
+
+  // Audit display: readable labels for the backend's fixed codes, and a colour tone per outcome.
+  readonly auditTones = [
+    { outcome: 'APPROVED', key: 'good', label: 'approved' },
+    { outcome: 'REJECTED', key: 'bad', label: 'rejected' },
+    { outcome: 'PENDING', key: 'wait', label: 'pending' },
+    { outcome: 'UNKNOWN', key: 'unknown', label: 'unknown' },
+  ] as const;
+
+  readonly auditTally = computed(() => {
+    const tally: Record<string, number> = {};
+    for (const event of this.auditPage()?.content ?? []) tally[event.outcome] = (tally[event.outcome] ?? 0) + 1;
+    return tally;
+  });
+
+  auditTone(outcome: string): string {
+    return this.auditTones.find((tone) => tone.outcome === outcome)?.key ?? 'unknown';
+  }
+
+  auditOutcomeLabel(outcome: string): string {
+    return outcome.charAt(0) + outcome.slice(1).toLowerCase();
+  }
+
+  auditTypeLabel(type: string): string {
+    switch (type) {
+      case 'TRANSACTION_CREATION': return 'Transfer requested';
+      case 'DEVICE_AUTHORIZATION': return 'Pico approval';
+      case 'GEMINI_DECISION': return 'Gemini review';
+      case 'EXECUTION_CLAIM': return 'Released for banking';
+      case 'BANK_OUTCOME': return 'Bank outcome';
+      case 'DEVICE_REVOCATION': return 'Device revoked';
+      default: return humanize(type);
+    }
+  }
+
+  auditReasonLabel(reason: string): string {
+    const labels: Record<string, string> = {
+      APPROVED: 'Approved', UNKNOWN_DEVICE: 'Unknown device', INVALID_SIGNATURE: 'Signature did not verify',
+      NO_PENDING_DEVICE_TRANSACTION: 'No pending transfer for this device', COUNTER_REPLAY: 'Reused approval counter',
+      TRANSACTION_EXPIRED: 'Approval window expired', TRANSACTION_MISMATCH: 'Signed details did not match',
+      INCORRECT_GLYPHS: 'Wrong glyphs entered', DEVICE_LOCKED: 'Device locked after wrong attempts',
+      AMOUNT_LIMIT_EXCEEDED: 'Over the amount limit', DESTINATION_NOT_ALLOWED: 'Destination not allowed',
+      EXECUTION_CLAIMED: 'Claimed for banking', EXECUTION_INELIGIBLE: 'Not eligible for banking',
+      DEVICE_REVOKED: 'Device revoked', REVOKED_BY_ADMIN: 'Revoked by an administrator',
+      ACCEPTED_PENDING: 'Bank accepted, settlement pending', CONFIRMED_COMPLETED: 'Bank confirmed completion',
+      DEFINITE_REJECTION: 'Bank rejected the transfer', PRE_SUBMISSION_FAILURE: 'Stopped before reaching the bank',
+      SUBMISSION_UNCERTAIN: 'Bank outcome uncertain', MALFORMED_RESPONSE: 'Unreadable bank response',
+      PROVIDER_STATUS_UNKNOWN: 'Unrecognised bank status', GEMINI_APPROVED: 'Passed the Gemini review',
+      GEMINI_UNAVAILABLE: 'Gemini unavailable', GEMINI_INVALID_RESPONSE: 'Gemini answer was invalid',
+      GEMINI_LOW_CONFIDENCE: 'Translation confidence too low', GEMINI_HIGH_RISK: 'Risk above the limit',
+      APPROVER_REQUIRED: 'Needs a second approver', SELF_APPROVAL: 'Self-approval refused', STEP_UP_REQUIRED: 'Step-up MFA required',
+    };
+    return labels[reason] ?? humanize(reason);
+  }
+
+  // Auth0 subjects look like "auth0|65f…"; show the provider and a short id.
+  shortActor(subject: string): string {
+    const [provider, id] = subject.includes('|') ? subject.split('|', 2) : ['', subject];
+    return `${provider ? provider + ' · ' : ''}${this.shortId(id)}`;
   }
 
   loadAudit(page = this.auditPage()?.number ?? 0): void {

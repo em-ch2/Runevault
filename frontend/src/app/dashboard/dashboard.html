@@ -15,7 +15,7 @@
     <a href="#live-list-title" [class.nav-current]="activeNav() === 'history'" [attr.aria-current]="activeNav() === 'history' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('history', 'live-list-title')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M8 4H18A2 2 0 0 1 18 8H16V18A2 2 0 0 1 14 20H5A2 2 0 0 1 5 16H7V6A2 2 0 0 1 9 4"/><path d="M7 16H14V18A2 2 0 0 0 16 18"/><path d="M10 9H13M10 12H13"/></svg></span> History</a>
     <a href="#metrics-title" [class.nav-current]="activeNav() === 'analytics'" [attr.aria-current]="activeNav() === 'analytics' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="navTo('analytics', 'metrics-title')"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><g transform="rotate(-28 12 11)"><rect x="2.5" y="9.5" width="6" height="3.5" rx="0.8"/><rect x="8.5" y="8.8" width="6" height="5" rx="0.8"/><rect x="14.5" y="8" width="7" height="6.5" rx="0.8"/></g><path d="M11 14.5L8 21.5M12 14.5L15.5 21.5"/></svg></span> Analytics</a>
     }
-    @if (canAudit()) { <a href="#audit-view" [class.nav-current]="activeNav() === 'audit'" [attr.aria-current]="activeNav() === 'audit' ? 'page' : null" (click)="openAudit()">Audit</a> }
+    @if (canAudit()) { <a href="#audit-view" [class.nav-current]="activeNav() === 'audit'" [attr.aria-current]="activeNav() === 'audit' ? 'page' : null" (mouseenter)="hoverNav($event)" (focus)="hoverNav($event)" (click)="openAudit()"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M6 3H15L19 7V12"/><path d="M15 3V7H19"/><path d="M6 3V21H11"/><path d="M9 9H13M9 12H12"/><circle cx="16.5" cy="16.5" r="3.2"/><path d="M18.8 18.8L21 21"/></svg></span> Audit</a> }
     }
   </nav>
   <div class="sidebar-seal" aria-hidden="true">&#10023;</div>
@@ -59,8 +59,25 @@
 
 @if (auditOpen()) {
 <section id="audit-view" class="audit-view" aria-labelledby="audit-title">
-  <h1 id="audit-title">Audit events</h1>
-  <p class="muted">Read-only company activity.</p>
+  <header class="audit-header">
+    <div>
+      <p class="landing-kicker">Read-only &middot; company-wide</p>
+      <h2 id="audit-title">Audit events</h2>
+      <p class="audit-lead">Every Pico approval, Gemini review, sign-off and bank outcome, exactly as it was recorded.</p>
+    </div>
+    @if (auditPage(); as page) {
+      <div class="audit-tally" aria-label="Events in this view">
+        <div class="audit-total"><strong>{{ page.totalElements }}</strong><span>{{ page.totalElements === 1 ? 'event' : 'events' }}</span></div>
+        <ul>
+          @for (tone of auditTones; track tone.outcome) {
+            <li [class]="'tone-' + tone.key"><span class="tally-dot"></span>{{ auditTally()[tone.outcome] ?? 0 }} {{ tone.label }}</li>
+          }
+        </ul>
+        <small>on this page</small>
+      </div>
+    }
+  </header>
+
   <section aria-labelledby="audit-policy-title">
     <h2 id="audit-policy-title">Gemini policy decisions</h2>
     <p class="muted small">Company-wide approvals and blocks per minute. These are policy decisions, not settled bank transfers.</p>
@@ -72,23 +89,62 @@
     } @else { <p role="status">Loading policy decisions…</p> }
     <button class="btn btn-ghost" type="button" (click)="loadPolicyMetrics()">Refresh chart</button>
   </section>
-  <form [formGroup]="auditFilters" (ngSubmit)="loadAudit(0)" class="audit-filters">
-    <label>Transaction ID <input formControlName="transactionId" type="text" maxlength="36" /></label>
-    <label>Outcome <select formControlName="outcome"><option value="">All</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option><option value="PENDING">Pending</option><option value="UNKNOWN">Unknown</option></select></label>
-    <label>From <input formControlName="from" type="datetime-local" /></label>
-    <label>To <input formControlName="to" type="datetime-local" /></label>
-    <button class="btn btn-primary" type="submit">Apply filters</button>
+
+  <form [formGroup]="auditFilters" (ngSubmit)="loadAudit(0)" class="audit-filters live-form">
+    <label>Transaction ID<input formControlName="transactionId" type="text" maxlength="36" placeholder="Any transaction" autocomplete="off" /></label>
+    <label>Outcome
+      <select formControlName="outcome">
+        <option value="">All outcomes</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option>
+        <option value="PENDING">Pending</option><option value="UNKNOWN">Unknown</option>
+      </select>
+    </label>
+    <label>From<input formControlName="from" type="datetime-local" /></label>
+    <label>To<input formControlName="to" type="datetime-local" /></label>
+    <div class="audit-filter-actions">
+      <button class="btn btn-primary" type="submit" [disabled]="auditLoading()">Apply filters</button>
+      <button class="btn btn-ghost" type="button" (click)="clearAuditFilters()" [disabled]="auditLoading()">Clear</button>
+    </div>
   </form>
-  @if (auditError()) { <p class="form-error" role="alert">{{ auditError() }}</p> }
-  @if (auditLoading()) { <p role="status">Loading audit events…</p> }
-  @if (auditPage(); as page) {
-    <p class="muted">{{ page.totalElements }} events</p>
-    <div class="audit-table-wrap"><table class="audit-table"><thead><tr><th>Time</th><th>Event</th><th>Outcome</th><th>Reason</th><th>Transaction</th><th>Device</th><th>Actor</th></tr></thead><tbody>
-      @for (event of page.content; track event.id) { <tr><td>{{ time(event.timestamp) }}</td><td>{{ event.eventType }}</td><td>{{ event.outcome }}</td><td>{{ event.reason }}</td><td class="mono">{{ event.transactionId ?? '—' }}</td><td class="mono">{{ event.deviceId ?? '—' }}</td><td class="mono">{{ event.actorSubject ?? '—' }}</td></tr> }
-    </tbody></table></div>
-    @if (page.content.length === 0) { <p class="empty">No matching audit events.</p> }
-    <div class="audit-pagination"><button class="btn btn-ghost" type="button" [disabled]="page.number === 0 || auditLoading()" (click)="loadAudit(page.number - 1)">Previous</button><span>Page {{ page.number + 1 }} of {{ page.totalPages || 1 }}</span><button class="btn btn-ghost" type="button" [disabled]="page.number + 1 >= page.totalPages || auditLoading()" (click)="loadAudit(page.number + 1)">Next</button></div>
-  }
+
+  <div class="audit-log">
+    @if (auditError()) { <p class="form-error" role="alert">{{ auditError() }}</p> }
+    @if (auditLoading() && !auditPage()) { <p class="empty" role="status">Reading the ledger…</p> }
+    @if (auditPage(); as page) {
+      @if (page.content.length === 0) {
+        <p class="empty">No events match these filters.</p>
+      } @else {
+        <ol class="audit-list" [class.audit-list-loading]="auditLoading()">
+          @for (event of page.content; track event.id) {
+            <li [class]="'audit-row tone-' + auditTone(event.outcome)">
+              <span class="audit-mark" aria-hidden="true"></span>
+              <div class="audit-what">
+                <strong>{{ auditTypeLabel(event.eventType) }}</strong>
+                <span>{{ auditReasonLabel(event.reason) }}</span>
+              </div>
+              <dl class="audit-ids">
+                @if (event.transactionId) { <div><dt>Transfer</dt><dd class="mono" [title]="event.transactionId">{{ shortId(event.transactionId) }}</dd></div> }
+                @if (event.deviceId) { <div><dt>Device</dt><dd class="mono">{{ event.deviceId }}</dd></div> }
+                @if (event.actorSubject) { <div><dt>By</dt><dd class="mono" [title]="event.actorSubject">{{ shortActor(event.actorSubject) }}</dd></div> }
+              </dl>
+              <div class="audit-when">
+                <span class="outcome-badge">{{ auditOutcomeLabel(event.outcome) }}</span>
+                <time [attr.datetime]="event.timestamp">{{ time(event.timestamp) }}</time>
+              </div>
+            </li>
+          }
+        </ol>
+      }
+      <nav class="audit-pager" aria-label="Audit pages">
+        <button class="pager-arrow" type="button" [disabled]="page.number === 0 || auditLoading()" (click)="loadAudit(page.number - 1)" aria-label="Newer events" title="Newer events">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5L8 12L15 19" /></svg>
+        </button>
+        <span>Page {{ page.number + 1 }} of {{ page.totalPages || 1 }}</span>
+        <button class="pager-arrow" type="button" [disabled]="page.number + 1 >= page.totalPages || auditLoading()" (click)="loadAudit(page.number + 1)" aria-label="Older events" title="Older events">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5L16 12L9 19" /></svg>
+        </button>
+      </nav>
+    }
+  </div>
 </section>
 }
 
