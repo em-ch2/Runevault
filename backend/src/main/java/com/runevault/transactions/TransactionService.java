@@ -80,7 +80,9 @@ public class TransactionService {
                 || !assignedDeviceId.equals(transaction.getDeviceId())
                 || transaction.getExpectedGlyphs() == null || transaction.getExpectedGlyphs().isBlank()
                 || transaction.getExecutionClaimedAt() != null
-                || transaction.getGeminiDecisionReason() != AuditEvent.Reason.GEMINI_APPROVED
+                // Gemini-approved, or escalated for high risk and being released by a second approver.
+                || !(transaction.getGeminiDecisionReason() == AuditEvent.Reason.GEMINI_APPROVED
+                    || approver != null && approvals.escalates(transaction.getGeminiDecisionReason()))
                 || transaction.getGeminiDecisionAt() == null
                 || !"USD".equals(transaction.getCurrency())
                 || !policy.allowsAmount(transaction.getAmountMinor())
@@ -92,7 +94,7 @@ public class TransactionService {
                 throw rejected(assignedDeviceId, id, AuditEvent.Reason.APPROVER_REQUIRED);
             if (approver.equals(transaction.getRequesterSubject()))
                 throw rejected(assignedDeviceId, id, AuditEvent.Reason.SELF_APPROVAL, approver);
-            if (approvals.requiresStepUp(transaction.getAmountMinor()) && !stepUp)
+            if (approvals.requiresStepUp(transaction.getAmountMinor(), transaction.getGeminiDecisionReason()) && !stepUp)
                 throw rejected(assignedDeviceId, id, AuditEvent.Reason.STEP_UP_REQUIRED, approver);
         }
         Instant claimedAt = Instant.now();
