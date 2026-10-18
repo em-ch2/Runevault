@@ -14,6 +14,16 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 /** One live orchestration path, invoked only after physical authorization commits. */
 @Service
 public class TransactionProcessor {
+ private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TransactionProcessor.class);
+
+ private static String describe(Exception e) {
+  if (e instanceof org.springframework.web.client.RestClientResponseException response)
+   return "HTTP " + response.getStatusCode().value();
+  Throwable root = e;
+  while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+  return e.getClass().getSimpleName() + (root != e ? " caused by " + root.getClass().getSimpleName() : "");
+ }
+
  private final TransactionRepository transactions;
  private final LoreAuditService lore;
  private final GeminiPolicy policy;
@@ -51,8 +61,11 @@ public class TransactionProcessor {
     reason = policy.decide(analysis);
     json = analysis.toString();
    } catch (LoreAuditService.InvalidResponse | com.fasterxml.jackson.core.JsonProcessingException e) {
+    log.warn("Gemini returned an invalid assessment for {} ({})", id, e.getClass().getSimpleName());
     reason = AuditEvent.Reason.GEMINI_INVALID_RESPONSE;
    } catch (Exception e) {
+    // The cause only (exception type, HTTP status or timeout); never the request, key or model text.
+    log.warn("Gemini was unavailable for {}: {}", id, describe(e));
     reason = AuditEvent.Reason.GEMINI_UNAVAILABLE;
    }
    reason = decisions.record(id, reason, json, policy.explain(reason, analysis));

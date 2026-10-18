@@ -159,3 +159,90 @@ app-folder-panel:not(.folder-open) { align-self:start; }
 .sidebar { position:sticky; top:0; height:100vh; height:100dvh; align-self:start; overflow-y:auto; scrollbar-width:none; }
 @media(max-width:1100px) { .wordmark { font-size:1.7rem; } }
 @media(max-width:700px) { .sidebar { position:static; height:auto; overflow:visible; }.wordmark { font-size:1.4rem; } }
+/* Landing page: the Dashboard tab. Flow blocks hide while it shows (they keep their state). */
+.vault-content > [hidden] { display:none!important; }
+.landing { margin:8px 16px 32px; display:grid; gap:16px; }
+.landing-hero { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); align-items:center; gap:24px; padding:36px 40px; border:1px solid #6b5c3c; border-radius:4px; background:radial-gradient(circle at 85% 30%,#28405b66,transparent 55%),#0c1c2e; box-shadow:inset 0 0 0 3px #18283a; overflow:hidden; }
+.landing-kicker { margin:0 0 10px; font-family:var(--serif); font-size:.72rem; letter-spacing:.2em; text-transform:uppercase; color:#cdbb92; }
+.landing h1 { margin:0 0 16px; font-family:var(--serif); font-size:clamp(2.2rem,4vw,3.4rem); font-weight:500; letter-spacing:.02em; color:var(--gold); }
+.landing-lead { margin:0 0 26px; max-width:52ch; font-size:1rem; line-height:1.75; color:#e6dfcf; }
+.landing-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.landing-actions .btn { width:auto; margin:0; padding:11px 20px; }
+.landing-actions .btn-primary { background:linear-gradient(100deg,#d8bd7c,#b18f4c); color:#132235; border-color:#c7a969; font-family:var(--serif); letter-spacing:.04em; }
+.landing-actions .btn-primary:hover { background:#e2c88a; }
+.landing-boat { width:100%; height:auto; max-height:280px; }
+.landing-boat .boat-hull { fill:#152a40; stroke:var(--gold); stroke-width:2.5; stroke-linejoin:round; }
+.landing-boat .boat-mast { stroke:#d2b574; stroke-width:3; stroke-linecap:round; }
+.landing-boat .boat-sail { fill:#f4ead6; stroke:#b69a5e; stroke-width:1.5; stroke-linejoin:round; }
+.landing-boat .boat-flag { fill:var(--gold); }
+.landing-boat .boat-port { fill:#d2b574; }
+.landing-boat .wave-back path { fill:#1d3b55; opacity:.85; }
+.landing-boat .wave-front path { fill:#2b5374; stroke:#7fa7c4; stroke-width:1.5; stroke-opacity:.5; }
+.landing-section { padding:26px 30px; border:1px solid #c6b389; border-radius:4px; color:#1b2c3c; background:linear-gradient(130deg,#faf5e9,#eee3cd); box-shadow:inset 0 0 0 3px #fff8,0 4px 12px #0002; }
+.landing-section h2 { margin:0 0 16px; padding-bottom:12px; border-bottom:1px solid #d5c8ae; font-family:var(--serif); font-size:1.1rem; letter-spacing:.06em; text-transform:uppercase; color:#3f4037; }
+.landing-note { margin:0 0 20px; max-width:70ch; line-height:1.7; color:#4a4a40; }
+.landing-steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:0; padding:0; list-style:none; counter-reset:step; }
+.landing-steps li { counter-increment:step; display:grid; gap:6px; padding:16px 16px 18px; border:1px solid #d5c8ae; border-radius:4px; background:#fffaf0aa; line-height:1.6; }
+.landing-steps li::before { content:counter(step); display:grid; place-items:center; width:30px; height:30px; margin-bottom:4px; border-radius:50%; background:#132235; color:var(--gold); font-family:Georgia,serif; font-size:16px; }
+.landing-steps strong { font-family:var(--serif); letter-spacing:.03em; }
+.landing-steps span { font-size:.88rem; color:#55544a; }
+.landing-glyphs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.landing-glyphs figure { display:flex; align-items:center; gap:14px; margin:0; padding:14px 16px; border:1px solid #c8b17f; border-radius:4px; background:linear-gradient(135deg,#fffbef,#e9d9b9); }
+.landing-glyphs .glyph .cartouche { fill:#fffaed; }.landing-glyphs .glyph .stroke { stroke:#233b4c; }
+.landing-glyphs figcaption { display:grid; gap:4px; font-size:.85rem; line-height:1.5; color:#55544a; }
+.landing-glyphs figcaption strong { font-family:var(--serif); font-size:1rem; letter-spacing:.06em; text-transform:uppercase; color:#1b2c3c; }
+@media(max-width:1100px) { .landing-hero { grid-template-columns:1fr; padding:28px; }.landing-boat { max-height:220px; }.landing-steps,.landing-glyphs { grid-template-columns:1fr; } }
+@media(max-width:700px) { .landing { margin:8px 10px 24px; }.landing-hero,.landing-section { padding:20px 18px; } }
+/* Dollar amount field and the "make another transfer" prompt. */
+.money-input { position:relative; display:flex; align-items:center; }
+.money-input > span { position:absolute; left:11px; color:#6c6656; font-size:.9rem; pointer-events:none; }
+.live-form .money-input input { width:100%; padding-left:24px; }
+.next-voyage { margin-top:22px; padding:16px 18px; border:1px solid var(--slab-edge); border-left:3px solid var(--gold); border-radius:4px; background:#b7985314; }
+.next-voyage p { margin:0 0 12px; }
+.next-voyage-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.next-voyage-actions .btn { width:auto; margin:0; padding:10px 18px; }
+/* Drawn nautical nav icons (ship's wheel, wax seal, scroll, spyglass). */
+.sidebar nav a > span { display:grid; place-items:center; }
+.nav-icon { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+@media(max-width:1100px) { .nav-icon { width:19px; height:19px; } }
+/* Lining numerals (Georgia's old-style 3 sits below the baseline), centred optically in the circle. */
+.landing-steps li::before { font-family:var(--serif); font-variant-numeric:lining-nums; font-weight:600; line-height:1; padding-top:1px; }
+@media(max-width:700px) { .sidebar nav a > span { display:none; } }
+/* Bank-reported vs calculated balance rows on the receipt. */
+.receipt-card .facts div,.history-facts div { grid-template-columns:minmax(120px,190px) minmax(0,1fr); }
+.calculated-tag { margin-left:6px; padding:1px 7px; border:1px solid currentColor; border-radius:10px; font-size:.68rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; opacity:.7; }
+/* History: arrows to step through transfers. */
+.history-pager { display:flex; align-items:center; gap:14px; margin:0 0 18px; padding:10px 12px; border:1px solid var(--slab-edge); border-radius:4px; background:#b7985312; }
+.pager-label { flex:1; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:6px; }
+.pager-label strong { font-family:var(--serif); font-size:1.15rem; }
+.pager-count { flex-basis:100%; font-size:.75rem; color:var(--ink-muted); }
+.pager-arrow { flex-shrink:0; display:grid; place-items:center; width:40px; height:40px; padding:0; border:1px solid var(--gold); border-radius:50%; background:transparent; color:var(--gold); cursor:pointer; transition:background-color .2s,transform .2s; }
+.pager-arrow svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.pager-arrow:hover:not(:disabled) { background:#b7985333; transform:scale(1.06); }
+.pager-arrow:disabled { opacity:.3; cursor:default; }
+.pager-arrow:focus-visible { outline:3px solid #b18e43; outline-offset:2px; }
+/* Landing cards float up a little on hover. */
+.landing-glyphs figure,.landing-steps li { transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease; will-change:transform; }
+.landing-glyphs figure:hover,.landing-steps li:hover { transform:translateY(-5px); box-shadow:0 10px 22px #4a3a1626,0 2px 6px #4a3a1614; border-color:#b69a5e; }
+.landing-glyphs figure:hover .glyph { animation:glyph-bob 1.6s ease-in-out infinite; }
+@keyframes glyph-bob { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-3px); } }
+@media(prefers-reduced-motion:reduce) { .landing-glyphs figure,.landing-steps li,.pager-arrow { transition:none; }.landing-glyphs figure:hover,.landing-steps li:hover { transform:none; }.landing-glyphs figure:hover .glyph { animation:none; } }
+.compass-logo img { transform-origin:50% 50%; }
+.compass-logo:focus-visible { outline-offset:-6px; }
+/* The sea column runs to the hero's top, right and bottom edges and clips the long wave band there, so the
+   water never ends inside the picture; its left edge fades out instead of stopping in a hard line. */
+.landing-sea { align-self:stretch; display:flex; align-items:flex-end; margin:-36px -40px -36px 0; overflow:hidden;
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 18%); mask-image:linear-gradient(to right,transparent,#000 18%); }
+.landing-sea .landing-boat { display:block; overflow:visible; margin:24px auto 0; }
+@media(max-width:1100px) { .landing-sea { margin:0 -28px -28px; -webkit-mask-image:none; mask-image:none; } }
+@media(max-width:700px) { .landing-sea { margin:0 -18px -20px; } }
+/* Login / sign-up: the ship and waves along the bottom of the story panel (.auth-story clips them). */
+.auth-ocean { position:absolute; left:0; right:0; bottom:0; height:30%; z-index:0; pointer-events:none; }
+.auth-ocean .ocean-scene { display:block; width:100%; height:100%; max-height:none; overflow:visible; }
+.auth-story-copy,.auth-brand,.auth-story-footer { position:relative; z-index:1; }
+.auth-story-footer { color:#e6dfcf!important; }
+@media(max-width:700px) { .auth-ocean { height:34%; } }
+/* Sign-off queue counts beside the nav label. */
+.nav-badge { margin-left:auto; padding:1px 7px; border:1px solid currentColor; border-radius:10px; font-size:.66rem; font-weight:700; line-height:1.5; color:var(--gold); }
+.nav-badge + .nav-badge { margin-left:4px; }
+.nav-badge-mfa { color:#f0b9a9; }

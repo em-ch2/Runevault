@@ -1,9 +1,9 @@
-import { AfterViewInit, Component, ElementRef, HostListener, Injector, OnDestroy, OnInit, ViewChild, afterNextRender, computed, effect, inject, signal } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, HostListener, Injector, OnDestroy, OnInit, ViewChild, afterNextRender, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subscription, interval } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
-import { PendingTransactionResponse, PipelineMetrics, TransactionApiService, TransactionRecord, approvalError, transactionError } from '../transactions/transaction-api.service';
+import { BankBalance, PendingTransactionResponse, PipelineMetrics, TransactionApiService, TransactionRecord, approvalError, transactionError } from '../transactions/transaction-api.service';
 import { TransferTransportEvent } from '../feed/feed-event';
 import { ApprovalsChart } from './approvals-chart';
 import { FolderPanel } from './folder-panel';
@@ -13,10 +13,10 @@ import { MockScenario } from '../feed/mock-feed';
 import { GLYPH_NAMES, Glyph } from './glyph';
 import { PicoApproval } from './pico-approval';
 import { Stage, TransferStore } from './transfer-store';
-import { glideTo, slideUp } from './motion';
+import { BoatMotion, glideTo, rockBoat, slideAcross, slideUp, swingCompass, wavePath } from './motion';
 
 const STAGE_ORDER: Stage[] = ['received', 'sealed', 'verified', 'executed'];
-type NavSection = 'dashboard' | 'transactions' | 'approvals' | 'signoff' | 'history' | 'analytics';
+type NavSection = 'dashboard' | 'approval' | 'signoff' | 'history' | 'analytics';
 
 @Component({
   selector: 'app-dashboard',
@@ -27,6 +27,11 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
   private readonly injector = inject(Injector);
   @ViewChild('navIndicator') private navIndicator?: ElementRef<HTMLElement>;
+  @ViewChild('compass') private compass?: ElementRef<HTMLElement>;
+
+  turnCompass(kind: 'hover' | 'rest' | 'click'): void {
+    if (this.compass) swingCompass(this.compass.nativeElement, kind);
+  }
   readonly auth = inject(AuthService);
   readonly feed = inject(FeedService);
   readonly store = inject(TransferStore);
@@ -40,6 +45,27 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   selectHistory(id: string): void {
     this.select(id);
     this.historyStep.set(3);
+  }
+
+  // Records arrive newest first, so -1 moves to a newer transfer and +1 to an older one.
+  readonly historyIndex = computed(() => this.records().findIndex((r) => r.transactionId === this.selectedId()));
+
+  stepHistory(offset: number): void {
+    const next = this.records().at(this.historyIndex() + offset);
+    if (this.historyIndex() < 0 || this.historyIndex() + offset < 0 || !next) return;
+    this.selectedId.set(next.transactionId);
+    afterNextRender(() => {
+      const panel = this.host.nativeElement.querySelector('.guided-flow > app-folder-panel:not([hidden]) .folder-content');
+      if (panel) slideAcross(panel, offset);
+    }, { injector: this.injector });
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onHistoryKey(event: KeyboardEvent): void {
+    if (this.landing() || this.currentPanel() !== 'history-trace-title') return;
+    if ((event.target as HTMLElement | null)?.closest('input, textarea, select')) return;
+    if (event.key === 'ArrowLeft') this.stepHistory(-1);
+    if (event.key === 'ArrowRight') this.stepHistory(1);
   }
 
   inspectHistoryStep(step: number): void {
@@ -70,6 +96,13 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     ?? (this.historyStep() !== null ? 'history-trace-title'
       : this.flowStep() === 0 ? 'live-create-title' : this.flowStep() === 1 ? 'authorize-title' : 'live-status-title'));
   readonly flowBlocked = computed(() => this.flowStep() === 3 && this.selected()?.status !== 'EXECUTED');
+  // Nothing more will happen on its own: the bank has answered, or the transfer was stopped before it.
+  readonly transferFinished = computed(() => {
+    const transaction = this.selected();
+    if (!this.flowStarted() || !transaction) return false;
+    return ['EXECUTED', 'BANK_PENDING', 'FAILED', 'OUTCOME_UNKNOWN', 'SIMULATED'].includes(transaction.status)
+      || (!!transaction.geminiDecisionReason && transaction.geminiDecisionReason !== 'GEMINI_APPROVED');
+  });
 
   startNewTransfer(): void {
     this.historyStep.set(null);
@@ -134,7 +167,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   });
   readonly pendingForm = new FormGroup({
     device: new FormControl('slab-01', { nonNullable: true, validators: [Validators.required, Validators.pattern('[A-Za-z0-9_-]{1,64}')] }),
-    amount: new FormControl(50000, { nonNullable: true, validators: [Validators.required, Validators.min(1), Validators.max(100000000)] }),
+    amount: new FormControl(500, { nonNullable: true, validators: [Validators.required, Validators.min(0.01), Validators.max(1000000)] }),
     dest: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern('[A-Za-z0-9_-]{1,64}')] }),
   });
   private poll: Subscription | null = null;
@@ -150,6 +183,12 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   readonly approvalNotice = signal<string | null>(null);
   readonly approvalProblem = signal<string | null>(null);
   readonly metricsError = signal<string | null>(null);
+  readonly bankBalance = signal<BankBalance | null>(null);
+  // Re-read the bank balance whenever the selected transfer gets (or changes) a bank outcome.
+  private readonly balanceRefresh = effect(() => {
+    const transaction = this.selected();
+    if (transaction?.bankOutcome) untracked(() => this.loadBankBalance());
+  });
   readonly liveOpen = computed(() => this.feed.connection() === 'open');
   // Polling is only a fallback: it runs while the live socket is down and a transfer is in flight.
   private readonly pollingFallback = effect(() => {
@@ -162,6 +201,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   // Slides the visible panel up whenever it changes; a mode switch also staggers in the bars above it.
   private lastMode: 'live' | 'demo' | null = null;
   private readonly panelMotion = effect(() => {
+    this.landing();
     const mode = this.mode();
     if (mode === 'live') this.currentPanel(); else this.demoPanel();
     const modeChanged = this.lastMode !== null && this.lastMode !== mode;
@@ -174,16 +214,17 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     }, { injector: this.injector });
   });
 
+  // The Dashboard tab is a landing page; the transfer flow, History and Analytics share the area below it.
+  readonly landing = signal(true);
   // History and Analytics follow the visible view, so the "Back" buttons also return the highlight.
-  private readonly navChoice = signal<NavSection>('dashboard');
   readonly activeNav = computed<NavSection>(() => {
-    if (this.mode() === 'demo') return 'dashboard';
+    if (this.landing()) return 'dashboard';
+    if (this.mode() === 'demo') return 'approval';
     const view = this.secondaryView();
     if (view === 'live-list-title' || this.historyStep() !== null) return 'history';
     if (view === 'metrics-title') return 'analytics';
     if (view === 'signoff-title') return 'signoff';
-    const choice = this.navChoice();
-    return choice === 'transactions' || choice === 'approvals' ? choice : 'dashboard';
+    return 'approval';
   });
   private readonly navMotion = effect(() => {
     this.activeNav();
@@ -191,10 +232,28 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   });
 
   navTo(section: NavSection, panelId?: string): void {
-    this.navChoice.set(section);
-    if (panelId) this.openLiveFolder(panelId);
-    else { this.switchMode('live'); this.historyStep.set(null); this.secondaryView.set(null); }
+    this.landing.set(section === 'dashboard');
+    if (section === 'dashboard') return;
+    if (panelId) { this.openLiveFolder(panelId); return; }
+    // Approval resumes a transfer in progress, or starts at the form once the last one has finished.
+    this.switchMode('live');
+    if (this.historyStep() !== null || this.flowStep() === 3) this.startNewTransfer();
+    this.secondaryView.set(null);
   }
+
+  readonly wavePath = wavePath;
+
+  private boat: BoatMotion | null = null;
+  // The scene speeds up while the pointer is over the hero, and eases back when it leaves.
+  paceBoat(factor: number): void { this.boat?.pace(factor); }
+  private readonly boatMotion = effect(() => {
+    const showing = this.landing();
+    afterNextRender(() => {
+      this.boat?.stop();
+      this.boat = showing ? rockBoat(this.host.nativeElement.querySelector('.landing-boat')) : null;
+      if (showing) slideUp([...this.host.nativeElement.querySelectorAll('.landing-hero, .landing-section')], { distance: 24, stagger: 0.08 });
+    }, { injector: this.injector });
+  });
 
   ngAfterViewInit(): void {
     this.restNavIndicator(true);
@@ -311,6 +370,7 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.boat?.stop();
     this.poll?.unsubscribe();
     this.approvalPoll?.unsubscribe();
     this.listRequest?.unsubscribe();
@@ -348,6 +408,20 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
     if (event.stage === 'GEMINI' || (event.stage === 'VERIFIED' && event.outcome === 'REJECTED')) this.loadMetrics();
   }
 
+  loadBankBalance(): void {
+    this.api.bankBalance().subscribe({
+      next: (balance) => this.bankBalance.set(balance),
+      error: () => this.bankBalance.set(null),
+    });
+  }
+
+  // Account-wide remaining balance for a transfer the bank accepted or completed (the sandbox never deducts).
+  remainingBalance(transaction: TransactionRecord): BankBalance | null {
+    const balance = this.bankBalance();
+    if (balance?.remainingBalanceMinor == null || balance.reportedBalanceMinor == null) return null;
+    return transaction.bankOutcome === 'ACCEPTED_PENDING' || transaction.bankOutcome === 'COMPLETED' ? balance : null;
+  }
+
   loadMetrics(): void {
     this.api.metrics(30).subscribe({
       next: (metrics) => { this.metrics.set(metrics); this.metricsError.set(null); },
@@ -379,14 +453,16 @@ export class Dashboard implements OnInit, AfterViewInit, OnDestroy {
 
   createPending(): void {
     this.pendingForm.markAllAsTouched();
-    const amount = this.pendingForm.controls.amount.value;
-    if (this.pendingForm.invalid || !Number.isInteger(amount)) {
-      this.apiError.set('Enter a whole-cent amount, destination, and device.');
+    // The form takes dollars; the backend works in whole cents.
+    const dollars = this.pendingForm.controls.amount.value;
+    const cents = Math.round(dollars * 100);
+    if (this.pendingForm.invalid || Math.abs(dollars * 100 - cents) > 1e-6) {
+      this.apiError.set('Enter an amount in dollars with at most two decimal places, a destination, and a device.');
       return;
     }
     this.creating.set(true);
     this.apiError.set(null);
-    const request = this.pendingForm.getRawValue();
+    const request = { ...this.pendingForm.getRawValue(), amount: cents };
     this.api.create(request).subscribe({
       next: (created) => {
         this.historyStep.set(null);
