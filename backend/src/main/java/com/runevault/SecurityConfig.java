@@ -63,6 +63,9 @@ public class SecurityConfig {
     a.requestMatchers(HttpMethod.GET, "/api/transactions").hasAuthority("PERM_read:transactions");
     a.requestMatchers(HttpMethod.GET, "/api/transactions/approvals").hasAuthority("PERM_approve:transactions");
     a.requestMatchers(HttpMethod.POST, "/api/transactions/*/approve").hasAuthority("PERM_approve:transactions");
+    // Read-only decision explanation; the controller narrows it to transactions the caller may already see.
+    a.requestMatchers(HttpMethod.GET, "/api/transactions/*/explanation").hasAnyAuthority("PERM_read:transactions",
+     "PERM_approve:transactions", "PERM_read:audit", "PERM_admin:platform");
     a.requestMatchers(HttpMethod.POST, "/api/ws-ticket").hasAuthority("PERM_read:transactions");
     a.requestMatchers(HttpMethod.GET, "/api/metrics/pipeline").hasAuthority("PERM_read:transactions");
     a.requestMatchers(HttpMethod.GET, "/api/bank/balance").hasAuthority("PERM_read:transactions");
@@ -144,6 +147,8 @@ public class SecurityConfig {
     RequestQuotaLimiter.Category category = path.startsWith("/api/admin/") || path.equals("/api/audit-events")
       || path.equals("/api/metrics/policy-decisions")
      ? RequestQuotaLimiter.Category.ADMIN
+     : path.startsWith("/api/transactions/") && path.endsWith("/explanation") && request.getMethod().equals("GET")
+     ? RequestQuotaLimiter.Category.DECISION_EXPLANATION
      : path.equals("/api/ws-ticket") && request.getMethod().equals("POST")
      ? RequestQuotaLimiter.Category.WS_TICKET
      : (path.equals("/api/transactions") || path.equals("/api/transactions/approvals")

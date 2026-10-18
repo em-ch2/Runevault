@@ -21,7 +21,7 @@ jobs:
           grep -q 'Tests run: 2, Failures: 0, Errors: 0, Skipped: 0' "$report"
           bootstrap=backend/target/surefire-reports/com.runevault.PostgresBootstrapSpringTest.txt
           test -f "$bootstrap"
-          grep -q 'Tests run: 1, Failures: 0, Errors: 0, Skipped: 0' "$bootstrap"
+          grep -q 'Tests run: 2, Failures: 0, Errors: 0, Skipped: 0' "$bootstrap"
       - name: Generate resolved Maven dependency inventory
         run: mvn -B -f backend/pom.xml org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeBom
       - name: Scan Maven dependencies without a private API key

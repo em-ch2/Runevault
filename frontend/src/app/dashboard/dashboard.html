@@ -302,6 +302,7 @@
         }
         }
         <app-authorization-evidence [transaction]="transaction" />
+        <app-decision-explanation [transaction]="transaction" />
         <nav class="history-step-navigation" aria-label="Receipt history steps">
         <button class="btn btn-ghost" type="button" [disabled]="historyStep() === 0" (click)="inspectHistoryStep((historyStep() ?? 0) - 1)">Previous step</button>
         <button class="btn btn-ghost" type="button" (click)="secondaryView.set('live-list-title')">Back to history</button>

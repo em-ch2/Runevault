@@ -65,6 +65,18 @@ export function approvalError(error: unknown): string {
   return transactionError(error);
 }
 
+// Read-only explanation of a recorded decision. source 'recorded-policy-reason' means Gemini was unavailable
+// or its answer was rejected, so only the fixed backend reason is shown.
+export interface DecisionExplanation {
+  source: 'gemini' | 'recorded-policy-reason';
+  summary: string;
+  keyFactors: string[];
+  requiredNextStep: string;
+  limitations: string[];
+  recordedReason: string;
+  generatedAt: string;
+}
+
 export interface MinutePoint {
   minute: string;
   approved: number;
@@ -204,6 +216,13 @@ export class TransactionApiService {
         return [];
       }
     }));
+  }
+
+  explanation(txId: string) {
+    return this.token().pipe(switchMap((token) => this.http.get<DecisionExplanation>(
+      `${this.endpoint}/${encodeURIComponent(txId)}/explanation`,
+      { headers: new HttpHeaders({ Authorization: `Bearer ${token}` }) },
+    )));
   }
 
   approvals() {
